@@ -1,0 +1,97 @@
+---
+- name: Auto-Prepare Edge Node (Fix Labels & Configure Fstab)
+  hosts: all
+  become: yes
+  tasks:
+    - name: Run prepare tasks in block to handle errors
+      block:
+        - name: Backup remote fstab
+          copy:
+            src: /etc/fstab
+            dest: /etc/fstab.bak
+            remote_src: yes
+            mode: '0644'
+
+        - name: Gather partition and system details
+          shell: |
+            set -e
+            # Detect root partition and parent disk
+            root_part=$(findmnt -n -o SOURCE /)
+            root_disk=$(lsblk -no PKNAME "$root_part")
+            if [ -z "$root_disk" ]; then
+              # NVMe partitions might be like nvme0n1p2 -> nvme0n1
+              root_disk=$(echo "$root_part" | sed -E 's/p[0-9]+$//')
+            fi
+            # Check rotational flag
+            disk_base=$(basename "$root_disk")
+            rotational=$(cat /sys/block/"$disk_base"/queue/rotational)
+            disk_type="SATA"
+            if [ "$rotational" = "0" ]; then
+              disk_type="NVME"
+            fi
+
+            # Find active network interface
+            net_iface=$(ip -o route get 8.8.8.8 | awk '{print $5}')
+
+            # Detect EFI/ESP partition
+            efi_part=$(findmnt -n -o SOURCE /boot/efi || findmnt -n -o SOURCE /boot)
+            efi_uuid=""
+            if [ -n "$efi_part" ]; then
+              # Try blkid to get EFI UUID
+              efi_uuid=$(blkid -s UUID -o value "$efi_part")
+            fi
+
+            echo "DISK_TYPE:$disk_type"
+            echo "EFI_UUID:$efi_uuid"
+            echo "INTERFACE:$net_iface"
+          register: sys_info
+          changed_when: false
+
+        - name: Print system info for parsing
+          debug:
+            msg: "{{ sys_info.stdout_lines }}"
+
+        - name: Label root filesystem
+          shell: |
+            root_part=$(findmnt -n -o SOURCE /)
+            e2label "$root_part" edgeroot
+          changed_when: true
+
+        - name: Label EFI/ESP boot filesystem
+          shell: |
+            efi_part=$(findmnt -n -o SOURCE /boot/efi || findmnt -n -o SOURCE /boot)
+            if [ -n "$efi_part" ]; then
+              fatlabel "$efi_part" edgeboot || dosfslabel "$efi_part" edgeboot
+            fi
+          ignore_errors: yes
+          changed_when: true
+
+        - name: Rewrite fstab substituting with labels
+          copy:
+            dest: /etc/fstab
+            content: |
+              # Standardized fstab via Borg Orchestrator Auto-Prepare
+              LABEL=edgeroot  /          ext4  defaults,noatime  0  1
+              LABEL=edgeboot  /boot/efi  vfat  defaults          0  2
+            mode: '0644'
+
+        - name: Update initramfs
+          command: update-initramfs -u
+          changed_when: true
+
+        - name: Update GRUB bootloader configuration
+          command: update-grub
+          changed_when: true
+
+      rescue:
+        - name: Restore fstab from backup on failure
+          copy:
+            src: /etc/fstab.bak
+            dest: /etc/fstab
+            remote_src: yes
+            mode: '0644'
+          ignore_errors: yes
+
+        - name: Fail task with error message
+          fail:
+            msg: "Auto-Prepare failed. Restored fstab to backup."

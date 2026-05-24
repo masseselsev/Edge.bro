@@ -1,0 +1,44 @@
+---
+- name: Bootstrap Edge Node
+  hosts: all
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Ensure python3 and aptitude are installed
+      raw: apt-get update && apt-get install -y python3 python3-pip
+      changed_when: false
+
+    - name: Install dependencies
+      apt:
+        name:
+          - borgbackup
+          - parted
+          - udev
+          - dosfstools
+          - e2fsprogs
+          - util-linux
+        state: present
+        update_cache: yes
+
+    - name: Create borg system user
+      user:
+        name: borg
+        shell: /bin/bash
+        create_home: yes
+        system: yes
+
+    - name: Generate SSH key for borg user
+      user:
+        name: borg
+        generate_ssh_key: yes
+        ssh_key_type: ed25519
+        ssh_key_file: .ssh/id_ed25519
+
+    - name: Read generated public key
+      slurp:
+        src: /home/borg/.ssh/id_ed25519.pub
+      register: pubkey
+
+    - name: Return public key to orchestrator
+      debug:
+        msg: "SSH_KEY: {{ pubkey['content'] | b64decode | trim }}"
