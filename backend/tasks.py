@@ -249,12 +249,14 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
 
     # Determine Orchestrator internal/external IP from context or use host default route IP
     # We can fetch this host's IP that routes to the edge node
-    try:
-        route_cmd = f"ip route get {node.ip_address}"
-        route_out = subprocess.check_output(route_cmd, shell=True, text=True)
-        orchestrator_ip = route_out.split("src")[1].split()[0]
-    except Exception:
-        orchestrator_ip = "127.0.0.1"
+    orchestrator_ip = os.getenv("ORCHESTRATOR_IP")
+    if not orchestrator_ip:
+        try:
+            route_cmd = f"ip route get {node.ip_address}"
+            route_out = subprocess.check_output(route_cmd, shell=True, text=True)
+            orchestrator_ip = route_out.split("src")[1].split()[0]
+        except Exception:
+            orchestrator_ip = "127.0.0.1"
 
     archive_name = f"{node.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     borg_repo_url = f"ssh://borg@{orchestrator_ip}:{settings.borg_ssh_port}/data/borg/{node.hostname}"

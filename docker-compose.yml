@@ -29,6 +29,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
+      ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
     volumes:
       - ./backend:/app
       - borg-data:/data/borg
@@ -50,6 +51,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
+      ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
     volumes:
       - ./backend:/app
       - /dev:/dev
