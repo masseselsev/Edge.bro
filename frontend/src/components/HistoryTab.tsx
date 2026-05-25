@@ -23,7 +23,11 @@ interface Node {
   hostname: string;
 }
 
-export default function HistoryTab() {
+interface HistoryTabProps {
+  onViewLogs?: (taskId: string, title: string) => void;
+}
+
+export default function HistoryTab({ onViewLogs }: HistoryTabProps) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<BackupHistory[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -73,9 +77,17 @@ export default function HistoryTab() {
       if (res.ok) {
         const data = await res.json();
         if (data.task_id) {
+          if (onViewLogs) {
+            onViewLogs(data.task_id, `Purge Archives: ${node.hostname}`);
+          }
           const pollInterval = setInterval(async () => {
             try {
               const taskRes = await fetch(`/api/tasks/${data.task_id}`);
+              if (!taskRes.ok) {
+                clearInterval(pollInterval);
+                setPurging(prev => ({ ...prev, [node.id]: false }));
+                return;
+              }
               const taskData = await taskRes.json();
               if (taskData.status === 'SUCCESS' || taskData.status === 'FAILED') {
                 clearInterval(pollInterval);

@@ -23,7 +23,7 @@ export default function App() {
       case 'flasher':
         return <FlasherTab onViewLogs={handleViewLogs} />;
       case 'history':
-        return <HistoryTab />;
+        return <HistoryTab onViewLogs={handleViewLogs} />;
       case 'settings':
         return <SettingsTab />;
       case 'fleet':
