@@ -97,15 +97,15 @@ def run_ansible_playbook(
                 log_accumulator.append(line)
                 # Parse custom output lines
                 if "SSH_KEY:" in line:
-                    parsed_data["ssh_pub_key"] = line.split("SSH_KEY:")[1].strip().replace('"', '')
+                    parsed_data["ssh_pub_key"] = line.split("SSH_KEY:")[1].strip().replace('"', '').replace(',', '')
                 if "DISK_TYPE:" in line:
-                    parsed_data["disk_type"] = line.split("DISK_TYPE:")[1].strip()
+                    parsed_data["disk_type"] = line.split("DISK_TYPE:")[1].strip().replace('"', '').replace(',', '')
                 if "EFI_UUID:" in line:
-                    parsed_data["efi_uuid"] = line.split("EFI_UUID:")[1].strip()
+                    parsed_data["efi_uuid"] = line.split("EFI_UUID:")[1].strip().replace('"', '').replace(',', '')
                 if "INTERFACE:" in line:
-                    parsed_data["network_iface"] = line.split("INTERFACE:")[1].strip()
+                    parsed_data["network_iface"] = line.split("INTERFACE:")[1].strip().replace('"', '').replace(',', '')
                 if "PREPARED:" in line:
-                    parsed_data["prepared"] = line.split("PREPARED:")[1].strip()
+                    parsed_data["prepared"] = line.split("PREPARED:")[1].strip().replace('"', '').replace(',', '')
 
                 # Periodic write to DB to avoid overloading database connections
                 if len(log_accumulator) % 5 == 0:
