@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Database, TrendingDown, ArrowDownCircle, RefreshCw, Trash2, AlertTriangle, X, Loader2 } from 'lucide-react';
+import { Database, TrendingDown, ArrowDownCircle, RefreshCw, Trash2, AlertTriangle, Loader2, ChevronRight } from 'lucide-react';
 
 interface Stats {
   total_nodes: number;
@@ -30,6 +30,7 @@ export default function HistoryTab() {
   const [loading, setLoading] = useState(true);
   const [purgeTarget, setPurgeTarget] = useState<Node | null>(null);
   const [purging, setPurging] = useState<Record<number, boolean>>({});
+  const [expandedNodes, setExpandedNodes] = useState<Record<number, boolean>>({});
 
   const fetchStats = useCallback(async () => {
     try {
@@ -41,14 +42,12 @@ export default function HistoryTab() {
       const nodesData = await nodesRes.json();
       setNodes(nodesData);
 
-      // Fetch backup history for all nodes
       const allHistory: BackupHistory[] = [];
       for (const n of nodesData) {
         const histRes = await fetch(`/api/nodes/${n.id}/history`);
         const histData = await histRes.json();
         allHistory.push(...histData);
       }
-      // Sort history by date descending
       allHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       setHistory(allHistory);
     } catch (e) {
@@ -62,6 +61,10 @@ export default function HistoryTab() {
     fetchStats();
   }, [fetchStats]);
 
+  const toggleNode = (nodeId: number) => {
+    setExpandedNodes(prev => ({ ...prev, [nodeId]: !prev[nodeId] }));
+  };
+
   const handlePurge = async (node: Node) => {
     setPurgeTarget(null);
     setPurging(prev => ({ ...prev, [node.id]: true }));
@@ -69,7 +72,6 @@ export default function HistoryTab() {
       const res = await fetch(`/api/nodes/${node.id}/archives`, { method: 'DELETE' });
       if (res.ok) {
         const data = await res.json();
-        // Poll task status until completion
         if (data.task_id) {
           const pollInterval = setInterval(async () => {
             try {
@@ -102,11 +104,6 @@ export default function HistoryTab() {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   };
 
-  const getNodeName = (nodeId: number) => {
-    const node = nodes.find(n => n.id === nodeId);
-    return node ? node.hostname : `Node #${nodeId}`;
-  };
-
   const getSavedSpace = () => {
     if (!stats) return '0 B';
     const diff = stats.total_original_size_bytes - stats.total_deduplicated_size_bytes;
@@ -120,8 +117,20 @@ export default function HistoryTab() {
     groupedHistory[h.node_id].push(h);
   }
 
-  // List of nodes that actually have history (for rendering groups)
   const nodesWithHistory = nodes.filter(n => groupedHistory[n.id]?.length);
+
+  const getNodeStatusCounts = (nodeId: number) => {
+    const items = groupedHistory[nodeId] || [];
+    const success = items.filter(h => h.status === 'SUCCESS').length;
+    const failed = items.length - success;
+    return { success, failed, total: items.length };
+  };
+
+  const getLatestBackup = (nodeId: number) => {
+    const items = groupedHistory[nodeId] || [];
+    if (items.length === 0) return null;
+    return new Date(items[0].timestamp);
+  };
 
   return (
     <div className="space-y-6">
@@ -202,12 +211,12 @@ export default function HistoryTab() {
         </div>
       </div>
 
-      {/* History log grouped by node */}
-      <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
-        <div className="flex justify-between items-center">
+      {/* Collapsible history per node */}
+      <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-3">
+        <div className="flex justify-between items-center mb-2">
           <div>
             <h3 className="text-lg font-bold text-white">Execution History</h3>
-            <p className="text-xs text-zinc-400">View recent backup metrics, sizes, and execution statuses.</p>
+            <p className="text-xs text-zinc-400">Click on a device to expand its backup archives.</p>
           </div>
           <button
             onClick={fetchStats}
@@ -222,63 +231,110 @@ export default function HistoryTab() {
         ) : history.length === 0 ? (
           <div className="text-center py-8 text-zinc-500 text-sm">No backup records found.</div>
         ) : (
-          nodesWithHistory.map(node => (
-            <div key={node.id} className="space-y-2">
-              {/* Node group header */}
-              <div className="flex items-center justify-between px-2 pt-3">
-                <h4 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-                  <Database size={14} className="text-zinc-500" />
-                  {node.hostname}
-                  <span className="text-xs text-zinc-500 font-normal">
-                    — {groupedHistory[node.id].length} archive(s)
-                  </span>
-                </h4>
-                <button
-                  onClick={() => setPurgeTarget(node)}
-                  disabled={!!purging[node.id]}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {purging[node.id] ? (
-                    <Loader2 size={13} className="animate-spin" />
-                  ) : (
-                    <Trash2 size={13} />
-                  )}
-                  {purging[node.id] ? 'Purging...' : 'Purge All'}
-                </button>
-              </div>
+          <div className="space-y-2">
+            {nodesWithHistory.map(node => {
+              const isExpanded = !!expandedNodes[node.id];
+              const counts = getNodeStatusCounts(node.id);
+              const latestDate = getLatestBackup(node.id);
 
-              <div className="overflow-x-auto rounded-xl border border-zinc-800/80 bg-zinc-950">
-                <table className="min-w-full divide-y divide-zinc-800 text-left text-xs text-zinc-300">
-                  <thead className="bg-zinc-900 text-zinc-400 uppercase tracking-wider font-semibold">
-                    <tr>
-                      <th className="px-6 py-3.5">Archive Snapshot</th>
-                      <th className="px-6 py-3.5">Date & Time</th>
-                      <th className="px-6 py-3.5">Original Size</th>
-                      <th className="px-6 py-3.5">Deduplicated Size</th>
-                      <th className="px-6 py-3.5">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800">
-                    {groupedHistory[node.id].map(h => (
-                      <tr key={h.id} className="hover:bg-zinc-900/40 transition-colors">
-                        <td className="px-6 py-4 font-semibold text-white">{h.archive_name}</td>
-                        <td className="px-6 py-4 text-zinc-400">{new Date(h.timestamp).toLocaleString()}</td>
-                        <td className="px-6 py-4 text-zinc-300">{getFormatSize(h.original_size)}</td>
-                        <td className="px-6 py-4 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
-                        <td className="px-6 py-4">
-                          {h.status === 'SUCCESS' ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Success</span>
-                          ) : (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Failed</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))
+              return (
+                <div
+                  key={node.id}
+                  className="rounded-xl border border-zinc-800/80 bg-zinc-950 overflow-hidden"
+                >
+                  {/* Clickable device header */}
+                  <button
+                    onClick={() => toggleNode(node.id)}
+                    className="w-full flex items-center justify-between px-5 py-4 hover:bg-zinc-900/60 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <ChevronRight
+                        size={16}
+                        className={`text-zinc-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                      />
+                      <Database size={15} className="text-zinc-500" />
+                      <span className="text-sm font-semibold text-zinc-100 group-hover:text-white transition-colors">
+                        {node.hostname}
+                      </span>
+                      <span className="text-xs text-zinc-500 font-normal">
+                        — {counts.total} archive(s)
+                      </span>
+                      {counts.success > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          {counts.success} ok
+                        </span>
+                      )}
+                      {counts.failed > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                          {counts.failed} failed
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {latestDate && (
+                        <span className="text-[11px] text-zinc-500 hidden sm:inline">
+                          Last: {latestDate.toLocaleDateString()}
+                        </span>
+                      )}
+                      <div
+                        onClick={(e) => { e.stopPropagation(); setPurgeTarget(node); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        role="button"
+                        tabIndex={0}
+                      >
+                        {purging[node.id] ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={13} />
+                        )}
+                        {purging[node.id] ? 'Purging...' : 'Purge All'}
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Collapsible archive table */}
+                  <div
+                    className="overflow-hidden transition-all duration-300 ease-in-out"
+                    style={{
+                      maxHeight: isExpanded ? `${(groupedHistory[node.id].length + 1) * 52 + 20}px` : '0px',
+                      opacity: isExpanded ? 1 : 0,
+                    }}
+                  >
+                    <div className="border-t border-zinc-800/60">
+                      <table className="min-w-full divide-y divide-zinc-800 text-left text-xs text-zinc-300">
+                        <thead className="bg-zinc-900/50 text-zinc-500 uppercase tracking-wider font-semibold">
+                          <tr>
+                            <th className="px-6 py-3">Archive Snapshot</th>
+                            <th className="px-6 py-3">Date & Time</th>
+                            <th className="px-6 py-3">Original Size</th>
+                            <th className="px-6 py-3">Deduplicated Size</th>
+                            <th className="px-6 py-3">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/50">
+                          {groupedHistory[node.id].map(h => (
+                            <tr key={h.id} className="hover:bg-zinc-900/40 transition-colors">
+                              <td className="px-6 py-3.5 font-semibold text-white">{h.archive_name}</td>
+                              <td className="px-6 py-3.5 text-zinc-400">{new Date(h.timestamp).toLocaleString()}</td>
+                              <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.original_size)}</td>
+                              <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
+                              <td className="px-6 py-3.5">
+                                {h.status === 'SUCCESS' ? (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Success</span>
+                                ) : (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Failed</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
