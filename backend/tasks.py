@@ -146,7 +146,7 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
 
         # Append key to Borg Server authorized_keys
         try:
-            authorized_keys_path = "/home/borg/.ssh/authorized_keys"
+            authorized_keys_path = "/root/.ssh/authorized_keys"
             os.makedirs(os.path.dirname(authorized_keys_path), exist_ok=True)
             command_restriction = (
                 f'command="borg serve --restrict-to-path /data/borg/{node.hostname}",'
