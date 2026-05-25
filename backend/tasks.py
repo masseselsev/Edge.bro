@@ -261,6 +261,20 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
     archive_name = f"{node.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     borg_repo_url = f"ssh://borg@{orchestrator_ip}:{settings.borg_ssh_port}/data/borg/{node.hostname}"
 
+    # Ensure the Borg repository is initialized on central server
+    init_cmd = [
+        "ssh", "-o", "StrictHostKeyChecking=no",
+        "-p", str(node.ssh_port),
+        "-i", "/root/.ssh/id_ed25519",
+        f"root@{node.ip_address}",
+        f"sudo -u borg BORG_RSH='ssh -o StrictHostKeyChecking=no' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg init --encryption=repokey {borg_repo_url}"
+    ]
+    log_to_task(task_id, "Checking/Initializing Borg repository...")
+    try:
+        subprocess.run(init_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except Exception as e:
+        log_to_task(task_id, f"Repository initialization check warning: {str(e)}")
+
     # Connect via SSH to the edge node and execute Borg backup pushing to Central server
     ssh_cmd = [
         "ssh", "-o", "StrictHostKeyChecking=no",
