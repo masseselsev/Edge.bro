@@ -422,13 +422,41 @@ def purge_node_backups(node_id: int, db: Session = Depends(get_db)):
 @app.delete("/api/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_node(node_id: int, db: Session = Depends(get_db)):
     """
-    Deletes a node and its related backup history records from the database.
+    Deletes a node and its related backup history records from the database,
+    cleans up the physical Borg repository directory, and removes its restricted
+    SSH public key entry from /root/.ssh/authorized_keys.
     """
     node = db.query(models.Node).filter(models.Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
     
-    # Delete related backup histories first to prevent foreign key errors
+    # 1. Clean up physical Borg repository directory safely (Path Security)
+    import shutil
+    safe_hostname = os.path.basename(node.hostname)
+    repo_path = f"/data/borg/{safe_hostname}"
+    if os.path.exists(repo_path):
+        try:
+            shutil.rmtree(repo_path, ignore_errors=True)
+        except Exception as e:
+            # Log/print warning but do not block node deletion
+            print(f"WARNING: Failed to delete Borg repository directory {repo_path}: {str(e)}")
+
+    # 2. Clean up SSH authorized_keys entry safely
+    authorized_keys_path = "/root/.ssh/authorized_keys"
+    if os.path.exists(authorized_keys_path):
+        try:
+            with open(authorized_keys_path, "r") as f:
+                lines = f.readlines()
+            
+            filter_str = f"restrict-to-path /data/borg/{safe_hostname}"
+            new_lines = [line for line in lines if filter_str not in line]
+            
+            with open(authorized_keys_path, "w") as f:
+                f.writelines(new_lines)
+        except Exception as e:
+            print(f"WARNING: Failed to clean up SSH authorized_keys for {safe_hostname}: {str(e)}")
+
+    # 3. Delete related backup histories first to prevent foreign key errors
     db.query(models.BackupHistory).filter(models.BackupHistory.node_id == node_id).delete()
     
     db.delete(node)

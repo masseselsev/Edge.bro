@@ -108,8 +108,13 @@
         label_log=$(e2label "$part_log" 2>/dev/null || echo "")
         label_stor=$(e2label "$part_stor" 2>/dev/null || echo "")
 
+        fstab_labels_ok="false"
+        if grep -q "LABEL=edgeroot" /etc/fstab && grep -q "LABEL=edgeboot" /etc/fstab && grep -q "LABEL=edgelog" /etc/fstab && grep -q "LABEL=edgestor" /etc/fstab; then
+          fstab_labels_ok="true"
+        fi
+
         prepared="false"
-        if [ "$label_root" = "edgeroot" ] && [ "$label_boot" = "edgeboot" ] && [ "$label_log" = "edgelog" ] && [ "$label_stor" = "edgestor" ]; then
+        if [ "$label_root" = "edgeroot" ] && [ "$label_boot" = "edgeboot" ] && [ "$label_log" = "edgelog" ] && [ "$label_stor" = "edgestor" ] && [ "$fstab_labels_ok" = "true" ]; then
           prepared="true"
         fi
 

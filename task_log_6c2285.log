@@ -1,0 +1,139 @@
+
+PLAY [Auto-Prepare Edge Node (Fix Labels & Configure Fstab)] *******************
+
+TASK [Gathering Facts] *********************************************************
+ok: [192.168.222.247]
+
+TASK [Backup remote fstab] *****************************************************
+ok: [192.168.222.247]
+
+TASK [Gather partition and system details] *************************************
+ok: [192.168.222.247]
+
+TASK [Print system info for parsing] *******************************************
+ok: [192.168.222.247] => {
+    "msg": [
+        "DISK_TYPE:NVME",
+        "EFI_UUID:458C-37BB",
+        "INTERFACE:enp2s0",
+        "PART_ROOT:/dev/nvme0n1p3",
+        "PART_BOOT:/dev/nvme0n1p2",
+        "PART_EFI:/dev/nvme0n1p1",
+        "PART_LOG:/dev/nvme0n1p4",
+        "PART_STOR:/dev/nvme0n1p5",
+        "PARTITION_LAYOUT_JSON:{   \"blockdevices\": [      {         \"name\": \"nvme0n1\",         \"type\": \"disk\",         \"fstype\": null,         \"size\": 1000204886016,         \"mountpoint\": null,         \"label\": null,         \"uuid\": null,         \"children\": [            {               \"name\": \"nvme0n1p1\",               \"type\": \"part\",               \"fstype\": \"vfat\",               \"size\": 599785472,               \"mountpoint\": \"/boot/efi\",               \"label\": \"EFI\",               \"uuid\": \"458C-37BB\"            },{               \"name\": \"nvme0n1p2\",               \"type\": \"part\",               \"fstype\": \"ext2\",               \"size\": 209715200,               \"mountpoint\": \"/boot\",               \"label\": null,               \"uuid\": \"622f64b5-455b-4850-ad59-335c2ed0ccc6\"            },{               \"name\": \"nvme0n1p3\",               \"type\": \"part\",               \"fstype\": \"ext4\",               \"size\": 32219594752,               \"mountpoint\": \"/\",               \"label\": null,               \"uuid\": \"e0ff1bd7-1dc8-4f29-b924-bd4f9e6c5cea\"            },{               \"name\": \"nvme0n1p4\",               \"type\": \"part\",               \"fstype\": \"ext4\",               \"size\": 2139095040,               \"mountpoint\": \"/var/log/edge\",               \"label\": null,               \"uuid\": \"fde45a83-7e0f-4e94-a5d8-82850b185498\"            },{               \"name\": \"nvme0n1p5\",               \"type\": \"part\",               \"fstype\": \"ext4\",               \"size\": 965033852928,               \"mountpoint\": \"/var/opt/edge\",               \"label\": null,               \"uuid\": \"f4993e54-89f6-4452-a4e3-472b8535e7de\"            }         ]      }   ]}"
+    ]
+}
+
+TASK [Extract variables from gathered system info] *****************************
+ok: [192.168.222.247] => (item=DISK_TYPE:NVME)
+skipping: [192.168.222.247] => (item=EFI_UUID:458C-37BB) 
+skipping: [192.168.222.247] => (item=INTERFACE:enp2s0) 
+skipping: [192.168.222.247] => (item=PART_ROOT:/dev/nvme0n1p3) 
+skipping: [192.168.222.247] => (item=PART_BOOT:/dev/nvme0n1p2) 
+skipping: [192.168.222.247] => (item=PART_EFI:/dev/nvme0n1p1) 
+skipping: [192.168.222.247] => (item=PART_LOG:/dev/nvme0n1p4) 
+skipping: [192.168.222.247] => (item=PART_STOR:/dev/nvme0n1p5) 
+skipping: [192.168.222.247] => (item=PARTITION_LAYOUT_JSON:{   "blockdevices": [      {         "name": "nvme0n1",         "type": "disk",         "fstype": null,         "size": 1000204886016,         "mountpoint": null,         "label": null,         "uuid": null,         "children": [            {               "name": "nvme0n1p1",               "type": "part",               "fstype": "vfat",               "size": 599785472,               "mountpoint": "/boot/efi",               "label": "EFI",               "uuid": "458C-37BB"            },{               "name": "nvme0n1p2",               "type": "part",               "fstype": "ext2",               "size": 209715200,               "mountpoint": "/boot",               "label": null,               "uuid": "622f64b5-455b-4850-ad59-335c2ed0ccc6"            },{               "name": "nvme0n1p3",               "type": "part",               "fstype": "ext4",               "size": 32219594752,               "mountpoint": "/",               "label": null,               "uuid": "e0ff1bd7-1dc8-4f29-b924-bd4f9e6c5cea"            },{               "name": "nvme0n1p4",               "type": "part",               "fstype": "ext4",               "size": 2139095040,               "mountpoint": "/var/log/edge",               "label": null,               "uuid": "fde45a83-7e0f-4e94-a5d8-82850b185498"            },{               "name": "nvme0n1p5",               "type": "part",               "fstype": "ext4",               "size": 965033852928,               "mountpoint": "/var/opt/edge",               "label": null,               "uuid": "f4993e54-89f6-4452-a4e3-472b8535e7de"            }         ]      }   ]}) 
+
+TASK [Extract efi_uuid] ********************************************************
+skipping: [192.168.222.247] => (item=DISK_TYPE:NVME) 
+ok: [192.168.222.247] => (item=EFI_UUID:458C-37BB)
+skipping: [192.168.222.247] => (item=INTERFACE:enp2s0) 
+skipping: [192.168.222.247] => (item=PART_ROOT:/dev/nvme0n1p3) 
+skipping: [192.168.222.247] => (item=PART_BOOT:/dev/nvme0n1p2) 
+skipping: [192.168.222.247] => (item=PART_EFI:/dev/nvme0n1p1) 
+skipping: [192.168.222.247] => (item=PART_LOG:/dev/nvme0n1p4) 
+skipping: [192.168.222.247] => (item=PART_STOR:/dev/nvme0n1p5) 
+skipping: [192.168.222.247] => (item=PARTITION_LAYOUT_JSON:{   "blockdevices": [      {         "name": "nvme0n1",         "type": "disk",         "fstype": null,         "size": 1000204886016,         "mountpoint": null,         "label": null,         "uuid": null,         "children": [            {               "name": "nvme0n1p1",               "type": "part",               "fstype": "vfat",               "size": 599785472,               "mountpoint": "/boot/efi",               "label": "EFI",               "uuid": "458C-37BB"            },{               "name": "nvme0n1p2",               "type": "part",               "fstype": "ext2",               "size": 209715200,               "mountpoint": "/boot",               "label": null,               "uuid": "622f64b5-455b-4850-ad59-335c2ed0ccc6"            },{               "name": "nvme0n1p3",               "type": "part",               "fstype": "ext4",               "size": 32219594752,               "mountpoint": "/",               "label": null,               "uuid": "e0ff1bd7-1dc8-4f29-b924-bd4f9e6c5cea"            },{               "name": "nvme0n1p4",               "type": "part",               "fstype": "ext4",               "size": 2139095040,               "mountpoint": "/var/log/edge",               "label": null,               "uuid": "fde45a83-7e0f-4e94-a5d8-82850b185498"            },{               "name": "nvme0n1p5",               "type": "part",               "fstype": "ext4",               "size": 965033852928,               "mountpoint": "/var/opt/edge",               "label": null,               "uuid": "f4993e54-89f6-4452-a4e3-472b8535e7de"            }         ]      }   ]}) 
+
+TASK [Extract part_root] *******************************************************
+skipping: [192.168.222.247] => (item=DISK_TYPE:NVME) 
+skipping: [192.168.222.247] => (item=EFI_UUID:458C-37BB) 
+skipping: [192.168.222.247] => (item=INTERFACE:enp2s0) 
+ok: [192.168.222.247] => (item=PART_ROOT:/dev/nvme0n1p3)
+skipping: [192.168.222.247] => (item=PART_BOOT:/dev/nvme0n1p2) 
+skipping: [192.168.222.247] => (item=PART_EFI:/dev/nvme0n1p1) 
+skipping: [192.168.222.247] => (item=PART_LOG:/dev/nvme0n1p4) 
+skipping: [192.168.222.247] => (item=PART_STOR:/dev/nvme0n1p5) 
+skipping: [192.168.222.247] => (item=PARTITION_LAYOUT_JSON:{   "blockdevices": [      {         "name": "nvme0n1",         "type": "disk",         "fstype": null,         "size": 1000204886016,         "mountpoint": null,         "label": null,         "uuid": null,         "children": [            {               "name": "nvme0n1p1",               "type": "part",               "fstype": "vfat",               "size": 599785472,               "mountpoint": "/boot/efi",               "label": "EFI",               "uuid": "458C-37BB"            },{               "name": "nvme0n1p2",               "type": "part",               "fstype": "ext2",               "size": 209715200,               "mountpoint": "/boot",               "label": null,               "uuid": "622f64b5-455b-4850-ad59-335c2ed0ccc6"            },{               "name": "nvme0n1p3",               "type": "part",               "fstype": "ext4",               "size": 32219594752,               "mountpoint": "/",               "label": null,               "uuid": "e0ff1bd7-1dc8-4f29-b924-bd4f9e6c5cea"            },{               "name": "nvme0n1p4",               "type": "part",               "fstype": "ext4",               "size": 2139095040,               "mountpoint": "/var/log/edge",               "label": null,               "uuid": "fde45a83-7e0f-4e94-a5d8-82850b185498"            },{               "name": "nvme0n1p5",               "type": "part",               "fstype": "ext4",               "size": 965033852928,               "mountpoint": "/var/opt/edge",               "label": null,               "uuid": "f4993e54-89f6-4452-a4e3-472b8535e7de"            }         ]      }   ]}) 
+
+TASK [Extract part_boot] *******************************************************
+skipping: [192.168.222.247] => (item=DISK_TYPE:NVME) 
+skipping: [192.168.222.247] => (item=EFI_UUID:458C-37BB) 
+skipping: [192.168.222.247] => (item=INTERFACE:enp2s0) 
+skipping: [192.168.222.247] => (item=PART_ROOT:/dev/nvme0n1p3) 
+ok: [192.168.222.247] => (item=PART_BOOT:/dev/nvme0n1p2)
+skipping: [192.168.222.247] => (item=PART_EFI:/dev/nvme0n1p1) 
+skipping: [192.168.222.247] => (item=PART_LOG:/dev/nvme0n1p4) 
+skipping: [192.168.222.247] => (item=PART_STOR:/dev/nvme0n1p5) 
+skipping: [192.168.222.247] => (item=PARTITION_LAYOUT_JSON:{   "blockdevices": [      {         "name": "nvme0n1",         "type": "disk",         "fstype": null,         "size": 1000204886016,         "mountpoint": null,         "label": null,         "uuid": null,         "children": [            {               "name": "nvme0n1p1",               "type": "part",               "fstype": "vfat",               "size": 599785472,               "mountpoint": "/boot/efi",               "label": "EFI",               "uuid": "458C-37BB"            },{               "name": "nvme0n1p2",               "type": "part",               "fstype": "ext2",               "size": 209715200,               "mountpoint": "/boot",               "label": null,               "uuid": "622f64b5-455b-4850-ad59-335c2ed0ccc6"            },{               "name": "nvme0n1p3",               "type": "part",               "fstype": "ext4",               "size": 32219594752,               "mountpoint": "/",               "label": null,               "uuid": "e0ff1bd7-1dc8-4f29-b924-bd4f9e6c5cea"            },{               "name": "nvme0n1p4",               "type": "part",               "fstype": "ext4",               "size": 2139095040,               "mountpoint": "/var/log/edge",               "label": null,               "uuid": "fde45a83-7e0f-4e94-a5d8-82850b185498"            },{               "name": "nvme0n1p5",               "type": "part",               "fstype": "ext4",               "size": 965033852928,               "mountpoint": "/var/opt/edge",               "label": null,               "uuid": "f4993e54-89f6-4452-a4e3-472b8535e7de"            }         ]      }   ]}) 
+
+TASK [Extract part_log] ********************************************************
+skipping: [192.168.222.247] => (item=DISK_TYPE:NVME) 
+skipping: [192.168.222.247] => (item=EFI_UUID:458C-37BB) 
+skipping: [192.168.222.247] => (item=INTERFACE:enp2s0) 
+skipping: [192.168.222.247] => (item=PART_ROOT:/dev/nvme0n1p3) 
+skipping: [192.168.222.247] => (item=PART_BOOT:/dev/nvme0n1p2) 
+skipping: [192.168.222.247] => (item=PART_EFI:/dev/nvme0n1p1) 
+ok: [192.168.222.247] => (item=PART_LOG:/dev/nvme0n1p4)
+skipping: [192.168.222.247] => (item=PART_STOR:/dev/nvme0n1p5) 
+skipping: [192.168.222.247] => (item=PARTITION_LAYOUT_JSON:{   "blockdevices": [      {         "name": "nvme0n1",         "type": "disk",         "fstype": null,         "size": 1000204886016,         "mountpoint": null,         "label": null,         "uuid": null,         "children": [            {               "name": "nvme0n1p1",               "type": "part",               "fstype": "vfat",               "size": 599785472,               "mountpoint": "/boot/efi",               "label": "EFI",               "uuid": "458C-37BB"            },{               "name": "nvme0n1p2",               "type": "part",               "fstype": "ext2",               "size": 209715200,               "mountpoint": "/boot",               "label": null,               "uuid": "622f64b5-455b-4850-ad59-335c2ed0ccc6"            },{               "name": "nvme0n1p3",               "type": "part",               "fstype": "ext4",               "size": 32219594752,               "mountpoint": "/",               "label": null,               "uuid": "e0ff1bd7-1dc8-4f29-b924-bd4f9e6c5cea"            },{               "name": "nvme0n1p4",               "type": "part",               "fstype": "ext4",               "size": 2139095040,               "mountpoint": "/var/log/edge",               "label": null,               "uuid": "fde45a83-7e0f-4e94-a5d8-82850b185498"            },{               "name": "nvme0n1p5",               "type": "part",               "fstype": "ext4",               "size": 965033852928,               "mountpoint": "/var/opt/edge",               "label": null,               "uuid": "f4993e54-89f6-4452-a4e3-472b8535e7de"            }         ]      }   ]}) 
+
+TASK [Extract part_stor] *******************************************************
+skipping: [192.168.222.247] => (item=DISK_TYPE:NVME) 
+skipping: [192.168.222.247] => (item=EFI_UUID:458C-37BB) 
+skipping: [192.168.222.247] => (item=INTERFACE:enp2s0) 
+skipping: [192.168.222.247] => (item=PART_ROOT:/dev/nvme0n1p3) 
+skipping: [192.168.222.247] => (item=PART_BOOT:/dev/nvme0n1p2) 
+skipping: [192.168.222.247] => (item=PART_EFI:/dev/nvme0n1p1) 
+skipping: [192.168.222.247] => (item=PART_LOG:/dev/nvme0n1p4) 
+ok: [192.168.222.247] => (item=PART_STOR:/dev/nvme0n1p5)
+skipping: [192.168.222.247] => (item=PARTITION_LAYOUT_JSON:{   "blockdevices": [      {         "name": "nvme0n1",         "type": "disk",         "fstype": null,         "size": 1000204886016,         "mountpoint": null,         "label": null,         "uuid": null,         "children": [            {               "name": "nvme0n1p1",               "type": "part",               "fstype": "vfat",               "size": 599785472,               "mountpoint": "/boot/efi",               "label": "EFI",               "uuid": "458C-37BB"            },{               "name": "nvme0n1p2",               "type": "part",               "fstype": "ext2",               "size": 209715200,               "mountpoint": "/boot",               "label": null,               "uuid": "622f64b5-455b-4850-ad59-335c2ed0ccc6"            },{               "name": "nvme0n1p3",               "type": "part",               "fstype": "ext4",               "size": 32219594752,               "mountpoint": "/",               "label": null,               "uuid": "e0ff1bd7-1dc8-4f29-b924-bd4f9e6c5cea"            },{               "name": "nvme0n1p4",               "type": "part",               "fstype": "ext4",               "size": 2139095040,               "mountpoint": "/var/log/edge",               "label": null,               "uuid": "fde45a83-7e0f-4e94-a5d8-82850b185498"            },{               "name": "nvme0n1p5",               "type": "part",               "fstype": "ext4",               "size": 965033852928,               "mountpoint": "/var/opt/edge",               "label": null,               "uuid": "f4993e54-89f6-4452-a4e3-472b8535e7de"            }         ]      }   ]}) 
+
+TASK [Extract part_efi] ********************************************************
+skipping: [192.168.222.247] => (item=DISK_TYPE:NVME) 
+skipping: [192.168.222.247] => (item=EFI_UUID:458C-37BB) 
+skipping: [192.168.222.247] => (item=INTERFACE:enp2s0) 
+skipping: [192.168.222.247] => (item=PART_ROOT:/dev/nvme0n1p3) 
+skipping: [192.168.222.247] => (item=PART_BOOT:/dev/nvme0n1p2) 
+ok: [192.168.222.247] => (item=PART_EFI:/dev/nvme0n1p1)
+skipping: [192.168.222.247] => (item=PART_LOG:/dev/nvme0n1p4) 
+skipping: [192.168.222.247] => (item=PART_STOR:/dev/nvme0n1p5) 
+skipping: [192.168.222.247] => (item=PARTITION_LAYOUT_JSON:{   "blockdevices": [      {         "name": "nvme0n1",         "type": "disk",         "fstype": null,         "size": 1000204886016,         "mountpoint": null,         "label": null,         "uuid": null,         "children": [            {               "name": "nvme0n1p1",               "type": "part",               "fstype": "vfat",               "size": 599785472,               "mountpoint": "/boot/efi",               "label": "EFI",               "uuid": "458C-37BB"            },{               "name": "nvme0n1p2",               "type": "part",               "fstype": "ext2",               "size": 209715200,               "mountpoint": "/boot",               "label": null,               "uuid": "622f64b5-455b-4850-ad59-335c2ed0ccc6"            },{               "name": "nvme0n1p3",               "type": "part",               "fstype": "ext4",               "size": 32219594752,               "mountpoint": "/",               "label": null,               "uuid": "e0ff1bd7-1dc8-4f29-b924-bd4f9e6c5cea"            },{               "name": "nvme0n1p4",               "type": "part",               "fstype": "ext4",               "size": 2139095040,               "mountpoint": "/var/log/edge",               "label": null,               "uuid": "fde45a83-7e0f-4e94-a5d8-82850b185498"            },{               "name": "nvme0n1p5",               "type": "part",               "fstype": "ext4",               "size": 965033852928,               "mountpoint": "/var/opt/edge",               "label": null,               "uuid": "f4993e54-89f6-4452-a4e3-472b8535e7de"            }         ]      }   ]}) 
+
+TASK [Label root filesystem] ***************************************************
+changed: [192.168.222.247]
+
+TASK [Label boot filesystem] ***************************************************
+changed: [192.168.222.247]
+
+TASK [Label log filesystem] ****************************************************
+changed: [192.168.222.247]
+
+TASK [Label storage filesystem] ************************************************
+changed: [192.168.222.247]
+
+TASK [Strip edgeboot label from EFI partition if present] **********************
+changed: [192.168.222.247]
+
+TASK [Rewrite target /etc/fstab with 5-line template] **************************
+ok: [192.168.222.247]
+
+TASK [Reload systemd daemon] ***************************************************
+ok: [192.168.222.247]
+
+TASK [Verify mount configuration live] *****************************************
+changed: [192.168.222.247]
+
+TASK [Update GRUB bootloader configuration] ************************************
+changed: [192.168.222.247]
+
+TASK [Update initramfs] ********************************************************
+changed: [192.168.222.247]
+
+PLAY RECAP *********************************************************************
+192.168.222.247            : ok=21   changed=8    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
+[2026-05-25 12:48:54] Auto-prepare finished. Disk type: NVME, EFI UUID: 458C-37BB, Interface: enp2s0
+
