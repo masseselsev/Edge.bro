@@ -126,9 +126,16 @@ def run_ansible_playbook(
             try:
                 import json
                 import re
-                raw_json = parsed_data["partition_layout_raw"]
-                if raw_json.startswith('"') and raw_json.endswith('"'):
-                    raw_json = raw_json[1:-1]
+                raw_json = parsed_data["partition_layout_raw"].strip()
+                
+                # Extract the JSON block between the first '{' and the last '}'
+                start_idx = raw_json.find('{')
+                end_idx = raw_json.rfind('}')
+                if start_idx != -1 and end_idx != -1:
+                    raw_json = raw_json[start_idx:end_idx+1]
+                
+                # Replace escaped quotes back to normal quotes
+                raw_json = raw_json.replace('\\"', '"')
                 
                 lsblk_data = json.loads(raw_json)
                 devices = lsblk_data.get("blockdevices", [])
@@ -192,7 +199,9 @@ def run_ansible_playbook(
                 if filtered_layout:
                     parsed_data["partition_layout"] = filtered_layout
             except Exception as e:
-                pass
+                import traceback
+                print(f"Error parsing partition layout: {str(e)}")
+                traceback.print_exc()
 
         final_log = "".join(log_accumulator)
         status = "SUCCESS" if return_code == 0 else "FAILED"
