@@ -1,22 +1,14 @@
-import sys
 import os
-
-# Ensure /app is in sys.path for Celery prefork workers that may lose cwd context
-_app_dir = os.path.dirname(os.path.abspath(__file__))
-if _app_dir not in sys.path:
-    sys.path.insert(0, _app_dir)
-
-import shutil
 import subprocess
 import json
 import logging
-import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import TaskLog, Node, BackupHistory, Settings
 from ansible_utils import run_ansible_playbook
+from restore_logic import execute_restore
 
 from celery import Celery
 from celery.schedules import crontab
@@ -423,7 +415,6 @@ def flash_restore_device(self, node_id: int, archive_name: str, target_dev: str)
     Returns:
         Status result dictionary.
     """
-    from restore_logic import execute_restore
     return execute_restore(self, node_id, archive_name, target_dev)
 
 @celery_app.task(bind=True)
