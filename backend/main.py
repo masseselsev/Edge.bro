@@ -418,8 +418,15 @@ def trigger_restore(payload: schemas.RestoreRequest, db: Session = Depends(get_d
                 detail=f"DISK TYPE MISMATCH WARNING: The backup node used {node.disk_type} but the target is {target_disk_type}. Confirmation required to proceed."
             )
 
-    task = flash_restore_device.delay(node.id, payload.archive_name, payload.target_dev)
+    task = flash_restore_device.delay(
+        node.id, 
+        payload.archive_name, 
+        payload.target_dev,
+        keep_network_configs=payload.keep_network_configs,
+        wipe_mac_bindings=payload.wipe_mac_bindings
+    )
     return {"message": "Restore flashing process started.", "task_id": task.id}
+
 
 
 @app.delete("/api/nodes/{node_id}/archives")

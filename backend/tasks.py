@@ -400,7 +400,7 @@ def global_daily_prune() -> Dict[str, Any]:
     return results
 
 @celery_app.task(bind=True)
-def flash_restore_device(self, node_id: int, archive_name: str, target_dev: str) -> Dict[str, Any]:
+def flash_restore_device(self, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = True) -> Dict[str, Any]:
     """
     Celery task running locally on the worker in privileged mode.
     Wipes target device, partitions GPT, formats ESP with historical UUID,
@@ -411,11 +411,14 @@ def flash_restore_device(self, node_id: int, archive_name: str, target_dev: str)
         node_id: ID of the Node database record.
         archive_name: The Borg backup archive identifier.
         target_dev: Target block device name (e.g. /dev/sdb).
+        keep_network_configs: Skip DHCP fallback override and keep original configs.
+        wipe_mac_bindings: Remove old persistent network udev rules.
 
     Returns:
         Status result dictionary.
     """
-    return execute_restore(self, node_id, archive_name, target_dev)
+    return execute_restore(self, node_id, archive_name, target_dev, keep_network_configs, wipe_mac_bindings)
+
 
 @celery_app.task(bind=True)
 def purge_node_archives(self, node_id: int) -> Dict[str, Any]:

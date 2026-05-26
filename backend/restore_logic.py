@@ -7,10 +7,10 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import TaskLog, Node
 
-def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: str) -> Dict[str, Any]:
+def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = True) -> Dict[str, Any]:
     """
     Executes the bare-metal restore partition flashing, filesystem formatting,
-    Borg backup extraction, and network wildcard injection.
+    Borg backup extraction, and network wildcard injection options.
     """
     from tasks import log_to_task
 
@@ -173,57 +173,68 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         log_to_task(task_id, "Extraction completed successfully.")
 
         # 7. Network configuration injection (PCIe Drift Prevention)
-        log_to_task(task_id, "Executing network configuration injection...")
-        # Wipe old udev persistent rules
-        udev_rules = f"{target_mnt}/etc/udev/rules.d/70-persistent-net.rules"
-        if os.path.exists(udev_rules):
-            os.remove(udev_rules)
-            log_to_task(task_id, "Removed old persistent network udev rules.")
+        if keep_network_configs:
+            log_to_task(task_id, "Skipping network config injection: preserving 1-to-1 original backup settings.")
+            if wipe_mac_bindings:
+                udev_rules = f"{target_mnt}/etc/udev/rules.d/70-persistent-net.rules"
+                if os.path.exists(udev_rules):
+                    os.remove(udev_rules)
+                    log_to_task(task_id, "Removed old persistent network udev rules to reset MAC bindings.")
+                else:
+                    log_to_task(task_id, "No persistent network udev rules found to remove.")
+        else:
+            log_to_task(task_id, "Executing network configuration injection (DHCP override fallback)...")
+            # Wipe old udev persistent rules
+            udev_rules = f"{target_mnt}/etc/udev/rules.d/70-persistent-net.rules"
+            if os.path.exists(udev_rules):
+                os.remove(udev_rules)
+                log_to_task(task_id, "Removed old persistent network udev rules.")
 
-        # Handle network configuration
-        netplan_dir = f"{target_mnt}/etc/netplan"
-        if os.path.exists(netplan_dir):
-            # Wipe old netplan files
-            for file in os.listdir(netplan_dir):
-                os.remove(os.path.join(netplan_dir, file))
-            # Inject generic wildcard netplan mapping en* and eth*
-            np_config = {
-                "network": {
-                    "version": 2,
-                    "ethernets": {
-                        "all-en": {
-                            "match": {"name": "en*"},
-                            "dhcp4": True
-                        },
-                        "all-eth": {
-                            "match": {"name": "eth*"},
-                            "dhcp4": True
+            # Handle network configuration
+            netplan_dir = f"{target_mnt}/etc/netplan"
+            if os.path.exists(netplan_dir):
+                # Wipe old netplan files
+                for file in os.listdir(netplan_dir):
+                    os.remove(os.path.join(netplan_dir, file))
+                # Inject generic wildcard netplan mapping en* and eth*
+                np_config = {
+                    "network": {
+                        "version": 2,
+                        "ethernets": {
+                            "all-en": {
+                                "match": {"name": "en*"},
+                                "dhcp4": True
+                            },
+                            "all-eth": {
+                                "match": {"name": "eth*"},
+                                "dhcp4": True
+                            }
                         }
                     }
                 }
-            }
-            with open(os.path.join(netplan_dir, "01-orchestrator-dhcp.yaml"), "w") as f:
-                yaml_str = json.dumps(np_config)
-                f.write(yaml_str)
-            log_to_task(task_id, "Injected wildcard Netplan config.")
+                with open(os.path.join(netplan_dir, "01-orchestrator-dhcp.yaml"), "w") as f:
+                    yaml_str = json.dumps(np_config)
+                    f.write(yaml_str)
+                log_to_task(task_id, "Injected wildcard Netplan config.")
 
-        # Inject interfaces.d configuration
-        interfaces_file = f"{target_mnt}/etc/network/interfaces"
-        if os.path.exists(interfaces_file) or os.path.exists(f"{target_mnt}/etc/network"):
-            os.makedirs(f"{target_mnt}/etc/network/interfaces.d", exist_ok=True)
-            # Standard generic loopback configuration
-            with open(interfaces_file, "w") as f:
-                f.write("auto lo\niface lo inet loopback\nsource /etc/network/interfaces.d/*\n")
+            # Inject interfaces.d configuration
+            interfaces_file = f"{target_mnt}/etc/network/interfaces"
+            if os.path.exists(interfaces_file) or os.path.exists(f"{target_mnt}/etc/network"):
+                os.makedirs(f"{target_mnt}/etc/network/interfaces.d", exist_ok=True)
+                # Standard generic loopback configuration
+                with open(interfaces_file, "w") as f:
+                    f.write("auto lo\niface lo inet loopback\nsource /etc/network/interfaces.d/*\n")
 
-            # Enable DHCP on common naming structures plus original node name
-            ifaces_to_configure = ["eth0", "enp1s0", "enp2s0", "enp3s0"]
-            if node.network_iface and node.network_iface not in ifaces_to_configure:
-                ifaces_to_configure.append(node.network_iface)
+                # Enable DHCP on common naming structures plus original node name
+                ifaces_to_configure = ["eth0", "enp1s0", "enp2s0", "enp3s0"]
+                if node.network_iface and node.network_iface not in ifaces_to_configure:
+                    ifaces_to_configure.append(node.network_iface)
 
-            with open(f"{target_mnt}/etc/network/interfaces.d/orchestrator-dhcp", "w") as f:
-                for iface in ifaces_to_configure:
-                    f.write(f"allow-hotplug {iface}\niface {iface} inet dhcp\n\n")
-            log_to_task(task_id, f"Injected /etc/network/interfaces.d config mapping: {', '.join(ifaces_to_configure)}")
+                with open(f"{target_mnt}/etc/network/interfaces.d/orchestrator-dhcp", "w") as f:
+                    for iface in ifaces_to_configure:
+                        f.write(f"allow-hotplug {iface}\niface {iface} inet dhcp\n\n")
+                log_to_task(task_id, f"Injected /etc/network/interfaces.d config mapping: {', '.join(ifaces_to_configure)}")
+
 
         # 8. Rewrite target /etc/fstab dynamically
         log_to_task(task_id, "Writing dynamic /etc/fstab to target...")

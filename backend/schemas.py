@@ -68,6 +68,9 @@ class RestoreRequest(BaseModel):
     archive_name: str
     target_dev: str
     override_mismatch: bool = False
+    keep_network_configs: bool = True
+    wipe_mac_bindings: bool = True
+
 
 class DeviceResponse(BaseModel):
     name: str

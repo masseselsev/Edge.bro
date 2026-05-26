@@ -41,6 +41,8 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
   const [mismatchWarning, setMismatchWarning] = useState(false);
   const [overrideChecked, setOverrideChecked] = useState(false);
+  const [keepNetworkConfigs, setKeepNetworkConfigs] = useState(true);
+  const [wipeMacBindings, setWipeMacBindings] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -133,7 +135,9 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
           node_id: Number(selectedNodeId),
           archive_name: selectedSnapshot,
           target_dev: selectedDevice,
-          override_mismatch: overrideChecked
+          override_mismatch: overrideChecked,
+          keep_network_configs: keepNetworkConfigs,
+          wipe_mac_bindings: wipeMacBindings
         })
       });
       const data = await res.json();
@@ -249,6 +253,43 @@ export default function FlasherTab({ onViewLogs }: FlasherTabProps) {
                 </label>
               </div>
             )}
+            {/* Network configuration restore options */}
+            <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-3">
+              <h4 className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Network Settings</h4>
+              <div className="space-y-2.5">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={keepNetworkConfigs}
+                    onChange={(e) => {
+                      setKeepNetworkConfigs(e.target.checked);
+                      if (!e.target.checked) {
+                        setWipeMacBindings(true);
+                      }
+                    }}
+                    className="mt-0.5 rounded bg-zinc-900 border-zinc-800 text-indigo-600 focus:ring-0"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-zinc-200">Preserve original network configurations (1-to-1)</span>
+                    <span className="text-[10px] text-zinc-400">Keep static IPs and interfaces. Skip DHCP override fallback.</span>
+                  </div>
+                </label>
+
+                <label className={`flex items-start gap-2.5 ${keepNetworkConfigs ? 'cursor-pointer opacity-100' : 'cursor-not-allowed opacity-50'}`}>
+                  <input
+                    type="checkbox"
+                    checked={wipeMacBindings}
+                    disabled={!keepNetworkConfigs}
+                    onChange={(e) => setWipeMacBindings(e.target.checked)}
+                    className="mt-0.5 rounded bg-zinc-900 border-zinc-800 text-indigo-600 focus:ring-0"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-zinc-200">Reset MAC address bindings (for new motherboards)</span>
+                    <span className="text-[10px] text-zinc-400">Wipes persistent udev rules so interface names bind dynamically.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
 
             {error && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{error}</div>}
 

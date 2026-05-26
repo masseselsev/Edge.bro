@@ -1,5 +1,7 @@
 # Borg Backup & Bare-Metal Restore Orchestrator
 
+🇬🇧 **[English README](README.md)** | 🇬🇧 **[English Usage Guide](README_USAGE.md)** | 🇷🇺 **[Русский README](README_ru.md)** | 🇷🇺 **[Русская инструкция (Usage Guide)](README_USAGE_ru.md)**
+
 A production-grade, centralized, dockerized orchestration panel designed for managing, backup scheduling, and bare-metal flashing restoration of 200+ Debian-based edge nodes.
 
 ---
@@ -59,13 +61,20 @@ The system is fully containerized and uses a decoupled architecture to manage co
 - Captures and saves the unique EFI FAT32 filesystem UUID.
 - Rewrites the target's `/etc/fstab` to reference partition labels, shielding the operating system against hardware device drift (e.g., SATA `/dev/sda` transitioning to NVMe `/dev/nvme0n1` on new hardware).
 
-### 3. Backup Scheduling & Exclusive Daily Prune
+### 3. Backup Scheduling & Global Deduplication
 - Backups are initiated remotely via `ssh` command and stream data to the central Borg SSH Server.
+- **Cross-Device Deduplication**: Because all edge nodes back up into a single, centralized Borg repository (`/data/borg/fleet`), Borg's chunk-level deduplication spans across all devices globally. Identical files, OS binaries, and application assets present on multiple Debian nodes are only stored **once** on the server.
+  - *Example Savings (Assuming a 6 GB base OS footprint)*:
+    - **1 Node**: ~6 GB
+    - **3 Nodes**: ~6.2 GB (Only unique logs/configs added)
+    - **10 Nodes**: ~6.5 GB (Instead of 60 GB)
+    - **100 Nodes**: ~9 GB (Instead of 600+ GB)
+  - This results in up to a **98%+ storage footprint reduction** for fleets running identical base images.
 - To prevent database lock-ups on the shared Borg repositories, pruning is decoupled from individual backups. A global Celery Beat schedule triggers a local repository `borg prune` daily at 3:00 AM using the global prune rules (daily, weekly, monthly limits).
 
 ### 4. Bare-Metal Flashing Restore
 - **Device Protection Safeguard**: Scans target block devices on the orchestrator host while shielding the host's own root system drive against accidental overwrite.
-- **Drive Type Mismatch Warning**: Warns if the backup target was captured from a `SATA` drive and the flasher target is an `NVMe` device (or vice versa), requiring manual verification overrides.
+- **Drive Type Mismatch Warning & Cross-Drive Migration**: Because the system strictly uses filesystem labels (`LABEL=edgeroot`) in `/etc/fstab` instead of hardcoded `/dev/sdX` or UUID paths, **you can seamlessly migrate a backup taken from an NVMe drive onto a SATA drive** (or vice versa). The web UI will show a by-design warning when it detects this hardware change to ensure you are aware, but allows you to override and proceed with the cross-drive restoration.
 - **EFI UUID Preservation**: Partitions the target device as GPT, formats the ESP boot partition and explicitly overrides its UUID using the historical captured value (`mkfs.vfat -i <EFI_UUID_HEX>`).
 - **PCIe Network Drift Mitigation**: Wipes old persistent network device bindings and injects generic wildcard interface configurations (`eth*` and `en*`) to guarantee network reachability upon post-flashing boots.
 - **Chroot Bootloader Config**: Mounts the system, binds virtualization paths (`/dev`, `/proc`, `/sys`), reinstalls GRUB on the target device, updates initramfs, and writes a fallback EFI loader path (`EFI/BOOT/BOOTX64.EFI`).
