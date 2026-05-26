@@ -83,35 +83,11 @@ The system is fully containerized and uses a decoupled architecture to manage co
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Installation & Usage
 
-### Prerequisites
-- Docker & Docker Compose installed.
-- Target edge nodes accessible via network.
-
-### Step 1: Environment Configuration
-Create a `.env` file in the project root:
-```env
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=securepassword
-POSTGRES_DB=borg_orchestrator
-REDIS_URL=redis://redis:6379/0
-BORG_PASSPHRASE=verysecureborgpassphrase
-DATABASE_URL=postgresql://postgres:securepassword@db:5432/borg_orchestrator
-```
-
-### Step 2: Spin Up the Stack & Run Migrations
-Run the following commands to compile assets, start all services, and initialize the database schema:
-```bash
-docker compose up -d --build
-# Wait a few seconds for the database to start, then run migrations:
-docker compose exec backend alembic upgrade head
-```
-
-### Step 3: Access Panels
-- **Frontend Dashboard**: [http://localhost:7777](http://localhost:7777)
-- **FastAPI REST API Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Borg Repository SSH Server**: `ssh://borg@localhost:12345/data/borg`
+For full deployment instructions, including server preparation, environment configuration, database migrations, and a comprehensive usage guide, please refer to the:
+- 🇬🇧 **[English Installation & Usage Guide](README_USAGE.md)**
+- 🇷🇺 **[Русская инструкция по установке и использованию](README_USAGE_ru.md)**
 
 ---
 

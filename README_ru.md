@@ -83,35 +83,11 @@
 
 ---
 
-## 🚀 Быстрый старт
+## 🚀 Установка и использование
 
-### Требования
-- Установленные Docker и Docker Compose.
-- Сетевая доступность целевых комплексов (edge nodes).
-
-### Шаг 1: Конфигурация среды
-Создайте файл `.env` в корне проекта:
-```env
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=securepassword
-POSTGRES_DB=borg_orchestrator
-REDIS_URL=redis://redis:6379/0
-BORG_PASSPHRASE=verysecureborgpassphrase
-DATABASE_URL=postgresql://postgres:securepassword@db:5432/borg_orchestrator
-```
-
-### Шаг 2: Запуск стека и миграции
-Выполните команды для сборки, запуска сервисов и инициализации БД:
-```bash
-docker compose up -d --build
-# Подождите несколько секунд до запуска БД, затем выполните миграции:
-docker compose exec backend alembic upgrade head
-```
-
-### Шаг 3: Доступ к сервисам
-- **Веб-интерфейс (Frontend)**: [http://localhost:7777](http://localhost:7777)
-- **Документация API (FastAPI)**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **SSH Сервер Borg**: `ssh://borg@localhost:12345/data/borg`
+Подробное описание процесса развертывания, подготовки сервера, настройки конфигурации, запуска БД и пошаговое руководство по использованию системы доступны в инструкциях:
+- 🇷🇺 **[Русская инструкция по установке и использованию](README_USAGE_ru.md)**
+- 🇬🇧 **[English Installation & Usage Guide](README_USAGE.md)**
 
 ---
 
