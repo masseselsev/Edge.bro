@@ -117,7 +117,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
                 cmd.append(part_dev)
                 subprocess.check_call(cmd)
             elif fstype == "ext4":
-                cmd = ["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-F", "-L", label]
+                cmd = ["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-O", "^orphan_file", "-F", "-L", label]
                 if uuid:
                     cmd += ["-U", uuid]
                 cmd.append(part_dev)
@@ -129,7 +129,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
                 cmd.append(part_dev)
                 subprocess.check_call(cmd)
             else:
-                cmd = ["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-F", "-L", label]
+                cmd = ["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-O", "^orphan_file", "-F", "-L", label]
                 if uuid:
                     cmd += ["-U", uuid]
                 cmd.append(part_dev)
