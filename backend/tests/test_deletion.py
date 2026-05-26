@@ -1,6 +1,7 @@
 import os
 import shutil
 import pytest
+from unittest.mock import patch
 from sqlalchemy.orm import Session
 from database import SessionLocal
 import models
@@ -10,14 +11,15 @@ def test_node_deletion_cleanup():
     """
     Test that deleting a node cleans up:
     1. PostgreSQL database records (Node and BackupHistory).
-    2. Borg repository directory on disk (/data/borg/{hostname}).
-    3. Restricted public key from /root/.ssh/authorized_keys.
+    2. Node's specific backup archives inside the shared repository (/data/borg/fleet).
+    3. Restricted public key from /root/.ssh/authorized_keys using its public key string.
     """
     db = SessionLocal()
     
     # 1. Create a dummy test node
     test_hostname = "test-delete-node-01"
     test_ip = "192.168.99.99"
+    test_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPtestkey key2"
     
     # Ensure no pre-existing node with same details
     existing = db.query(models.Node).filter(models.Node.hostname == test_hostname).first()
@@ -31,6 +33,7 @@ def test_node_deletion_cleanup():
         hostname=test_hostname,
         ip_address=test_ip,
         ssh_port=22,
+        ssh_pub_key=test_key,
         status="READY"
     )
     db.add(node)
@@ -51,8 +54,8 @@ def test_node_deletion_cleanup():
     db.commit()
     
     # 2. Setup mock filesystem resources
-    # Borg repository directory
-    repo_dir = f"/data/borg/{test_hostname}"
+    # Borg repository directory (shared fleet)
+    repo_dir = "/data/borg/fleet"
     os.makedirs(repo_dir, exist_ok=True)
     with open(os.path.join(repo_dir, "config"), "w") as f:
         f.write("mock borg config")
@@ -64,7 +67,7 @@ def test_node_deletion_cleanup():
     
     # Prepopulate authorized_keys with other keys and our test key
     mock_key_line_1 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPsomeotherkey key1\n"
-    mock_restricted_key_line = f'command="borg serve --restrict-to-path /data/borg/{test_hostname}",no-port-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPtestkey key2\n'
+    mock_restricted_key_line = f'command="borg serve --restrict-to-path /data/borg/fleet",no-port-forwarding,no-X11-forwarding,no-pty {test_key}\n'
     mock_key_line_3 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPanotherkey key3\n"
     
     with open(authorized_keys_path, "w") as f:
@@ -73,15 +76,32 @@ def test_node_deletion_cleanup():
         f.write(mock_key_line_3)
         
     # Verify setup is correct
-    assert os.path.exists(os.path.join(repo_dir, "config"))
     with open(authorized_keys_path, "r") as f:
         lines = f.readlines()
     assert len(lines) == 3
-    assert any(test_hostname in line for line in lines)
+    assert any(test_key in line for line in lines)
     
     # 3. Call the delete_node FastAPI logic (or view function)
-    # We call main.delete_node directly with db session dependency
-    main.delete_node(node_id=node_id, db=db)
+    # We call main.delete_node directly with db session dependency and patch subprocess.run
+    with patch('subprocess.run') as mock_run:
+        main.delete_node(node_id=node_id, db=db)
+        
+        # Verify subprocess.run was called twice (once for delete, once for chown)
+        assert mock_run.call_count == 2
+        
+        # Check first call (borg delete)
+        first_call_args = mock_run.call_args_list[0][0][0]
+        assert "borg" in first_call_args
+        assert "delete" in first_call_args
+        assert "--glob-archives" in first_call_args
+        assert f"{test_hostname}-*" in first_call_args
+        assert repo_dir in first_call_args
+        
+        # Check second call (chown permissions correction)
+        second_call_args = mock_run.call_args_list[1][0][0]
+        assert "chown" in second_call_args
+        assert "1000:1000" in second_call_args
+        assert repo_dir in second_call_args
     
     # 4. Verify cleanup assertions
     # Verify DB records are deleted
@@ -91,19 +111,17 @@ def test_node_deletion_cleanup():
     deleted_history = db.query(models.BackupHistory).filter(models.BackupHistory.node_id == node_id).first()
     assert deleted_history is None
     
-    # Verify Borg repository directory is gone
-    assert not os.path.exists(repo_dir)
-    
     # Verify SSH authorized_keys entry is removed
     assert os.path.exists(authorized_keys_path)
     with open(authorized_keys_path, "r") as f:
         remaining_lines = f.readlines()
         
     assert len(remaining_lines) == 2
-    assert not any(test_hostname in line for line in remaining_lines)
+    assert not any(test_key in line for line in remaining_lines)
     assert remaining_lines[0] == mock_key_line_1
     assert remaining_lines[1] == mock_key_line_3
     
-    # Cleanup keys file
+    # Cleanup keys file and mock repo config
     os.remove(authorized_keys_path)
+    os.remove(os.path.join(repo_dir, "config"))
     db.close()

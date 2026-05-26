@@ -440,38 +440,41 @@ def purge_node_backups(node_id: int, db: Session = Depends(get_db)):
 def delete_node(node_id: int, db: Session = Depends(get_db)):
     """
     Deletes a node and its related backup history records from the database,
-    cleans up the physical Borg repository directory, and removes its restricted
+    cleans up its specific backup archives from the shared repository, and removes its restricted
     SSH public key entry from /root/.ssh/authorized_keys.
     """
     node = db.query(models.Node).filter(models.Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
     
-    # 1. Clean up physical Borg repository directory safely (Path Security)
-    import shutil
-    safe_hostname = os.path.basename(node.hostname)
-    repo_path = f"/data/borg/{safe_hostname}"
+    # 1. Clean up node archives in the shared Borg repository
+    repo_path = "/data/borg/fleet"
     if os.path.exists(repo_path):
         try:
-            shutil.rmtree(repo_path, ignore_errors=True)
+            env = os.environ.copy()
+            env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+            cmd = ["borg", "delete", "--glob-archives", f"{node.hostname}-*", repo_path]
+            subprocess.run(cmd, env=env, capture_output=True, text=True)
+            
+            # Ensure permissions are kept aligned
+            from tasks import fix_repo_permissions
+            fix_repo_permissions(repo_path)
         except Exception as e:
-            # Log/print warning but do not block node deletion
-            print(f"WARNING: Failed to delete Borg repository directory {repo_path}: {str(e)}")
+            print(f"WARNING: Failed to delete archives for {node.hostname} from shared repo: {str(e)}")
 
     # 2. Clean up SSH authorized_keys entry safely
     authorized_keys_path = "/root/.ssh/authorized_keys"
-    if os.path.exists(authorized_keys_path):
+    if os.path.exists(authorized_keys_path) and node.ssh_pub_key:
         try:
             with open(authorized_keys_path, "r") as f:
                 lines = f.readlines()
             
-            filter_str = f"restrict-to-path /data/borg/{safe_hostname}"
-            new_lines = [line for line in lines if filter_str not in line]
+            new_lines = [line for line in lines if node.ssh_pub_key not in line]
             
             with open(authorized_keys_path, "w") as f:
                 f.writelines(new_lines)
         except Exception as e:
-            print(f"WARNING: Failed to clean up SSH authorized_keys for {safe_hostname}: {str(e)}")
+            print(f"WARNING: Failed to clean up SSH authorized_keys for {node.hostname}: {str(e)}")
 
     # 3. Delete related backup histories first to prevent foreign key errors
     db.query(models.BackupHistory).filter(models.BackupHistory.node_id == node_id).delete()

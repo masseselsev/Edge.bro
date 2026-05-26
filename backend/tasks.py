@@ -151,7 +151,7 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
             authorized_keys_path = "/root/.ssh/authorized_keys"
             os.makedirs(os.path.dirname(authorized_keys_path), exist_ok=True)
             command_restriction = (
-                f'command="borg serve --restrict-to-path /data/borg/{node.hostname}",'
+                f'command="borg serve --restrict-to-path /data/borg/fleet",'
                 f'no-port-forwarding,no-X11-forwarding,no-pty '
             )
             entry = f"{command_restriction}{ssh_pub_key}\n"
@@ -262,7 +262,7 @@ def run_backup_task(self, node_id: int) -> Dict[str, Any]:
             orchestrator_ip = "127.0.0.1"
 
     archive_name = f"{node.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-    borg_repo_url = f"ssh://borg@{orchestrator_ip}:{settings.borg_ssh_port}/data/borg/{node.hostname}"
+    borg_repo_url = f"ssh://borg@{orchestrator_ip}:{settings.borg_ssh_port}/data/borg/fleet"
 
     # Ensure the Borg repository is initialized on central server
     init_cmd = [
@@ -368,33 +368,33 @@ def global_daily_prune() -> Dict[str, Any]:
     nodes = db.query(Node).all()
     results = {}
 
-    for node in nodes:
-        repo_path = f"/data/borg/{node.hostname}"
-        if not os.path.exists(repo_path):
-            continue
+    repo_path = "/data/borg/fleet"
+    if os.path.exists(repo_path):
+        for node in nodes:
+            cmd = [
+                "borg", "prune",
+                "--keep-daily", str(settings.keep_daily),
+                "--keep-weekly", str(settings.keep_weekly),
+                "--keep-monthly", str(settings.keep_monthly),
+                "--glob-archives", f"{node.hostname}-*",
+                repo_path
+            ]
+            env = os.environ.copy()
+            env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
-        cmd = [
-            "borg", "prune",
-            "--keep-daily", str(settings.keep_daily),
-            "--keep-weekly", str(settings.keep_weekly),
-            "--keep-monthly", str(settings.keep_monthly),
-            repo_path
-        ]
-        env = os.environ.copy()
-        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
-
-        try:
-            res = subprocess.run(cmd, env=env, capture_output=True, text=True)
-            fix_repo_permissions(repo_path)
-            if res.returncode == 0:
-                results[node.hostname] = "PRUNED"
-                logger.info(f"Successfully pruned repository for {node.hostname}")
-            else:
-                results[node.hostname] = f"FAILED: {res.stderr}"
-                logger.error(f"Failed to prune repository for {node.hostname}: {res.stderr}")
-        except Exception as e:
-            results[node.hostname] = f"EXCEPTION: {str(e)}"
-            logger.error(f"Exception pruning {node.hostname}: {str(e)}")
+            try:
+                res = subprocess.run(cmd, env=env, capture_output=True, text=True)
+                if res.returncode == 0:
+                    results[node.hostname] = "PRUNED"
+                    logger.info(f"Successfully pruned repository for {node.hostname}")
+                else:
+                    results[node.hostname] = f"FAILED: {res.stderr}"
+                    logger.error(f"Failed to prune repository for {node.hostname}: {res.stderr}")
+            except Exception as e:
+                results[node.hostname] = f"EXCEPTION: {str(e)}"
+                logger.error(f"Exception pruning {node.hostname}: {str(e)}")
+        
+        fix_repo_permissions(repo_path)
 
     db.close()
     return results
@@ -441,13 +441,25 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
     db.add(task_log)
     db.commit()
 
-    repo_path = f"/data/borg/{node.hostname}"
+    repo_path = "/data/borg/fleet"
     log_to_task(task_id, f"Starting archive purge for node {node.hostname}...")
 
     env = os.environ.copy()
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
     try:
+        # Check if repo exists
+        if not os.path.exists(repo_path):
+            log_to_task(task_id, "No archives to purge (repository does not exist).", status="SUCCESS")
+            # Clean up database history records for this node
+            purged_rows = db.query(BackupHistory).filter(
+                BackupHistory.node_id == node_id
+            ).delete()
+            node.last_backup = None
+            db.commit()
+            db.close()
+            return {"status": "SUCCESS", "deleted": 0}
+
         # List all archives in the repository
         list_cmd = ["borg", "list", "--json", repo_path]
         list_res = subprocess.run(list_cmd, env=env, capture_output=True, text=True)
@@ -457,11 +469,18 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
             db.close()
             return {"status": "FAILED", "error": list_res.stderr}
 
-        archives = json.loads(list_res.stdout).get("archives", [])
-        log_to_task(task_id, f"Found {len(archives)} archive(s) to delete.")
+        all_archives = json.loads(list_res.stdout).get("archives", [])
+        archives = [a for a in all_archives if a["name"].startswith(f"{node.hostname}-")]
+        log_to_task(task_id, f"Found {len(archives)} archive(s) belonging to {node.hostname} to delete.")
 
         if not archives:
             log_to_task(task_id, "No archives to purge.", status="SUCCESS")
+            # Clean up database history records for this node
+            purged_rows = db.query(BackupHistory).filter(
+                BackupHistory.node_id == node_id
+            ).delete()
+            node.last_backup = None
+            db.commit()
             db.close()
             return {"status": "SUCCESS", "deleted": 0}
 

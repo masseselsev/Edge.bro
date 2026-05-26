@@ -158,7 +158,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             subprocess.check_call(["mount", part_dev, target_path])
 
         # 6. Extract Borg Backup
-        repo_path = f"/data/borg/{node.hostname}"
+        repo_path = "/data/borg/fleet"
         log_to_task(task_id, f"Extracting archive {archive_name} into {target_mnt}...")
 
         env = os.environ.copy()
