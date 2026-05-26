@@ -96,16 +96,16 @@ Navigate to the **Fleet** tab in the web interface to add edge nodes.
 4. System directories (such as `/dev`, `/proc`, `/sys`) are automatically excluded.
 5. You can track progress and final sizes in the **History** tab.
 
-### 💡 How Global Deduplication Works (Space Savings)
-Because all edge nodes are backed up into a **single, shared central repository** (`/data/borg/fleet`), Borg's built-in deduplication engine works across all devices simultaneously. 
-This means identical system files (Linux kernel, Debian packages, libraries, application Docker images) present across dozens of different devices are physically stored on the server's disk **only once**.
+### 💡 How Global Deduplication & Compression Work (Space Savings)
+Because all edge nodes are backed up into a **single, shared central repository** (`/data/borg/fleet`), Borg's built-in deduplication engine and compression work across all devices simultaneously. 
+This means identical system files (Linux kernel, Debian packages, libraries, application Docker images) present across dozens of different devices are physically stored on the server's disk **only once**, and all stored chunks are compressed.
 
 **Example Savings (assuming a base OS footprint of ~6 GB per node):**
-* **1st node**: ~6 GB (Base backup)
-* **Each additional similar node**: saves about 20% - 30% of its space (adding ~4.2 - 4.8 GB) due to cross-node deduplication of identical OS libraries and packages.
-* **Incremental backups**: of running systems tend towards only ~100 - 200 MB of unique incremental data per run (storing only unique logs, cache differences, and database states).
+* **1st node (Compression & Internal Deduplication)**: saves **55% - 65%** right away due to Borg's built-in compression (e.g., `lz4`), taking only ~2.2 - 2.7 GB on the central disk.
+* **Each additional similar node (Cross-node Deduplication)**: saves up to **97%** for identical/cloned nodes (adding only **~100 - 200 MB** for the same device under a different name) and saves about **20% - 30%** of space for nodes with minor system configuration and package differences.
+* **Incremental backups**: of running systems tend towards only **~100 - 200 MB** of unique incremental data per run (storing only unique logs, cache differences, and database states).
 
-As a result, an estate of similar Debian devices can achieve storage requirement reductions of **20% - 30%**, with incremental runs remaining extremely lightweight (~100 - 200 MB).
+As a result, an estate of similar Debian devices achieves massive storage requirement reductions, keeping both initial and incremental runs extremely lightweight.
 
 ---
 
