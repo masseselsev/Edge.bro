@@ -42,7 +42,10 @@ export default function App() {
               <Server className="text-white" size={20} />
             </div>
             <div>
-              <h1 className="text-base font-bold text-white tracking-tight leading-none">Borg Restore Orchestrator</h1>
+              <h1 className="text-base font-bold text-white tracking-tight leading-none flex items-center gap-2">
+                Borg Restore Orchestrator
+                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded font-mono font-bold">v0.1alpha</span>
+              </h1>
               <p className="text-[10px] text-zinc-500 font-semibold mt-0.5 uppercase tracking-wider">Fleet Edge Bare-Metal Flasher</p>
             </div>
           </div>
