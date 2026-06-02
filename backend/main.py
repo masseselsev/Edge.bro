@@ -105,8 +105,12 @@ def startup_db_init():
         db.commit()
     else:
         # Upgrade old default exclusions to the new default if unchanged by user
-        if settings.global_exclusions == '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*':
-            settings.global_exclusions = '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*'
+        old_defaults = [
+            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*',
+            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*'
+        ]
+        if settings.global_exclusions in old_defaults:
+            settings.global_exclusions = '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*'
             db.commit()
     db.close()
 
