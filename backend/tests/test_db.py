@@ -105,3 +105,59 @@ def test_ensure_orchestrator_ssh_key():
     assert os.path.exists("/root/.ssh/id_ed25519.pub")
 
 
+def test_upgrade_settings(db_session):
+    """
+    Verify that old default settings values are upgraded to the new default,
+    while custom settings are preserved.
+    """
+    from main import upgrade_settings
+    
+    new_default = (
+        '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,'
+        '/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*,/var/log/journal/*,'
+        '/var/log/**/*.gz,/var/log/**/*.1'
+    )
+    
+    # Test case 1: Upgrade from first default
+    db_session.query(models.Settings).delete()
+    db_session.commit()
+    s1 = models.Settings(global_exclusions='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*')
+    db_session.add(s1)
+    db_session.commit()
+    upgrade_settings(db_session)
+    db_session.refresh(s1)
+    assert s1.global_exclusions == new_default
+
+    # Test case 2: Upgrade from second default
+    db_session.query(models.Settings).delete()
+    db_session.commit()
+    s2 = models.Settings(global_exclusions='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*')
+    db_session.add(s2)
+    db_session.commit()
+    upgrade_settings(db_session)
+    db_session.refresh(s2)
+    assert s2.global_exclusions == new_default
+
+    # Test case 3: Upgrade from third default (pre-journal/gz/1 addition)
+    db_session.query(models.Settings).delete()
+    db_session.commit()
+    s3 = models.Settings(global_exclusions='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*')
+    db_session.add(s3)
+    db_session.commit()
+    upgrade_settings(db_session)
+    db_session.refresh(s3)
+    assert s3.global_exclusions == new_default
+
+    # Test case 4: Custom user setting is NOT upgraded
+    db_session.query(models.Settings).delete()
+    db_session.commit()
+    custom_val = '/dev/*,/custom/*'
+    s4 = models.Settings(global_exclusions=custom_val)
+    db_session.add(s4)
+    db_session.commit()
+    upgrade_settings(db_session)
+    db_session.refresh(s4)
+    assert s4.global_exclusions == custom_val
+
+
+

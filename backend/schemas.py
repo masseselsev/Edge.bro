@@ -8,7 +8,7 @@ class SettingsBase(BaseModel):
     keep_daily: int = Field(default=7, ge=0)
     keep_weekly: int = Field(default=4, ge=0)
     keep_monthly: int = Field(default=6, ge=0)
-    global_exclusions: str = Field(default='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*')
+    global_exclusions: str = Field(default='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*,/var/log/journal/*,/var/log/**/*.gz,/var/log/**/*.1')
     orchestrator_ip: str = Field(default='')
 
 class SettingsResponse(SettingsBase):

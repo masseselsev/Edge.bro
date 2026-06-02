@@ -98,6 +98,14 @@ def startup_db_init():
         print(f"Error ensuring repository permissions on startup: {str(e)}")
 
     db = next(get_db())
+    upgrade_settings(db)
+    db.close()
+
+
+def upgrade_settings(db: Session):
+    """
+    Upgrade old default exclusions to the new default if unchanged by user.
+    """
     settings = db.query(models.Settings).first()
     if not settings:
         settings = models.Settings()
@@ -107,12 +115,17 @@ def startup_db_init():
         # Upgrade old default exclusions to the new default if unchanged by user
         old_defaults = [
             '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*',
-            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*'
+            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*',
+            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*'
         ]
+        new_default = (
+            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,'
+            '/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*,/var/log/journal/*,'
+            '/var/log/**/*.gz,/var/log/**/*.1'
+        )
         if settings.global_exclusions in old_defaults:
-            settings.global_exclusions = '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*'
+            settings.global_exclusions = new_default
             db.commit()
-    db.close()
 
 
 @app.get("/api/settings", response_model=schemas.SettingsResponse)

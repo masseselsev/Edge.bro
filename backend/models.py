@@ -15,7 +15,7 @@ class Settings(Base):
     keep_daily = Column(Integer, default=7, nullable=False)
     keep_weekly = Column(Integer, default=4, nullable=False)
     keep_monthly = Column(Integer, default=6, nullable=False)
-    global_exclusions = Column(Text, default='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*', nullable=False)
+    global_exclusions = Column(Text, default='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*,/var/log/journal/*,/var/log/**/*.gz,/var/log/**/*.1', nullable=False)
     orchestrator_ip = Column(String, default='', nullable=False)
 
 
