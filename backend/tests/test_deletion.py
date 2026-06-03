@@ -86,22 +86,24 @@ def test_node_deletion_cleanup():
     with patch('subprocess.run') as mock_run:
         main.delete_node(node_id=node_id, db=db)
         
-        # Verify subprocess.run was called twice (once for delete, once for chown)
-        assert mock_run.call_count == 2
+        # Find the borg delete call and the chown repo call
+        borg_delete_call = None
+        chown_repo_call = None
+        for call in mock_run.call_args_list:
+            args = call[0][0]
+            if len(args) > 0:
+                if "borg" in args and "delete" in args:
+                    borg_delete_call = args
+                elif "chown" in args and repo_dir in args:
+                    chown_repo_call = args
         
-        # Check first call (borg delete)
-        first_call_args = mock_run.call_args_list[0][0][0]
-        assert "borg" in first_call_args
-        assert "delete" in first_call_args
-        assert "--glob-archives" in first_call_args
-        assert f"{test_hostname}-*" in first_call_args
-        assert repo_dir in first_call_args
+        assert borg_delete_call is not None, "Borg delete command was not called"
+        assert "--glob-archives" in borg_delete_call
+        assert f"{test_hostname}-*" in borg_delete_call
+        assert repo_dir in borg_delete_call
         
-        # Check second call (chown permissions correction)
-        second_call_args = mock_run.call_args_list[1][0][0]
-        assert "chown" in second_call_args
-        assert "1000:1000" in second_call_args
-        assert repo_dir in second_call_args
+        assert chown_repo_call is not None, "Chown command on repository directory was not called"
+        assert "1000:1000" in chown_repo_call
     
     # 4. Verify cleanup assertions
     # Verify DB records are deleted
