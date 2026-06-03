@@ -74,6 +74,28 @@ export default function TaskLogsModal({ taskId, title, onClose }: TaskLogsModalP
     }
   };
 
+  // Parse percentage and description
+  const getProgressInfo = () => {
+    const progressLines = logs.split('\n').filter(line => line.includes('[PROGRESS]'));
+    if (progressLines.length === 0) return null;
+    const lastLine = progressLines[progressLines.length - 1];
+    const match = lastLine.match(/\[PROGRESS\]\s*(\d+):(.*)/);
+    if (match) {
+      return {
+        percent: Math.min(100, Math.max(0, parseInt(match[1], 10))),
+        description: match[2].trim()
+      };
+    }
+    return null;
+  };
+
+  // Filter out [PROGRESS] lines for a clean terminal look
+  const cleanLogs = logs.split('\n')
+    .filter(line => !line.includes('[PROGRESS]'))
+    .join('\n');
+
+  const progressInfo = getProgressInfo();
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div className="w-full max-w-3xl h-[80vh] flex flex-col bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden">
@@ -92,10 +114,26 @@ export default function TaskLogsModal({ taskId, title, onClose }: TaskLogsModalP
           </button>
         </div>
 
+        {/* Progress Bar */}
+        {progressInfo && (status === 'RUNNING' || status === 'SUCCESS') && (
+          <div className="bg-zinc-900 px-6 py-3 border-b border-zinc-800/80 space-y-1.5">
+            <div className="flex justify-between items-center text-xs font-semibold">
+              <span className="text-zinc-300">{progressInfo.description}</span>
+              <span className="text-sky-400 font-bold">{progressInfo.percent}%</span>
+            </div>
+            <div className="w-full h-2 bg-zinc-850 rounded-full overflow-hidden border border-zinc-800">
+              <div 
+                className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${progressInfo.percent}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Console logs */}
         <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-zinc-300 bg-black/95 select-text space-y-1">
-          {logs ? (
-            logs.split('\n').map((line, idx) => (
+          {cleanLogs ? (
+            cleanLogs.split('\n').map((line, idx) => (
               <div key={idx} className="whitespace-pre-wrap leading-relaxed">
                 {line}
               </div>
