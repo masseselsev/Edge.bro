@@ -332,8 +332,24 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         subprocess.check_call(["mount", "--bind", "/sys", f"{target_mnt}/sys"])
 
         log_to_task(task_id, f"Reinstalling GRUB bootloader on {target_dev}...")
-        subprocess.check_call(["chroot", target_mnt, "grub-install", target_dev])
+        # Detect if target has x86_64-efi or i386-pc modules
+        target_grub_dir = os.path.join(target_mnt, "usr/lib/grub")
+        is_efi = os.path.exists(os.path.join(target_grub_dir, "x86_64-efi"))
+        is_bios = os.path.exists(os.path.join(target_grub_dir, "i386-pc"))
+
+        if is_efi:
+            log_to_task(task_id, "Target system has UEFI bootloader modules. Running EFI grub-install...")
+            grub_cmd = ["chroot", target_mnt, "grub-install", "--target=x86_64-efi", "--efi-directory=/boot/efi", "--no-nvram", "--removable"]
+        elif is_bios:
+            log_to_task(task_id, f"Target system has legacy BIOS bootloader modules. Running BIOS grub-install on {target_dev}...")
+            grub_cmd = ["chroot", target_mnt, "grub-install", "--target=i386-pc", target_dev]
+        else:
+            log_to_task(task_id, "WARNING: Could not auto-detect GRUB target platform directory. Defaulting to standard grub-install...")
+            grub_cmd = ["chroot", target_mnt, "grub-install", target_dev]
+
+        subprocess.check_call(grub_cmd)
         subprocess.check_call(["chroot", target_mnt, "update-grub"])
+
 
         # Inject EFI Fallback path to make sure UEFI sees it
         efi_base = f"{target_mnt}/boot/efi/EFI"
