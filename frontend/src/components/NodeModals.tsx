@@ -36,8 +36,8 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
         <h3 className="text-lg font-bold text-white">Add Node (Auto-Provision)</h3>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="flex items-center gap-2 mb-2 bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
@@ -154,8 +154,8 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
         <div>
           <h3 className="text-lg font-bold text-white">Manual Provision Node</h3>
           <p className="text-xs text-zinc-400">Trigger bootstrap for node "{node.hostname}" ({node.ip_address})</p>
@@ -225,8 +225,8 @@ export function BackupCommentModal({ node, onClose, onSubmit }: BackupCommentMod
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
         <div>
           <h3 className="text-lg font-bold text-white">Trigger Backup</h3>
           <p className="text-xs text-zinc-400">Add an optional description/comment for this backup snapshot of "{node.hostname}".</p>

@@ -206,7 +206,7 @@ export default function App() {
       {/* IP Prompt Modal when there are no nodes */}
       {showIpPromptModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4">
+          <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4 animate-modal-in">
             <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
               <div className="p-2 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg">
                 <Gear size={20} />

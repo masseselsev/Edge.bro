@@ -73,7 +73,7 @@ export function SearchableSelect({ options, value, onChange, placeholder, disabl
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl max-h-60 overflow-y-auto animate-dropdown-in">
           <div className="p-2 border-b border-zinc-900 sticky top-0 bg-zinc-950 z-10">
             <input
               ref={inputRef}
