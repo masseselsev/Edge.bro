@@ -10,8 +10,9 @@ from database import get_db
 import models
 import schemas
 from tasks import run_bootstrap_task, run_prepare_task, run_backup_task, flash_restore_device, ensure_orchestrator_ssh_key, purge_node_archives
+from version import VERSION
 
-app = FastAPI(title="Borg Backup & Bare-Metal Restore Orchestrator API")
+app = FastAPI(title="Borg Backup & Bare-Metal Restore Orchestrator API", version=VERSION)
 
 # Configure CORS
 app.add_middleware(
@@ -127,6 +128,13 @@ def upgrade_settings(db: Session):
         if settings.global_exclusions in old_defaults:
             settings.global_exclusions = new_default
             db.commit()
+
+@app.get("/api/version")
+def get_version():
+    """
+    Returns the current application version.
+    """
+    return {"version": VERSION}
 
 
 @app.get("/api/settings", response_model=schemas.SettingsResponse)

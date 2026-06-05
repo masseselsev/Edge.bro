@@ -17,8 +17,19 @@ export default function App() {
   const [orchestratorIp, setOrchestratorIp] = useState('');
   const [settings, setSettings] = useState<any>(null);
   const [savingIp, setSavingIp] = useState(false);
+  const [appVersion, setAppVersion] = useState('v0.2alpha');
 
   useEffect(() => {
+    // Fetch current app version from API
+    fetch('/api/version')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.version) {
+          setAppVersion(data.version);
+        }
+      })
+      .catch(err => console.error('Error fetching version:', err));
+
     // Check if nodes list is empty on mount
     fetch('/api/nodes')
       .then(res => res.json())
@@ -92,7 +103,7 @@ export default function App() {
             <div>
               <h1 className="text-base font-bold text-white tracking-tight leading-none flex items-center gap-2">
                 Borg Restore Orchestrator
-                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded font-mono font-bold">v0.1alpha</span>
+                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded font-mono font-bold">{appVersion}</span>
               </h1>
               <p className="text-[10px] text-zinc-500 font-semibold mt-0.5 uppercase tracking-wider">Fleet Edge Bare-Metal Flasher</p>
             </div>

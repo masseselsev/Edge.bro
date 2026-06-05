@@ -56,7 +56,7 @@
             echo "PART_EFI:$part_efi"
             echo "PART_LOG:$part_log"
             echo "PART_STOR:$part_stor"
-            echo "PARTITION_LAYOUT_JSON:$(lsblk -J -b -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT,LABEL,UUID 2>/dev/null | tr -d '\n')"
+            echo "PARTITION_LAYOUT_JSON:$(lsblk -J -b -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT,LABEL,UUID,PARTUUID 2>/dev/null | tr -d '\n')"
           register: sys_info
           changed_when: false
 

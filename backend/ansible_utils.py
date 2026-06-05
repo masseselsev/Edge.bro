@@ -186,6 +186,7 @@ def run_ansible_playbook(
                                 "fstype": p.get("fstype", "ext4"),
                                 "label": p.get("label"),
                                 "uuid": p.get("uuid"),
+                                "partuuid": p.get("partuuid"),
                                 "size_bytes": int(p.get("size", 0))
                             })
                 

@@ -6,18 +6,8 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import TaskLog, Node
+from restore_utils import get_archive_total_files, recreate_postgres_log_dirs
 
-def get_archive_total_files(db: Session, archive_name: str) -> int:
-    """Reads backup history for the archive and extracts the total file count from its JSON log."""
-    from models import BackupHistory
-    history = db.query(BackupHistory).filter(BackupHistory.archive_name == archive_name).first()
-    if history and history.log_output:
-        try:
-            data = json.loads(history.log_output)
-            return int(data.get("archive", {}).get("stats", {}).get("nfiles", 0))
-        except Exception:
-            pass
-    return 0
 
 def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = False) -> Dict[str, Any]:
     """
@@ -106,6 +96,23 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
 
             if part.get("mount") == "/boot/efi":
                 subprocess.check_call(["parted", "-s", target_dev, "set", str(i+1), "esp", "on"])
+
+        # Set pmbr_boot flag to 'on' for older BIOS compatibility
+        try:
+            log_to_task(task_id, f"Setting pmbr_boot flag to 'on' on device {target_dev}...")
+            subprocess.check_call(["parted", "-s", target_dev, "disk_set", "pmbr_boot", "on"])
+        except Exception as e:
+            log_to_task(task_id, f"WARNING: Failed to set pmbr_boot flag: {str(e)}")
+
+        # Restore original PARTUUIDs if present in the database layout
+        for i, part in enumerate(partitions):
+            partuuid = part.get("partuuid")
+            if partuuid:
+                try:
+                    log_to_task(task_id, f"Restoring PARTUUID {partuuid} for partition {i+1}...")
+                    subprocess.check_call(["sfdisk", "--part-uuid", target_dev, str(i+1), partuuid])
+                except Exception as e:
+                    log_to_task(task_id, f"WARNING: Failed to restore PARTUUID for partition {i+1}: {str(e)}")
 
         # Determine partition device paths and format them
         subprocess.check_call(["udevadm", "settle"])
@@ -230,28 +237,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             raise e
 
         # 6b. Recreate PostgreSQL log directories if they point to custom locations (e.g. /var/log/edge/postgresql)
-        log_to_task(task_id, "Checking for custom PostgreSQL log directories to recreate...")
-        log_to_task(task_id, "[PROGRESS] 92:Checking database configuration...")
-        try:
-            pg_etc_dir = os.path.join(target_mnt, "etc/postgresql")
-            if os.path.exists(pg_etc_dir):
-                for version in os.listdir(pg_etc_dir):
-                    version_path = os.path.join(pg_etc_dir, version)
-                    if os.path.isdir(version_path):
-                        for cluster in os.listdir(version_path):
-                            cluster_path = os.path.join(version_path, cluster)
-                            log_symlink = os.path.join(cluster_path, "log")
-                            if os.path.islink(log_symlink):
-                                target_log_path = os.readlink(log_symlink)
-                                log_dir_in_chroot = os.path.dirname(target_log_path)
-                                log_dir_host = os.path.join(target_mnt, log_dir_in_chroot.lstrip("/"))
-                                if not os.path.exists(log_dir_host):
-                                    log_to_task(task_id, f"Recreating custom PostgreSQL log directory: {log_dir_in_chroot}")
-                                    os.makedirs(log_dir_host, exist_ok=True)
-                                    subprocess.run(["chroot", target_mnt, "chown", "postgres:postgres", log_dir_in_chroot], check=True)
-                                    subprocess.run(["chroot", target_mnt, "chmod", "775", log_dir_in_chroot], check=True)
-        except Exception as e:
-            log_to_task(task_id, f"WARNING: Failed to recreate custom PostgreSQL log directories: {str(e)}")
+        recreate_postgres_log_dirs(task_id, target_mnt)
 
 
         # 7. Network configuration injection (PCIe Drift Prevention)
@@ -264,6 +250,56 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
                     log_to_task(task_id, "Removed old persistent network udev rules to reset MAC bindings.")
                 else:
                     log_to_task(task_id, "No persistent network udev rules found to remove.")
+
+            # Convert auto -> allow-hotplug for non-loopback interfaces in original configs to prevent race condition on boot
+            log_to_task(task_id, "Patching restored /etc/network/interfaces and interfaces.d to use allow-hotplug for physical interfaces...")
+            interfaces_file = f"{target_mnt}/etc/network/interfaces"
+            interfaces_d = f"{target_mnt}/etc/network/interfaces.d"
+            
+            paths_to_patch = []
+            if os.path.exists(interfaces_file):
+                paths_to_patch.append(interfaces_file)
+            if os.path.exists(interfaces_d):
+                try:
+                    for f_name in os.listdir(interfaces_d):
+                        full_path = os.path.join(interfaces_d, f_name)
+                        if os.path.isfile(full_path):
+                            paths_to_patch.append(full_path)
+                except Exception as e:
+                    log_to_task(task_id, f"WARNING: Failed to list interfaces.d directory: {str(e)}")
+            
+            for path in paths_to_patch:
+                try:
+                    with open(path, "r") as f:
+                        lines = f.readlines()
+                    modified = False
+                    new_lines = []
+                    for line in lines:
+                        stripped = line.strip()
+                        if stripped.startswith("auto ") or stripped.startswith("auto\t"):
+                            parts = stripped.split()
+                            ifaces = parts[1:]
+                            non_lo_ifaces = [i for i in ifaces if i != "lo"]
+                            lo_ifaces = [i for i in ifaces if i == "lo"]
+                            
+                            if non_lo_ifaces:
+                                new_parts = []
+                                if lo_ifaces:
+                                    new_parts.append(f"auto {' '.join(lo_ifaces)}")
+                                for iface in non_lo_ifaces:
+                                    new_parts.append(f"allow-hotplug {iface}")
+                                new_lines.append("\n".join(new_parts))
+                                modified = True
+                            else:
+                                new_lines.append(line.rstrip("\r\n"))
+                        else:
+                            new_lines.append(line.rstrip("\r\n"))
+                    if modified:
+                        with open(path, "w") as f:
+                            f.write("\n".join(new_lines) + "\n")
+                        log_to_task(task_id, f"Successfully converted auto to allow-hotplug in {os.path.basename(path)}")
+                except Exception as e:
+                    log_to_task(task_id, f"WARNING: Failed to patch network file {path}: {str(e)}")
 
         else:
             log_to_task(task_id, "Executing network configuration injection (DHCP override fallback)...")

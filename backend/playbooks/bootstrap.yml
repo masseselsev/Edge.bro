@@ -4,6 +4,49 @@
   become: yes
   gather_facts: no
   tasks:
+    - name: Verify OS type and version compatibility
+      raw: |
+        if [ -f /etc/os-release ]; then
+          . /etc/os-release
+          OS_ID=$ID
+          OS_VERSION_ID=$VERSION_ID
+        else
+          if [ -f /etc/debian_version ]; then
+            OS_ID="debian"
+            OS_VERSION_ID=$(cat /etc/debian_version | cut -d. -f1)
+          else
+            echo "OS_UNSUPPORTED: Could not determine operating system type."
+            exit 1
+          fi
+        fi
+        
+        MAJOR_VERSION=$(echo "$OS_VERSION_ID" | cut -d. -f1 | tr -d '"')
+        
+        if ! echo "$MAJOR_VERSION" | grep -q '^[0-9]\+$'; then
+          exit 0
+        fi
+        
+        if [ "$OS_ID" = "debian" ]; then
+          if [ "$MAJOR_VERSION" -lt 10 ]; then
+            echo "OS_UNSUPPORTED: Debian version $OS_VERSION_ID is below Debian 10."
+            exit 2
+          fi
+        elif [ "$OS_ID" = "ubuntu" ]; then
+          if [ "$MAJOR_VERSION" -lt 18 ]; then
+            echo "OS_UNSUPPORTED: Ubuntu version $OS_VERSION_ID is below Ubuntu 18."
+            exit 2
+          fi
+        else
+          if echo "$ID_LIKE" | grep -q "debian"; then
+            echo "OS_UNSUPPORTED: Derivative OS $OS_ID ($OS_VERSION_ID) is not officially supported. Minimum requirement: Debian 10+ or Ubuntu 18+."
+            exit 2
+          else
+            echo "OS_UNSUPPORTED: OS $OS_ID is not supported. Minimum requirement: Debian 10+ or Ubuntu 18+."
+            exit 2
+          fi
+        fi
+      changed_when: false
+
     - name: Ensure python3/pip are installed (with dynamic proxy test and temporary fallback)
       raw: |
         PROXY_RAW=$(apt-config dump | grep -i 'Acquire::http::Proxy ' | head -n1 | sed -E 's/.*http:\/\/([^"/]+).*/\1/')
@@ -148,7 +191,7 @@
         echo "EFI_UUID:$efi_uuid"
         echo "INTERFACE:$net_iface"
         echo "PREPARED:$prepared"
-        echo "PARTITION_LAYOUT_JSON:$(lsblk -J -b -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT,LABEL,UUID 2>/dev/null | tr -d '\n')"
+        echo "PARTITION_LAYOUT_JSON:$(lsblk -J -b -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT,LABEL,UUID,PARTUUID 2>/dev/null | tr -d '\n')"
       register: sys_info
       changed_when: false
 
