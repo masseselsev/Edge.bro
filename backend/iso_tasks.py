@@ -184,8 +184,9 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
         # 6. Repack ISO
         log_to_task(task_id, "[PROGRESS] 85:Repacking Live-USB ISO...")
-        if os.path.exists(CLIENT_ISO_PATH):
-            os.remove(CLIENT_ISO_PATH)
+        output_iso = os.path.join(CACHE_DIR, "technician_client_v1.iso")
+        if os.path.exists(output_iso):
+            os.remove(output_iso)
 
         subprocess.check_call([
             "xorriso",
@@ -201,7 +202,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             "-eltorito-alt-boot",
             "-e", "boot/grub/efi.img",
             "-no-emul-boot", "-isohybrid-gpt-basdat", "-isohybrid-apm-hfsplus",
-            "-o", CLIENT_ISO_PATH,
+            "-o", output_iso,
             iso_unpacked
         ])
 
