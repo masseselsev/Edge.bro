@@ -65,6 +65,12 @@ A compact PC like an Intel NUC is perfectly suited to serve as the central manag
          type: none
          o: bind
          device: /mnt/hdd/borg_data
+     iso-cache:
+       driver: local
+       driver_opts:
+         type: none
+         o: bind
+         device: /mnt/hdd/iso_cache
    ```
    *(Ensure the `/mnt/hdd/borg_data` folder exists on the host machine).*
 
@@ -145,7 +151,26 @@ For convenience, use an external **USB to SATA** or **USB to NVMe** dongle/adapt
 
 ---
 
-## 6. Detailed List of Orchestrator Changes to Client Nodes
+## 6. Live-USB Offline Restoration (Kiosk Mode)
+
+While Section 5 describes restoring a disk by physically connecting it to the NUC, you can also restore edge nodes **without extracting their disks** by using the generated Live-USB.
+
+### 6.1 Generating the Live-USB
+1. Navigate to the **Live-USB Client** tab in the web interface.
+2. Enter the Orchestrator's IP address (the NUC) and an API Authentication Token. These credentials will be securely "baked" into the ISO so the client can automatically authenticate with the server.
+3. Click **GENERATE LIVE-USB**. The orchestrator will dynamically fetch the exact file size, download a base Debian testing ISO, inject the configuration, and compile a custom `technician_client_v1.iso`.
+4. Once generation is complete, click **DOWNLOAD ISO IMAGE** and flash it to a USB drive using Rufus or balenaEtcher.
+
+### 6.2 Using the Live-USB
+1. Insert the generated USB drive into the broken edge node and boot from it.
+2. Ensure the node is connected to the same local network as the orchestrator.
+3. The system will automatically boot into a lightweight Debian XFCE environment and launch a secure kiosk browser.
+4. The kiosk will connect to the central orchestrator and present the Flasher interface.
+5. Select the local disk of the node and the desired backup snapshot. The restoration process will securely pull the backup data over the network and flash it directly to the node's internal disk.
+
+---
+
+## 7. Detailed List of Orchestrator Changes to Client Nodes
 
 Throughout its lifecycle, the orchestrator performs a strictly defined set of non-destructive operations on remote nodes, installing only the dependencies necessary for its operation:
 
