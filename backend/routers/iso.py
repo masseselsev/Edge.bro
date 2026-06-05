@@ -52,7 +52,15 @@ def get_iso_status():
     progress = -1
     if not base_exists and os.path.exists(tmp_path):
         size = os.path.getsize(tmp_path)
-        progress = min(100, int((size / 4139925504) * 100))
+        total_size = 4139925504
+        size_file = os.path.join(CACHE_DIR, "base.iso.size")
+        if os.path.exists(size_file):
+            try:
+                with open(size_file, "r") as f:
+                    total_size = int(f.read().strip())
+            except:
+                pass
+        progress = min(100, int((size / total_size) * 100))
         
     return {
         "base_iso_cached": base_exists,

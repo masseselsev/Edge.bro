@@ -25,6 +25,19 @@ def download_base_iso_task(self) -> Dict[str, Any]:
     
     try:
         logger.info(f"Downloading Base ISO from {BASE_ISO_URL}...")
+        
+        # Fetch the real size of the ISO
+        try:
+            import urllib.request
+            req = urllib.request.Request(BASE_ISO_URL, method='HEAD')
+            with urllib.request.urlopen(req) as response:
+                content_length = response.getheader('Content-Length')
+                if content_length:
+                    with open(os.path.join(CACHE_DIR, "base.iso.size"), "w") as f:
+                        f.write(content_length)
+        except Exception as e:
+            logger.warning(f"Could not fetch ISO size dynamically: {e}")
+
         # Use curl to download the file safely to a temporary path with fail-fast (-f)
         subprocess.check_call(["curl", "-f", "-L", "-o", BASE_ISO_PATH_TMP, BASE_ISO_URL])
 
