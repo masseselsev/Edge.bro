@@ -17,7 +17,13 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
   const [orchestratorIp, setOrchestratorIp] = useState('');
   
   const [useLocalTime, setUseLocalTime] = useState(true);
-  const [timezone, setTimezone] = useState('Europe/Moscow');
+  const [timezone, setTimezone] = useState(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow';
+    } catch (e) {
+      return 'Europe/Moscow';
+    }
+  });
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -54,9 +60,14 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
         setOrchestratorIp(data.orchestrator_ip || '');
         
         const dbTz = data.timezone || 'Browser Local';
+        let resolvedTz = 'Europe/Moscow';
+        try {
+          resolvedTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow';
+        } catch (e) {}
+
         if (dbTz === 'Browser Local') {
           setUseLocalTime(true);
-          setTimezone('Europe/Moscow'); // default fallback in state
+          setTimezone(resolvedTz);
         } else {
           setUseLocalTime(false);
           setTimezone(dbTz);
@@ -188,36 +199,40 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
             />
           </div>
-          <div className="flex flex-col justify-end">
-            <div className="flex items-center gap-2 mb-3">
-              <input
-                type="checkbox"
-                id="useLocalTime"
-                checked={useLocalTime}
-                onChange={(e) => setUseLocalTime(e.target.checked)}
-                className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
-              />
-              <label htmlFor="useLocalTime" className="text-xs font-semibold text-zinc-400 cursor-pointer select-none">
-                Use Local Browser Timezone
-              </label>
-            </div>
-            
-            {!useLocalTime && (
-              <div>
-                <label className="block text-[10px] font-semibold text-zinc-500 mb-1 uppercase tracking-wider">Select System Timezone</label>
-                <SearchableSelect
-                  options={timezoneOptions}
-                  value={timezone}
-                  onChange={setTimezone}
-                  placeholder="Select Timezone..."
+          <div>
+            <div className="flex justify-between items-center mb-1.5 h-[16px]">
+              <label className="block text-xs font-semibold text-zinc-400">System Timezone</label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  id="useLocalTime"
+                  checked={useLocalTime}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setUseLocalTime(checked);
+                    if (checked) {
+                      try {
+                        const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                        if (localTz) {
+                          setTimezone(localTz);
+                        }
+                      } catch (err) {}
+                    }
+                  }}
+                  className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
                 />
+                <label htmlFor="useLocalTime" className="text-[10px] font-bold text-zinc-500 hover:text-zinc-400 transition-colors uppercase tracking-wider cursor-pointer select-none">
+                  Use Browser Local
+                </label>
               </div>
-            )}
-            {useLocalTime && (
-              <div className="text-xs text-zinc-500 italic px-3 py-2 bg-zinc-950/40 rounded-lg border border-zinc-850">
-                System dates will display using your local browser timezone.
-              </div>
-            )}
+            </div>
+            <SearchableSelect
+              options={timezoneOptions}
+              value={timezone}
+              onChange={setTimezone}
+              disabled={useLocalTime}
+              placeholder="Select Timezone..."
+            />
           </div>
         </div>
 
