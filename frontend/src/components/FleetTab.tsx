@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Settings as Gear, ShieldAlert, CheckCircle, RefreshCw, AlertTriangle, Trash2, Search, Folder, FolderOpen, ChevronRight, ChevronDown, Cpu } from 'lucide-react';
+import { Plus, Settings as Gear, ShieldAlert, CheckCircle, RefreshCw, AlertTriangle, Trash2, Search, Folder, FolderOpen, ChevronRight, ChevronDown, Cpu, Square, CheckSquare } from 'lucide-react';
 import { AddNodeModal, ProvisionNodeModal, BackupCommentModal } from './NodeModals';
+import { NodeRow } from './NodeRow';
 
 interface Node {
   id: number;
@@ -39,6 +40,10 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
   const [provSubmitting, setProvSubmitting] = useState(false);
   const [provError, setProvError] = useState('');
 
+  // Bulk Delete State
+  const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Record<number, boolean>>({});
+
   const fetchNodes = async () => {
     try {
       const res = await fetch('/api/nodes');
@@ -57,6 +62,15 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
     return () => clearInterval(interval);
   }, []);
 
+  const handleResponse = async (res: Response) => {
+    const contentType = res.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      return res.json();
+    }
+    const text = await res.text();
+    throw new Error(text || `Server returned status ${res.status}`);
+  };
+
   const handleAddNode = async (payload: any) => {
     setSubmitting(true);
     setError('');
@@ -66,14 +80,7 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      let data: any = {};
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(text || `Server returned status ${res.status}`);
-      }
+      const data = await handleResponse(res);
       if (!res.ok) throw new Error(data.detail || 'Failed to add node');
 
       setShowAddModal(false);
@@ -99,14 +106,7 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      let data: any = {};
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(text || `Server returned status ${res.status}`);
-      }
+      const data = await handleResponse(res);
       if (!res.ok) throw new Error(data.detail || 'Failed to trigger provision');
 
       setShowProvisionModal(null);
@@ -125,14 +125,7 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
   const runPrepare = async (nodeId: number, name: string) => {
     try {
       const res = await fetch(`/api/nodes/${nodeId}/prepare`, { method: 'POST' });
-      let data: any = {};
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(text || `Server returned status ${res.status}`);
-      }
+      const data = await handleResponse(res);
       if (!res.ok) {
         throw new Error(data.detail || 'Failed to trigger prepare disk task.');
       }
@@ -157,14 +150,7 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ comment })
       });
-      let data: any = {};
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(text || `Server returned status ${res.status}`);
-      }
+      const data = await handleResponse(res);
       if (!res.ok) {
         throw new Error(data.detail || 'Failed to trigger backup task.');
       }
@@ -176,6 +162,37 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
     } catch (e: any) {
       console.error(e);
       alert(`Error: ${e.message}`);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const idsToDelete = Object.keys(selectedNodeIds)
+      .map(Number)
+      .filter(id => selectedNodeIds[id]);
+    
+    if (idsToDelete.length === 0) return;
+
+    if (!window.confirm(`Are you sure you want to delete ${idsToDelete.length} selected node(s)? This will also remove their backup histories.`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await Promise.all(idsToDelete.map(async (id) => {
+        const res = await fetch(`/api/nodes/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail || `Failed to delete node ${id}`);
+        }
+      }));
+      
+      setSelectedNodeIds({});
+      setBulkDeleteMode(false);
+      fetchNodes();
+    } catch (e: any) {
+      alert(`Error during bulk deletion: ${e.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -195,39 +212,8 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
     }
   };
 
-  const renderStatusButton = (node: Node) => {
-    const statusMap: Record<string, { bg: string, text: string, border: string, label: string, icon: React.ReactNode, title: string, onClick: () => void }> = {
-      READY: {
-        bg: "bg-emerald-500/10 hover:bg-emerald-500/20", text: "text-emerald-400", border: "border-emerald-500/20",
-        label: "Ready [OK]", icon: <CheckCircle size={14} />, title: "Re-run Prepare Disk",
-        onClick: () => runPrepare(node.id, node.hostname)
-      },
-      NEEDS_FIX: {
-        bg: "bg-amber-500/10 hover:bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/20",
-        label: "Needs Fix [Prepare]", icon: <AlertTriangle size={14} />, title: "Run Prepare Disk",
-        onClick: () => runPrepare(node.id, node.hostname)
-      },
-      NEEDS_BOOTSTRAP: {
-        bg: "bg-zinc-500/10 hover:bg-zinc-500/20", text: "text-zinc-400", border: "border-zinc-500/20",
-        label: "Provision", icon: <Gear size={14} />, title: "Provision Node",
-        onClick: () => setShowProvisionModal(node)
-      },
-      OFFLINE: {
-        bg: "bg-rose-500/10 hover:bg-rose-500/20", text: "text-rose-400", border: "border-rose-500/20",
-        label: "Provision", icon: <ShieldAlert size={14} />, title: "Provision Offline Node",
-        onClick: () => setShowProvisionModal(node)
-      }
-    };
-    const config = statusMap[node.status] || statusMap.OFFLINE;
-    return (
-      <button
-        onClick={config.onClick}
-        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${config.bg} ${config.text} ${config.border}`}
-        title={config.title}
-      >
-        {config.icon} {config.label}
-      </button>
-    );
+  const handleSelectNode = (nodeId: number, checked: boolean) => {
+    setSelectedNodeIds(prev => ({ ...prev, [nodeId]: checked }));
   };
 
   const toggleGroup = (groupKey: string) => {
@@ -245,40 +231,18 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
   });
 
   const renderNodeRow = (node: Node, depth = 0) => (
-    <tr key={node.id} className="hover:bg-zinc-800/30 transition-colors">
-      <td className="px-4 py-2.5 font-semibold text-white flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 24}px` }}>
-        <Cpu size={14} className="text-zinc-500" />
-        {node.hostname}
-      </td>
-      <td className="px-4 py-2.5 text-zinc-400">{node.ip_address}:{node.ssh_port}</td>
-      <td className="px-4 py-2.5 text-zinc-300 font-medium text-xs">{node.os_version || 'Unknown'}</td>
-      <td className="px-4 py-2.5">
-        <div className="flex flex-col">
-          <span className="text-zinc-300 font-medium text-xs">Disk: {node.disk_type}</span>
-          <span className="text-zinc-500 text-xs">Net: {node.network_iface || 'UNKNOWN'}</span>
-        </div>
-      </td>
-      <td className="px-4 py-2.5">{renderStatusButton(node)}</td>
-      <td className="px-4 py-2.5 text-zinc-400">
-        {node.last_backup ? new Date(node.last_backup).toLocaleString() : 'Never'}
-      </td>
-      <td className="px-4 py-2.5 text-right flex items-center justify-end gap-2 text-zinc-300">
-        <button
-          onClick={() => setShowBackupModal(node)}
-          disabled={node.status !== 'READY'}
-          className="px-2.5 py-1.5 text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded border border-indigo-500/20 disabled:opacity-30 transition-colors"
-        >
-          Backup
-        </button>
-        <button
-          onClick={() => handleDeleteNode(node.id, node.hostname)}
-          className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/20 transition-colors"
-          title="Delete Node"
-        >
-          <Trash2 size={14} />
-        </button>
-      </td>
-    </tr>
+    <NodeRow
+      key={node.id}
+      node={node}
+      depth={depth}
+      bulkDeleteMode={bulkDeleteMode}
+      selectedNodeIds={selectedNodeIds}
+      onSelectNode={handleSelectNode}
+      onRunPrepare={runPrepare}
+      onShowProvision={setShowProvisionModal}
+      onShowBackup={setShowBackupModal}
+      onDeleteNode={handleDeleteNode}
+    />
   );
 
   const renderGroupedContent = () => {
@@ -301,7 +265,7 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         return (
           <React.Fragment key={prefix}>
             <tr className="bg-zinc-900/60 cursor-pointer hover:bg-zinc-800/20 transition-colors border-y border-zinc-800" onClick={() => toggleGroup(prefix)}>
-              <td colSpan={7} className="px-6 py-3 font-semibold text-zinc-200 select-none">
+              <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-3 font-semibold text-zinc-200 select-none">
                 <div className="flex items-center gap-2">
                   {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   {isExpanded ? <FolderOpen size={16} className="text-indigo-400" /> : <Folder size={16} className="text-indigo-400" />}
@@ -335,7 +299,7 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         const isO1Expanded = !!expandedGroups[o1];
         rows.push(
           <tr key={o1} className="bg-zinc-900/80 cursor-pointer hover:bg-zinc-800/20 transition-colors border-y border-zinc-800" onClick={() => toggleGroup(o1)}>
-            <td colSpan={7} className="px-6 py-2.5 font-bold text-zinc-100 select-none">
+            <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-2.5 font-bold text-zinc-100 select-none">
               <div className="flex items-center gap-2">
                 {isO1Expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 <Folder size={14} className="text-zinc-400" />
@@ -352,7 +316,7 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
             const isO2Expanded = !!expandedGroups[o2Key];
             rows.push(
               <tr key={o2Key} className="bg-zinc-900/40 cursor-pointer hover:bg-zinc-800/10 transition-colors border-y border-zinc-800/50" onClick={() => toggleGroup(o2Key)}>
-                <td colSpan={7} className="px-6 py-2.5 font-semibold text-zinc-300 select-none" style={{ paddingLeft: '36px' }}>
+                <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-2.5 font-semibold text-zinc-300 select-none" style={{ paddingLeft: '36px' }}>
                   <div className="flex items-center gap-2">
                     {isO2Expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     <Folder size={14} className="text-zinc-500" />
@@ -370,7 +334,7 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
                 const subnetNodes = o3Tree[o3];
                 rows.push(
                   <tr key={o3Key} className="bg-zinc-900/20 cursor-pointer hover:bg-zinc-800/5 transition-colors border-y border-zinc-800/20" onClick={() => toggleGroup(o3Key)}>
-                    <td colSpan={7} className="px-6 py-2 font-medium text-zinc-400 select-none" style={{ paddingLeft: '54px' }}>
+                    <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-2 font-medium text-zinc-400 select-none" style={{ paddingLeft: '54px' }}>
                       <div className="flex items-center gap-2">
                         {isO3Expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         <FolderOpen size={14} className="text-indigo-400/80" />
@@ -404,12 +368,39 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
           <h2 className="text-2xl font-bold tracking-tight text-white">Edge Fleet</h2>
           <p className="text-sm text-zinc-400">Manage, auto-provision and view your active Debian edge nodes.</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors self-stretch sm:self-auto justify-center"
-        >
-          <Plus size={18} /> Add Node
-        </button>
+        <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+          <button
+            onClick={() => {
+              setBulkDeleteMode(!bulkDeleteMode);
+              setSelectedNodeIds({});
+            }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-semibold border transition-colors self-stretch sm:self-auto justify-center text-xs ${
+              bulkDeleteMode
+                ? 'bg-rose-600/20 border-rose-500/40 text-rose-400 hover:bg-rose-600/30'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+            }`}
+            title="Bulk Delete Mode"
+          >
+            {bulkDeleteMode ? <CheckSquare size={16} /> : <Square size={16} />}
+            <Trash2 size={16} />
+          </button>
+          
+          {bulkDeleteMode && Object.values(selectedNodeIds).filter(Boolean).length > 0 && (
+            <button
+              onClick={handleBulkDelete}
+              className="flex items-center gap-1.5 px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-semibold text-xs transition-colors self-stretch sm:self-auto justify-center"
+            >
+              <Trash2 size={16} /> Delete Selected ({Object.values(selectedNodeIds).filter(Boolean).length})
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-semibold text-xs transition-colors self-stretch sm:self-auto justify-center"
+          >
+            <Plus size={16} /> Add Node
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-zinc-900/40 p-4 rounded-xl border border-zinc-800">
@@ -443,6 +434,23 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         <table className="min-w-full divide-y divide-zinc-800 text-left text-sm text-zinc-300">
           <thead className="bg-zinc-900 text-xs uppercase tracking-wider text-zinc-400">
             <tr>
+              {bulkDeleteMode && (
+                <th className="px-4 py-2.5 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredNodes.length > 0 && filteredNodes.every(n => selectedNodeIds[n.id])}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      const newSelection: Record<number, boolean> = {};
+                      if (checked) {
+                        filteredNodes.forEach(n => { newSelection[n.id] = true; });
+                      }
+                      setSelectedNodeIds(newSelection);
+                    }}
+                    className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+                  />
+                </th>
+              )}
               <th className="px-4 py-2.5">Hostname</th>
               <th className="px-4 py-2.5">IP Address</th>
               <th className="px-4 py-2.5">OS Version</th>
@@ -455,11 +463,11 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
           <tbody className="divide-y divide-zinc-800">
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-zinc-500">Loading fleet data...</td>
+                <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-8 text-center text-zinc-500">Loading fleet data...</td>
               </tr>
             ) : filteredNodes.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-zinc-500">No nodes match your filter.</td>
+                <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-8 text-center text-zinc-500">No nodes match your filter.</td>
               </tr>
             ) : (
               renderGroupedContent()
@@ -468,32 +476,9 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         </table>
       </div>
 
-      {showAddModal && (
-        <AddNodeModal
-          onClose={() => setShowAddModal(false)}
-          onSubmit={handleAddNode}
-          submitting={submitting}
-          error={error}
-        />
-      )}
-
-      {showProvisionModal && (
-        <ProvisionNodeModal
-          node={showProvisionModal}
-          onClose={() => setShowProvisionModal(null)}
-          onSubmit={handleProvisionNode}
-          submitting={provSubmitting}
-          error={provError}
-        />
-      )}
-
-      {showBackupModal && (
-        <BackupCommentModal
-          node={showBackupModal}
-          onClose={() => setShowBackupModal(null)}
-          onSubmit={runBackup}
-        />
-      )}
+      {showAddModal && <AddNodeModal onClose={() => setShowAddModal(false)} onSubmit={handleAddNode} submitting={submitting} error={error} />}
+      {showProvisionModal && <ProvisionNodeModal node={showProvisionModal} onClose={() => setShowProvisionModal(null)} onSubmit={handleProvisionNode} submitting={provSubmitting} error={provError} />}
+      {showBackupModal && <BackupCommentModal node={showBackupModal} onClose={() => setShowBackupModal(null)} onSubmit={runBackup} />}
     </div>
   );
 }

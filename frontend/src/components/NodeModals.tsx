@@ -18,9 +18,9 @@ interface AddNodeModalProps {
 export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeModalProps) {
   const [hostname, setHostname] = useState('');
   const [ipAddress, setIpAddress] = useState('');
-  const [sshPort, setSshPort] = useState(22);
+  const [sshPort, setSshPort] = useState(2222);
   const [username, setUsername] = useState('root');
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState('admin');
   const [autoDetectHostname, setAutoDetectHostname] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
