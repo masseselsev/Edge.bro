@@ -19,7 +19,7 @@ export default function App() {
   const [orchestratorIp, setOrchestratorIp] = useState('');
   const [settings, setSettings] = useState<any>(null);
   const [savingIp, setSavingIp] = useState(false);
-  const [appVersion, setAppVersion] = useState('v0.2alpha');
+  const [appVersion, setAppVersion] = useState('v0.3beta');
 
   useEffect(() => {
     // Fetch current app version from API
