@@ -39,7 +39,7 @@ The system is fully containerized and uses a decoupled architecture to manage co
 ```
 
 ### Components:
-1. **React SPA Frontend (Port 7777)**: Responsive, dark-themed dashboard mapped to tabs (Fleet, Flasher, History, Settings). Displays stats (de-duplication ratios, total space) and features a terminal console overlay to stream execution logs in real-time.
+1. **React SPA Frontend (Port 7777)**: Responsive, dark-themed dashboard mapped to tabs (Fleet, Flasher, History, Live-USB Client, Settings). Displays stats (de-duplication ratios, total space) and features a terminal console overlay to stream execution logs in real-time.
 2. **FastAPI Backend (Port 8000)**: Serves RESTful APIs, implements the IP parser (supporting CIDR, lists, and ranges), validates drive type configurations, and tracks active jobs.
 3. **Celery Worker (Privileged Host-Device Mode)**: Subscribed to task queues to execute playbooks and perform flashing partition commands (requires access to `/dev` of the local orchestrator node during flashing).
 4. **Borg SSH Server (Port 12345)**: Isolated central repository environment where edge node public keys are automatically appended to `/home/borg/.ssh/authorized_keys` under forced command restrictions (`command="borg serve --restrict-to-path ..."`).
@@ -80,6 +80,11 @@ The system is fully containerized and uses a decoupled architecture to manage co
 - **PCIe Network Drift Mitigation**: Wipes old persistent network device bindings and injects generic wildcard interface configurations (`eth*` and `en*`) to guarantee network reachability upon post-flashing boots.
 - **Chroot Bootloader Config**: Mounts the system, binds virtualization paths (`/dev`, `/proc`, `/sys`), reinstalls GRUB on the target device, updates initramfs, and writes a fallback EFI loader path (`EFI/BOOT/BOOTX64.EFI`).
 - **Auditing**: Performs a post-restore verification audit confirming label configurations inside `/etc/fstab` before safely unmounting.
+
+### 5. Live-USB Offline Client Generation
+- Compiles a bootable Debian Live environment on the fly.
+- Embeds the orchestrator's IP address and authentication tokens directly into the generated ISO.
+- When booted on an edge node, launches a secure kiosk UI that connects to the central orchestrator, enabling offline network restoration directly to the node's internal disk without requiring hardware extraction.
 
 ---
 
