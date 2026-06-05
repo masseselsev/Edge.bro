@@ -66,7 +66,14 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
+      let data: any = {};
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || `Server returned status ${res.status}`);
+      }
       if (!res.ok) throw new Error(data.detail || 'Failed to add node');
 
       setShowAddModal(false);
@@ -92,7 +99,14 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
+      let data: any = {};
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || `Server returned status ${res.status}`);
+      }
       if (!res.ok) throw new Error(data.detail || 'Failed to trigger provision');
 
       setShowProvisionModal(null);
@@ -111,7 +125,14 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
   const runPrepare = async (nodeId: number, name: string) => {
     try {
       const res = await fetch(`/api/nodes/${nodeId}/prepare`, { method: 'POST' });
-      const data = await res.json();
+      let data: any = {};
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || `Server returned status ${res.status}`);
+      }
       if (!res.ok) {
         throw new Error(data.detail || 'Failed to trigger prepare disk task.');
       }
@@ -136,7 +157,14 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ comment })
       });
-      const data = await res.json();
+      let data: any = {};
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || `Server returned status ${res.status}`);
+      }
       if (!res.ok) {
         throw new Error(data.detail || 'Failed to trigger backup task.');
       }
@@ -168,50 +196,38 @@ export default function FleetTab({ onViewLogs }: FleetTabProps) {
   };
 
   const renderStatusButton = (node: Node) => {
-    const baseClass = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer";
-    switch (node.status) {
-      case 'READY':
-        return (
-          <button
-            onClick={() => runPrepare(node.id, node.hostname)}
-            className={`${baseClass} bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20`}
-            title="Re-run Prepare Disk"
-          >
-            <CheckCircle size={14} /> Ready [OK]
-          </button>
-        );
-      case 'NEEDS_FIX':
-        return (
-          <button
-            onClick={() => runPrepare(node.id, node.hostname)}
-            className={`${baseClass} bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20`}
-            title="Run Prepare Disk"
-          >
-            <AlertTriangle size={14} /> Needs Fix [Prepare]
-          </button>
-        );
-      case 'NEEDS_BOOTSTRAP':
-        return (
-          <button
-            onClick={() => setShowProvisionModal(node)}
-            className={`${baseClass} bg-zinc-500/10 hover:bg-zinc-500/20 text-zinc-400 border-zinc-500/20`}
-            title="Provision Node"
-          >
-            <Gear size={14} /> Provision
-          </button>
-        );
-      case 'OFFLINE':
-      default:
-        return (
-          <button
-            onClick={() => setShowProvisionModal(node)}
-            className={`${baseClass} bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/20`}
-            title="Provision Offline Node"
-          >
-            <ShieldAlert size={14} /> Provision
-          </button>
-        );
-    }
+    const statusMap: Record<string, { bg: string, text: string, border: string, label: string, icon: React.ReactNode, title: string, onClick: () => void }> = {
+      READY: {
+        bg: "bg-emerald-500/10 hover:bg-emerald-500/20", text: "text-emerald-400", border: "border-emerald-500/20",
+        label: "Ready [OK]", icon: <CheckCircle size={14} />, title: "Re-run Prepare Disk",
+        onClick: () => runPrepare(node.id, node.hostname)
+      },
+      NEEDS_FIX: {
+        bg: "bg-amber-500/10 hover:bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/20",
+        label: "Needs Fix [Prepare]", icon: <AlertTriangle size={14} />, title: "Run Prepare Disk",
+        onClick: () => runPrepare(node.id, node.hostname)
+      },
+      NEEDS_BOOTSTRAP: {
+        bg: "bg-zinc-500/10 hover:bg-zinc-500/20", text: "text-zinc-400", border: "border-zinc-500/20",
+        label: "Provision", icon: <Gear size={14} />, title: "Provision Node",
+        onClick: () => setShowProvisionModal(node)
+      },
+      OFFLINE: {
+        bg: "bg-rose-500/10 hover:bg-rose-500/20", text: "text-rose-400", border: "border-rose-500/20",
+        label: "Provision", icon: <ShieldAlert size={14} />, title: "Provision Offline Node",
+        onClick: () => setShowProvisionModal(node)
+      }
+    };
+    const config = statusMap[node.status] || statusMap.OFFLINE;
+    return (
+      <button
+        onClick={config.onClick}
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${config.bg} ${config.text} ${config.border}`}
+        title={config.title}
+      >
+        {config.icon} {config.label}
+      </button>
+    );
   };
 
   const toggleGroup = (groupKey: string) => {
