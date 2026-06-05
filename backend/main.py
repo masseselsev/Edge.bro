@@ -31,6 +31,12 @@ def startup_db_init():
     Ensure settings are initialized in the database on startup and orchestrator SSH keys are ready.
     """
     try:
+        from database import setup_db_logging
+        setup_db_logging()
+    except Exception as e:
+        print(f"Error setting up database logging on startup: {str(e)}")
+
+    try:
         ensure_orchestrator_ssh_key()
     except Exception as e:
         print(f"Error ensuring SSH keypair on startup: {str(e)}")

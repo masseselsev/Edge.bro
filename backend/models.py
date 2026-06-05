@@ -68,3 +68,15 @@ class TaskLog(Base):
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     log_output = Column(Text, default='', nullable=False)
+
+
+class SystemLog(Base):
+    """
+    Model for general system/application logs.
+    """
+    __tablename__ = 'system_logs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    level = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)

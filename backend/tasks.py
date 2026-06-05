@@ -16,6 +16,12 @@ from celery.schedules import crontab
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+try:
+    from database import setup_db_logging
+    setup_db_logging()
+except Exception as e:
+    logger.error(f"Failed to setup DB logging for Celery worker: {str(e)}")
+
 # Initialize Celery
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 celery_app = Celery("tasks", broker=REDIS_URL, backend=REDIS_URL)

@@ -78,6 +78,16 @@ class RestoreRequest(BaseModel):
     wipe_mac_bindings: bool = False
 
 
+class SystemLogResponse(BaseModel):
+    id: int
+    level: str
+    message: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class NodeProvisionRequest(BaseModel):
     bootstrap_user: str = "root"
     bootstrap_password: str
