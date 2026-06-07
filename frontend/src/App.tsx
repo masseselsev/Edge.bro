@@ -199,6 +199,7 @@ export default function App() {
         <TaskLogsModal
           taskId={logTaskId}
           title={logTaskTitle}
+          timezone={settings?.timezone || 'Browser Local'}
           onClose={() => setLogTaskId(null)}
         />
       )}

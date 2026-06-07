@@ -241,9 +241,12 @@ export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
                 if (log.level === "ERROR") colorClass = "text-rose-400 font-bold";
                 else if (log.level === "WARNING") colorClass = "text-yellow-400 font-medium";
                 else if (log.level === "DEBUG") colorClass = "text-zinc-500";
+                const timeStr = formatDate(log.created_at, timezone);
+                const cleanMsg = log.message.replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s*/, '');
                 return (
                   <div key={log.id} className={`${colorClass} break-all whitespace-pre-wrap`}>
-                    {log.message}
+                    <span className="text-zinc-500 mr-2">{timeStr}</span>
+                    {cleanMsg}
                   </div>
                 );
               })

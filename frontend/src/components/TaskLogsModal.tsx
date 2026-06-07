@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Terminal as TermIcon, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { formatDate } from './dateUtils';
 
 interface TaskLogsModalProps {
   taskId: string;
   title: string;
+  timezone?: string;
   onClose: () => void;
 }
 
-export default function TaskLogsModal({ taskId, title, onClose }: TaskLogsModalProps) {
+export default function TaskLogsModal({ taskId, title, timezone, onClose }: TaskLogsModalProps) {
   const [status, setStatus] = useState('PENDING');
   const [logs, setLogs] = useState('');
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -133,11 +135,24 @@ export default function TaskLogsModal({ taskId, title, onClose }: TaskLogsModalP
         {/* Console logs */}
         <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-zinc-300 bg-black/95 select-text space-y-1">
           {cleanLogs ? (
-            cleanLogs.split('\n').map((line, idx) => (
-              <div key={idx} className="whitespace-pre-wrap leading-relaxed">
-                {line}
-              </div>
-            ))
+            cleanLogs.split('\n').map((line, idx) => {
+              const match = line.match(/^\[(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\](.*)/);
+              if (match) {
+                const utcDateStr = `${match[1]}T${match[2]}Z`;
+                const localTimeStr = formatDate(utcDateStr, timezone);
+                return (
+                  <div key={idx} className="whitespace-pre-wrap leading-relaxed">
+                    <span className="text-zinc-500 mr-1">[{localTimeStr}]</span>
+                    {match[3]}
+                  </div>
+                );
+              }
+              return (
+                <div key={idx} className="whitespace-pre-wrap leading-relaxed">
+                  {line}
+                </div>
+              );
+            })
           ) : (
             <div className="text-zinc-600 italic">No output logs generated yet...</div>
           )}
