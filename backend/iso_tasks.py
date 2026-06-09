@@ -213,21 +213,22 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
         # 4. Modify Bootloaders (GRUB & Syslinux) to load payload.img
         log_to_task(task_id, "[PROGRESS] 60:Updating bootloader configurations...")
-        import re
         
         # Update GRUB
         grub_cfg = os.path.join(iso_unpacked, "boot", "grub", "grub.cfg")
         if os.path.exists(grub_cfg):
             with open(grub_cfg, "r") as f:
                 content = f.read()
-            if "payload.img" not in content:
-                content = re.sub(
-                    r'(initrd\s+(/live/initrd\.img[^\s\n]*))',
-                    r'\1 /live/payload.img',
-                    content
-                )
-                with open(grub_cfg, "w") as f:
-                    f.write(content)
+            
+            lines = []
+            for line in content.splitlines():
+                if line.strip().startswith("initrd") and "/live/initrd.img" in line and "payload.img" not in line:
+                    line = line.rstrip() + " /live/payload.img"
+                lines.append(line)
+            new_content = "\n".join(lines) + "\n"
+            
+            with open(grub_cfg, "w") as f:
+                f.write(new_content)
 
         # Update Syslinux (isolinux)
         for root_dir, _, files in os.walk(os.path.join(iso_unpacked, "isolinux")):
@@ -236,20 +237,30 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
                     filepath = os.path.join(root_dir, file)
                     with open(filepath, "r") as f:
                         content = f.read()
-                    if "payload.img" not in content:
-                        # Handle both "initrd /live/initrd.img" and "initrd=/live/initrd.img" formats
-                        content = re.sub(
-                            r'(initrd\s+(/live/initrd\.img[^\s\n,]*))',
-                            r'\1,/live/payload.img',
-                            content
-                        )
-                        content = re.sub(
-                            r'(initrd=(/live/initrd\.img[^\s\n,]*))',
-                            r'\1,/live/payload.img',
-                            content
-                        )
-                        with open(filepath, "w") as f:
-                            f.write(content)
+                    
+                    lines = []
+                    for line in content.splitlines():
+                        if line.strip().startswith("#"):
+                            lines.append(line)
+                            continue
+                        if "initrd" in line and "/live/initrd.img" in line and "payload.img" not in line:
+                            if "initrd=" in line:
+                                parts = line.split("initrd=", 1)
+                                val_parts = parts[1].split(maxsplit=1)
+                                val = val_parts[0]
+                                rest = " " + val_parts[1] if len(val_parts) > 1 else ""
+                                line = parts[0] + "initrd=" + val + ",/live/payload.img" + rest
+                            else:
+                                parts = line.split("initrd", 1)
+                                val_parts = parts[1].split(maxsplit=1)
+                                val = val_parts[0]
+                                rest = " " + val_parts[1] if len(val_parts) > 1 else ""
+                                line = parts[0] + "initrd" + val + ",/live/payload.img" + rest
+                        lines.append(line)
+                    new_content = "\n".join(lines) + "\n"
+                    
+                    with open(filepath, "w") as f:
+                        f.write(new_content)
 
         # 5. Update MD5 Sums
         log_to_task(task_id, "[PROGRESS] 75:Updating ISO checksums...")
