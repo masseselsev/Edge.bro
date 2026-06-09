@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Offline Kiosk
-Exec=chromium --kiosk --incognito --no-errdialogs --disable-translate --no-first-run --fast --fast-start --disable-infobars http://127.0.0.1:8000
+Exec=/opt/offline-client/kiosk-launcher.sh
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true

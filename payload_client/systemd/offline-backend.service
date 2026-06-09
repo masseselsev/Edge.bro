@@ -5,6 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
+Environment=PYTHONPATH=/opt/offline-client/backend/site-packages
 WorkingDirectory=/opt/offline-client/backend
 ExecStart=/usr/bin/python3 -m uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always

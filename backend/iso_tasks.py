@@ -141,10 +141,33 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         shutil.copy2(svc_src, svc_dst)
         os.symlink("/etc/systemd/system/offline-backend.service", os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants", "offline-backend.service"))
 
+        # Inject Kiosk Launcher Script
+        launcher_src = "/payload_client/kiosk-launcher.sh"
+        launcher_dst = os.path.join(payload_dir, "opt", "offline-client", "kiosk-launcher.sh")
+        shutil.copy2(launcher_src, launcher_dst)
+        os.chmod(launcher_dst, 0o755)
+
         # Inject Kiosk Desktop Entry
         kiosk_src = "/payload_client/systemd/offline-kiosk.desktop"
         kiosk_dst = os.path.join(payload_dir, "etc", "xdg", "autostart", "offline-kiosk.desktop")
         shutil.copy2(kiosk_src, kiosk_dst)
+
+        # Inject Python site-packages dependencies
+        site_packages_dst = os.path.join(opt_offline, "backend", "site-packages")
+        os.makedirs(site_packages_dst, exist_ok=True)
+        packages_to_copy = [
+            "fastapi", "pydantic", "pydantic_core", "uvicorn", "starlette",
+            "anyio", "h11", "click", "annotated_types", "idna"
+        ]
+        for pkg in packages_to_copy:
+            pkg_src = f"/usr/local/lib/python3.11/site-packages/{pkg}"
+            if os.path.isdir(pkg_src):
+                shutil.copytree(pkg_src, os.path.join(site_packages_dst, pkg))
+            elif os.path.isfile(pkg_src + ".py"):
+                shutil.copy2(pkg_src + ".py", os.path.join(site_packages_dst, pkg + ".py"))
+        
+        # Also copy typing_extensions.py
+        shutil.copy2("/usr/local/lib/python3.11/site-packages/typing_extensions.py", os.path.join(site_packages_dst, "typing_extensions.py"))
 
         # Write Config JSON
         config_data = {
