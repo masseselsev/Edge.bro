@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu } from 'lucide-react';
+import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
 import HistoryTab from './components/HistoryTab';
@@ -7,11 +7,14 @@ import LogsTab from './components/LogsTab';
 import SettingsTab from './components/SettingsTab';
 import ClientIsoTab from './components/ClientIsoTab';
 import TaskLogsModal from './components/TaskLogsModal';
+import NetworkSettingsModal from './components/NetworkSettingsModal';
 
 type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings' | 'clientiso';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('fleet');
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const [networkStatus, setNetworkStatus] = useState<any>(null);
   const [logTaskId, setLogTaskId] = useState<string | null>(null);
   const [logTaskTitle, setLogTaskTitle] = useState<string>('');
   
@@ -20,6 +23,23 @@ export default function App() {
   const [settings, setSettings] = useState<any>(null);
   const [savingIp, setSavingIp] = useState(false);
   const [appVersion, setAppVersion] = useState('v0.4beta');
+
+  useEffect(() => {
+    const fetchNetStatus = async () => {
+      try {
+        const res = await fetch('/api/network/status');
+        if (res.ok) {
+          const data = await res.json();
+          setNetworkStatus(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch network status:', err);
+      }
+    };
+    fetchNetStatus();
+    const interval = setInterval(fetchNetStatus, 7000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     // Fetch current app version from API
@@ -181,8 +201,29 @@ export default function App() {
             </button>
           </nav>
 
-          <div className="text-right">
-            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowNetworkModal(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer"
+            >
+              {networkStatus?.wired?.connected ? (
+                <>
+                  <Globe2 size={13} className="text-emerald-400" />
+                  <span>Wired Link</span>
+                </>
+              ) : networkStatus?.wifi?.connected ? (
+                <>
+                  <Wifi size={13} className="text-emerald-400" />
+                  <span>{networkStatus.wifi.ssid}</span>
+                </>
+              ) : (
+                <>
+                  <Globe2 size={13} className="text-rose-400" />
+                  <span className="text-rose-400 font-bold">Offline</span>
+                </>
+              )}
+            </button>
+            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider animate-pulse-subtle">
               System Online
             </span>
           </div>
@@ -193,6 +234,11 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
         {renderTabContent()}
       </main>
+
+      {/* Network Settings Modal */}
+      {showNetworkModal && (
+        <NetworkSettingsModal onClose={() => setShowNetworkModal(false)} />
+      )}
 
       {/* Active task console log stream overlay modal */}
       {logTaskId && (

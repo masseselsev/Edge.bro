@@ -1,0 +1,153 @@
+from unittest.mock import patch, MagicMock
+import subprocess
+import pytest
+from routers.network import (
+    get_network_status,
+    scan_wifi,
+    connect_wifi,
+    configure_wired,
+    WifiConnectRequest,
+    WiredConfigRequest,
+    prefix_to_mask,
+    mask_to_prefix
+)
+
+
+def test_prefix_to_mask():
+    assert prefix_to_mask(24) == "255.255.255.0"
+    assert prefix_to_mask(32) == "255.255.255.255"
+    assert prefix_to_mask(0) == "0.0.0.0"
+    assert prefix_to_mask(16) == "255.255.0.0"
+
+
+def test_mask_to_prefix():
+    assert mask_to_prefix("255.255.255.0") == 24
+    assert mask_to_prefix("255.255.0.0") == 16
+    assert mask_to_prefix("255.255.255.255") == 32
+    assert mask_to_prefix("invalid") == 24
+
+
+@patch("subprocess.check_output")
+def test_get_network_status_mock_fallback(mock_check):
+    # Simulate nmcli executable not found or raising exception
+    mock_check.side_effect = subprocess.SubprocessError("nmcli not found")
+    res = get_network_status()
+    # It should fall back to mock data
+    assert res.wired.connected is True
+    assert res.wired.ip == "192.168.188.249"
+    assert res.wifi.connected is False
+
+
+@patch("subprocess.check_output")
+def test_get_network_status_success(mock_check):
+    # Mocking standard nmcli output for devices and details
+    def side_effect(cmd, *args, **kwargs):
+        if "device" in cmd and "show" not in cmd:
+            return b"eth0:ethernet:connected\nwlan0:wifi:disconnected\n"
+        elif "device" in cmd and "show" in cmd:
+            return b"IP4.ADDRESS[1]:192.168.1.50/24\nIP4.GATEWAY:192.168.1.1\nIP4.DNS[1]:8.8.8.8\n"
+        elif "connection" in cmd and "show" in cmd and "--active" in cmd:
+            return b"Wired connection 1:802-3-ethernet:eth0:yes\n"
+        elif "connection" in cmd and "show" in cmd:
+            return b"ipv4.method:manual\nipv4.dns:8.8.8.8\n"
+        return b""
+
+    mock_check.side_effect = side_effect
+
+    res = get_network_status()
+    assert res.wired.connected is True
+    assert res.wired.device == "eth0"
+    assert res.wired.ip == "192.168.1.50"
+    assert res.wired.netmask == "255.255.255.0"
+    assert res.wired.gateway == "192.168.1.1"
+    assert res.wired.dns_servers == ["8.8.8.8"]
+    assert res.wired.mode == "manual"
+    assert res.wired.dns_mode == "manual"
+    assert res.wifi.connected is False
+
+
+@patch("subprocess.check_output")
+def test_wifi_scan_mock(mock_check):
+    # Standard scanning output with a colon in one of the SSIDs
+    # and WPA2 security, sorted signal strengths
+    mock_check.return_value = (
+        b"Office\\:5G:95:WPA2:no\n"
+        b"Guest_Net:45:Open:no\n"
+        b"Home_Wifi:80:WPA1 WPA2:yes\n"
+    )
+
+    res = scan_wifi()
+    assert len(res) == 3
+    # Sorted by signal descending
+    assert res[0].ssid == "Office:5G"
+    assert res[0].signal == 95
+    assert res[0].security == "WPA2"
+    assert res[0].active is False
+
+    assert res[1].ssid == "Home_Wifi"
+    assert res[1].signal == 80
+    assert res[1].security == "WPA1 WPA2"
+    assert res[1].active is True
+
+    assert res[2].ssid == "Guest_Net"
+    assert res[2].signal == 45
+    assert res[2].security == "Open"
+    assert res[2].active is False
+
+
+@patch("subprocess.check_call")
+def test_connect_wifi_success(mock_call):
+    req = WifiConnectRequest(ssid="Office_5G", password="super_password", hidden=True)
+    res = connect_wifi(req)
+    assert res.status == "SUCCESS"
+    mock_call.assert_called_once_with(
+        ["nmcli", "device", "wifi", "connect", "Office_5G", "password", "super_password", "hidden", "yes"],
+        timeout=30
+    )
+
+
+@patch("subprocess.check_call")
+@patch("subprocess.check_output")
+def test_configure_wired_manual(mock_output, mock_call):
+    # Active connection query output
+    mock_output.return_value = b"Wired connection 1:802-3-ethernet:eth0:yes\n"
+
+    req = WiredConfigRequest(
+        mode="manual",
+        ip_address="192.168.1.100",
+        netmask="255.255.255.0",
+        gateway="192.168.1.1",
+        dns_mode="manual",
+        dns_servers=["1.1.1.1", "8.8.8.8"]
+    )
+    res = configure_wired(req)
+    assert res.status == "SUCCESS"
+
+    # Verify connection modify and up calls
+    calls = [call[0][0] for call in mock_call.call_args_list]
+    assert ["nmcli", "connection", "modify", "Wired connection 1", "ipv4.method", "manual", "ipv4.addresses", "192.168.1.100/24"] in calls
+    assert ["nmcli", "connection", "modify", "Wired connection 1", "ipv4.gateway", "192.168.1.1"] in calls
+    assert ["nmcli", "connection", "modify", "Wired connection 1", "ipv4.dns", "1.1.1.1 8.8.8.8"] in calls
+    assert ["nmcli", "connection", "modify", "Wired connection 1", "ipv4.ignore-auto-dns", "yes"] in calls
+    assert ["nmcli", "connection", "up", "Wired connection 1"] in calls
+
+
+@patch("subprocess.check_call")
+@patch("subprocess.check_output")
+def test_configure_wired_dhcp(mock_output, mock_call):
+    # No active connections fallback to listing all connections
+    mock_output.side_effect = [b"", b"Wired connection 2:802-3-ethernet:eth1\n"]
+
+    req = WiredConfigRequest(
+        mode="auto",
+        dns_mode="auto"
+    )
+    res = configure_wired(req)
+    assert res.status == "SUCCESS"
+
+    # Verify method set to auto and dns cleared
+    calls = [call[0][0] for call in mock_call.call_args_list]
+    assert ["nmcli", "connection", "modify", "Wired connection 2", "ipv4.method", "auto", "ipv4.addresses", "", "ipv4.gateway", ""] in calls
+    assert ["nmcli", "connection", "modify", "Wired connection 2", "ipv4.dns", ""] in calls
+    assert ["nmcli", "connection", "modify", "Wired connection 2", "ipv4.ignore-auto-dns", "no"] in calls
+    assert ["nmcli", "connection", "up", "Wired connection 2"] in calls
