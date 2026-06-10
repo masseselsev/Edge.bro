@@ -80,8 +80,12 @@ def scan_devices():
             size_str = parts[1].strip()
             model = parts[2].strip() if len(parts) > 2 else "Generic Disk"
 
-            # Skip loop, ram, and host root drives
-            if name.startswith("loop") or name.startswith("ram") or name in host_root_disks:
+            # Skip loop, ram, virtual disks (vd*), and host root drives
+            if name.startswith("loop") or name.startswith("ram") or name.startswith("vd") or name in host_root_disks:
+                continue
+
+            model_lower = model.lower()
+            if any(term in model_lower for term in ["vbox", "qemu", "vmware", "virtual", "xen"]):
                 continue
 
             # Check rotational flag

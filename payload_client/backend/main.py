@@ -166,24 +166,32 @@ def scan_devices():
         data = json.loads(out)
         devices = []
         for bd in data.get("blockdevices", []):
-            if not bd.get("name").startswith("loop") and not bd.get("name").startswith("sr"):
-                is_usb = bd.get("tran") == "usb"
-                # Exclude the USB drive we booted from if possible.
-                try:
-                    mounts = subprocess.check_output(f"lsblk -J -o MOUNTPOINT /dev/{bd['name']}", shell=True, text=True)
-                    if "live" in mounts.lower():
-                        continue
-                except:
-                    pass
+            name = bd.get("name") or ""
+            if name.startswith("loop") or name.startswith("sr") or name.startswith("vd"):
+                continue
                 
-                devices.append({
-                    "name": f"/dev/{bd['name']}",
-                    "size": bd.get("size", 0),
-                    "model": bd.get("model", "Unknown Model"),
-                    "rotational": bd.get("rota", False),
-                    "disk_type": "NVME" if "nvme" in bd["name"] else "SATA",
-                    "is_usb": is_usb
-                })
+            model = bd.get("model") or "Unknown Model"
+            model_lower = model.lower()
+            if any(term in model_lower for term in ["vbox", "qemu", "vmware", "virtual", "xen"]):
+                continue
+
+            is_usb = bd.get("tran") == "usb"
+            # Exclude the USB drive we booted from if possible.
+            try:
+                mounts = subprocess.check_output(f"lsblk -J -o MOUNTPOINT /dev/{name}", shell=True, text=True)
+                if "live" in mounts.lower():
+                    continue
+            except:
+                pass
+            
+            devices.append({
+                "name": f"/dev/{name}",
+                "size": bd.get("size", 0),
+                "model": model,
+                "rotational": bd.get("rota", False),
+                "disk_type": "NVME" if "nvme" in name else "SATA",
+                "is_usb": is_usb
+            })
         return devices
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
