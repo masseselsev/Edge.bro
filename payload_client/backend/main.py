@@ -156,8 +156,13 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
 
 @app.get("/api/version")
 def get_version():
-    """Returns the unified application version."""
-    return {"version": VERSION, "is_kiosk": True}
+    """Returns the unified application version and kiosk configurations."""
+    return {
+        "version": VERSION,
+        "is_kiosk": True,
+        "orchestrator_ip": orchestrator_ip,
+        "auth_token": auth_token
+    }
 
 @app.get("/api/scanner/devices")
 def scan_devices():

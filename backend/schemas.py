@@ -14,6 +14,7 @@ class SettingsBase(BaseModel):
 
 class SettingsResponse(SettingsBase):
     id: int
+    available_ips: Optional[List[str]] = None
 
     class Config:
         from_attributes = True

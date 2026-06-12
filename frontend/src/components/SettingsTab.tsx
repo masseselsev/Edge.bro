@@ -15,6 +15,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
   const [keepMonthly, setKeepMonthly] = useState(6);
   const [globalExclusions, setGlobalExclusions] = useState('/dev/*,/proc/*,/sys/*,/run/*,/mnt/*');
   const [orchestratorIp, setOrchestratorIp] = useState('');
+  const [availableIps, setAvailableIps] = useState<string[]>([]);
   
   const [useLocalTime, setUseLocalTime] = useState(true);
   const [timezone, setTimezone] = useState(() => {
@@ -58,6 +59,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
         setKeepMonthly(data.keep_monthly);
         setGlobalExclusions(data.global_exclusions);
         setOrchestratorIp(data.orchestrator_ip || '');
+        setAvailableIps(data.available_ips || []);
         
         const dbTz = data.timezone || 'Browser Local';
         let resolvedTz = 'Europe/Moscow';
@@ -103,6 +105,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
       if (res.ok) {
         const data = await res.json();
         setSuccess(true);
+        setAvailableIps(data.available_ips || []);
         if (onSettingsUpdated) {
           onSettingsUpdated(data);
         }
@@ -193,11 +196,15 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
             <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Orchestrator IP Address (for nodes connection)</label>
             <input
               type="text"
+              list="settings-orchestrator-ips"
               value={orchestratorIp}
               onChange={(e) => setOrchestratorIp(e.target.value)}
               placeholder="e.g. 192.168.222.2 (leave blank to auto-detect)"
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
             />
+            <datalist id="settings-orchestrator-ips">
+              {availableIps.map(ip => <option key={ip} value={ip} />)}
+            </datalist>
           </div>
           <div>
             <div className="flex justify-between items-center mb-1.5 h-[16px]">

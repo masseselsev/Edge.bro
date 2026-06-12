@@ -13,6 +13,7 @@ export default function ClientIsoTab() {
   const [status, setStatus] = useState<IsoStatus | null>(null);
   const [orchestratorIp, setOrchestratorIp] = useState(window.location.hostname);
   const [authToken, setAuthToken] = useState('offline-token-1234');
+  const [availableIps, setAvailableIps] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloadingBase, setIsDownloadingBase] = useState(false);
   const [error, setError] = useState('');
@@ -51,6 +52,22 @@ export default function ClientIsoTab() {
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [lastTriggerTime]);
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          if (data.available_ips) {
+            setAvailableIps(data.available_ips);
+          }
+          if (data.orchestrator_ip) {
+            setOrchestratorIp(data.orchestrator_ip);
+          }
+        }
+      })
+      .catch(err => console.error(err));
+  }, []);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,14 +209,25 @@ export default function ClientIsoTab() {
               <input
                 type="text"
                 required
+                list="generator-orchestrator-ips"
                 value={orchestratorIp}
                 onChange={(e) => setOrchestratorIp(e.target.value)}
                 className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none transition-colors"
               />
+              <datalist id="generator-orchestrator-ips">
+                {availableIps.map(ip => <option key={ip} value={ip} />)}
+              </datalist>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">API Authentication Token</label>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="block text-xs font-semibold text-zinc-400">API Authentication Token</label>
+                {authToken && (
+                  <span className="text-[10px] text-zinc-500 font-semibold font-mono">
+                    Ключевая фраза: <span className="text-amber-400 font-bold">{authToken}</span>
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 required

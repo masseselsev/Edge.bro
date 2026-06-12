@@ -15,6 +15,25 @@ def get_version():
     return {"version": VERSION, "is_kiosk": False}
 
 
+def get_local_ips():
+    import socket
+    ips = []
+    try:
+        for interface in socket.getifaddrs():
+            addr = interface.addr
+            if addr and addr.family == socket.AF_INET:
+                ip = addr.address
+                if ip != "127.0.0.1":
+                    ips.append(ip)
+    except Exception:
+        try:
+            hostname = socket.gethostname()
+            ips = [socket.gethostbyname(hostname)]
+        except Exception:
+            pass
+    return sorted(list(set(ips)))
+
+
 @router.get("/settings", response_model=schemas.SettingsResponse)
 def get_settings(db: Session = Depends(get_db)):
     """
@@ -25,6 +44,7 @@ def get_settings(db: Session = Depends(get_db)):
         settings = models.Settings()
         db.add(settings)
         db.commit()
+    settings.available_ips = get_local_ips()
     return settings
 
 
@@ -47,4 +67,5 @@ def update_settings(payload: schemas.SettingsBase, db: Session = Depends(get_db)
     settings.orchestrator_ip = payload.orchestrator_ip
     settings.timezone = payload.timezone
     db.commit()
+    settings.available_ips = get_local_ips()
     return settings

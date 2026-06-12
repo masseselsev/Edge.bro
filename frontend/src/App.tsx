@@ -21,10 +21,13 @@ export default function App() {
   const [showIpPromptModal, setShowIpPromptModal] = useState(false);
   const [orchestratorIp, setOrchestratorIp] = useState('');
   const [settings, setSettings] = useState<any>(null);
+  const [availableIps, setAvailableIps] = useState<string[]>([]);
   const [savingIp, setSavingIp] = useState(false);
   const [appVersion, setAppVersion] = useState('');
   const [isKiosk, setIsKiosk] = useState(false);
   const [restoreMode, setRestoreMode] = useState<'offline' | 'online'>('offline');
+  const [kioskOrchestratorIp, setKioskOrchestratorIp] = useState('');
+  const [connectionKeyphrase, setConnectionKeyphrase] = useState('');
 
   useEffect(() => {
     if (!isKiosk) return;
@@ -68,6 +71,8 @@ export default function App() {
         if (data && data.is_kiosk) {
           setIsKiosk(true);
           setActiveTab('flasher');
+          setKioskOrchestratorIp(data.orchestrator_ip || '');
+          setConnectionKeyphrase(data.auth_token || '');
         }
       })
       .catch(err => console.error('Error fetching version:', err));
@@ -78,6 +83,7 @@ export default function App() {
       .then(sett => {
         setSettings(sett);
         setOrchestratorIp(sett.orchestrator_ip || '');
+        setAvailableIps(sett.available_ips || []);
         
         // Check if nodes list is empty on mount
         fetch('/api/nodes')
@@ -317,6 +323,28 @@ export default function App() {
         {renderTabContent()}
       </main>
 
+      {/* Kiosk Mode Footer */}
+      {isKiosk && (
+        <footer className="bg-zinc-950/80 backdrop-blur-md border-t border-zinc-900 py-3 text-center text-xs text-zinc-500 flex items-center justify-center gap-4 animate-fade-in">
+          <span>Режим клиента (киоск)</span>
+          <span className="h-4 w-px bg-zinc-800" />
+          <div className="relative group flex items-center gap-1">
+            <span>Настроен на сервер:</span>
+            <span className="text-indigo-400 font-bold border-b border-dashed border-indigo-400/50 cursor-help pb-[1px] hover:text-indigo-300 hover:border-indigo-300 transition-colors">
+              {kioskOrchestratorIp || '127.0.0.1'}
+            </span>
+            {/* Tooltip for hover */}
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-50">
+              <div className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-[10px] py-1.5 px-3 rounded-lg shadow-xl font-mono whitespace-nowrap">
+                <span className="text-zinc-500 font-semibold uppercase tracking-wider block text-[8px] mb-0.5 text-center">Ключевая фраза (Токен)</span>
+                <span className="text-amber-400 font-bold">{connectionKeyphrase || 'unknown'}</span>
+              </div>
+              <div className="w-2 h-2 bg-zinc-900 border-r border-b border-zinc-800 rotate-45 -mt-1" />
+            </div>
+          </div>
+        </footer>
+      )}
+
       {/* Network Settings Modal */}
       {showNetworkModal && (
         <NetworkSettingsModal onClose={() => setShowNetworkModal(false)} />
@@ -356,11 +384,15 @@ export default function App() {
                 <input
                   type="text"
                   required
+                  list="app-orchestrator-ips"
                   placeholder="e.g. 192.168.222.2 (IP accessible to edge nodes)"
                   value={orchestratorIp}
                   onChange={(e) => setOrchestratorIp(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
                 />
+                <datalist id="app-orchestrator-ips">
+                  {availableIps.map(ip => <option key={ip} value={ip} />)}
+                </datalist>
                 <p className="text-[10px] text-zinc-500 mt-1">
                   Ensure this is the IP address of this server that edge nodes can reach over the network.
                 </p>
