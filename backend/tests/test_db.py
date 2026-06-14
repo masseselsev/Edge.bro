@@ -224,5 +224,49 @@ def test_get_all_history(db_session):
     assert test_records[1].archive_name == "test-archive-old"
 
 
+def test_backup_group_relations(db_session):
+    """
+    Verify creating a BackupGroup and assigning a Node to it.
+    """
+    group = models.BackupGroup(
+        name="test-group-01",
+        interval="weekly",
+        target_week=1,
+        start_time="02:00",
+        end_time="05:00",
+        concurrency_limit=3,
+        randomize_days=True
+    )
+    db_session.add(group)
+    db_session.commit()
+    db_session.refresh(group)
+    
+    assert group.id is not None
+    assert group.name == "test-group-01"
+
+    node = models.Node(
+        hostname="test-node-in-group",
+        ip_address="192.168.1.120",
+        ssh_port=22,
+        status="READY",
+        group_id=group.id,
+        backup_paused=False,
+        backup_today=False,
+        missed_window=False,
+        cpu_info="Intel Core i7",
+        memory_info="16GB",
+        edge_version="2026.3.0",
+        notes="Important server"
+    )
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+
+    assert node.group_id == group.id
+    assert node.cpu_info == "Intel Core i7"
+    assert node.notes == "Important server"
+
+
+
 
 

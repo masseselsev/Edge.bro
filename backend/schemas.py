@@ -21,6 +21,25 @@ class SettingsResponse(SettingsBase):
     class Config:
         from_attributes = True
 
+
+class BackupGroupBase(BaseModel):
+    name: str
+    interval: str  # weekly, monthly, quarterly, yearly
+    target_week: int = 1
+    start_time: str
+    end_time: str
+    concurrency_limit: int = 5
+    randomize_days: bool = True
+
+class BackupGroupCreate(BackupGroupBase):
+    pass
+
+class BackupGroupResponse(BackupGroupBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
 class NodeCreate(BaseModel):
     hostname: str
     ip_address: str
@@ -43,6 +62,18 @@ class NodeResponse(BaseModel):
     os_version: Optional[str] = None
     next_retry_at: Optional[datetime] = None
     repo_size_bytes: Optional[int] = None
+    
+    # Scheduler & Automated Backup fields
+    group_id: Optional[int] = None
+    backup_paused: bool
+    backup_today: bool
+    missed_window: bool
+    
+    # Hardware & Software attributes
+    cpu_info: Optional[str] = None
+    memory_info: Optional[str] = None
+    edge_version: Optional[str] = None
+    notes: Optional[str] = None
 
     class Config:
         from_attributes = True

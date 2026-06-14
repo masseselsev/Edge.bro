@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean
 from sqlalchemy.sql import func
 from database import Base
 
@@ -22,6 +22,22 @@ class Settings(Base):
 
 
 
+class BackupGroup(Base):
+    """
+    BackupGroup model tracking node schedules and allowed time windows.
+    """
+    __tablename__ = 'backup_groups'
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    interval = Column(String, nullable=False)  # weekly, monthly, quarterly, yearly
+    target_week = Column(Integer, default=1, nullable=False)
+    start_time = Column(String, default="02:00", nullable=False)
+    end_time = Column(String, default="05:00", nullable=False)
+    concurrency_limit = Column(Integer, default=5, nullable=False)
+    randomize_days = Column(Boolean, default=True, nullable=False)
+
+
 class Node(Base):
     """
     Node model tracking physical Debian edge node configurations and statuses.
@@ -40,6 +56,18 @@ class Node(Base):
     efi_uuid = Column(String, nullable=True) # Used to maintain exact ESP filesystem UUID during flasher restore
     partition_layout = Column(JSON, nullable=True)
     os_version = Column(String, nullable=True)
+    
+    # Scheduler & Automated Backup fields
+    group_id = Column(Integer, ForeignKey('backup_groups.id'), nullable=True)
+    backup_paused = Column(Boolean, default=False, nullable=False)
+    backup_today = Column(Boolean, default=False, nullable=False)
+    missed_window = Column(Boolean, default=False, nullable=False)
+    
+    # Hardware & Software attributes
+    cpu_info = Column(String, nullable=True)
+    memory_info = Column(String, nullable=True)
+    edge_version = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
 
 
 class BackupHistory(Base):
