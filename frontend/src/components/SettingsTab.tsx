@@ -228,6 +228,63 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
           </div>
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('orchestratorIpLabelSettings')}</label>
+            <DropdownTextInput
+              value={orchestratorIp}
+              onChange={setOrchestratorIp}
+              options={availableIps}
+              placeholder={t('orchestratorIpPlaceholderSettings')}
+            />
+          </div>
+          <div>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 mb-1.5 min-h-[16px]">
+              <label className="block text-xs font-semibold text-zinc-400">{t('systemTimezone')}</label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  id="useLocalTime"
+                  checked={useLocalTime}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setUseLocalTime(checked);
+                    if (checked) {
+                      try {
+                        const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                        if (localTz) {
+                          setTimezone(localTz);
+                        }
+                      } catch (err) {}
+                    }
+                  }}
+                  className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                />
+                <label htmlFor="useLocalTime" className="text-[10px] font-bold text-zinc-500 hover:text-zinc-400 transition-colors uppercase tracking-wider tracking-wide cursor-pointer select-none">
+                  {t('useBrowserLocal')}
+                </label>
+              </div>
+            </div>
+            <SearchableSelect
+              options={timezoneOptions}
+              value={timezone}
+              onChange={setTimezone}
+              disabled={useLocalTime}
+              placeholder={t('selectTimezone')}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('globalExclusionsLabel')}</label>
+          <textarea
+            rows={3}
+            value={globalExclusions}
+            onChange={(e) => setGlobalExclusions(e.target.value)}
+            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm font-mono focus:border-indigo-500 focus:outline-none"
+          />
+        </div>
+
         <div className="p-5 bg-zinc-950/40 border border-zinc-800/80 rounded-xl space-y-4">
           <h4 className="text-xs font-bold text-white uppercase tracking-wider">{t('globalPruning')}</h4>
           <div className="space-y-4">
@@ -325,64 +382,6 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
               </div>
             )}
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('orchestratorIpLabelSettings')}</label>
-            <DropdownTextInput
-              value={orchestratorIp}
-              onChange={setOrchestratorIp}
-              options={availableIps}
-              placeholder={t('orchestratorIpPlaceholderSettings')}
-            />
-          </div>
-          <div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 mb-1.5 min-h-[16px]">
-              <label className="block text-xs font-semibold text-zinc-400">{t('systemTimezone')}</label>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  id="useLocalTime"
-                  checked={useLocalTime}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setUseLocalTime(checked);
-                    if (checked) {
-                      try {
-                        const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                        if (localTz) {
-                          setTimezone(localTz);
-                        }
-                      } catch (err) {}
-                    }
-                  }}
-                  className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
-                />
-                <label htmlFor="useLocalTime" className="text-[10px] font-bold text-zinc-500 hover:text-zinc-400 transition-colors uppercase tracking-wider tracking-wide cursor-pointer select-none">
-                  {t('useBrowserLocal')}
-                </label>
-              </div>
-            </div>
-            <SearchableSelect
-              options={timezoneOptions}
-              value={timezone}
-              onChange={setTimezone}
-              disabled={useLocalTime}
-              placeholder={t('selectTimezone')}
-            />
-          </div>
-        </div>
-
-
-        <div>
-          <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('globalExclusionsLabel')}</label>
-          <textarea
-            rows={3}
-            value={globalExclusions}
-            onChange={(e) => setGlobalExclusions(e.target.value)}
-            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm font-mono focus:border-indigo-500 focus:outline-none"
-          />
         </div>
 
         <div className="border-t border-zinc-800 pt-4 flex items-center justify-between">
