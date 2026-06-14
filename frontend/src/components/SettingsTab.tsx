@@ -335,20 +335,6 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('appLanguageLabel')}</label>
-            <select
-              value={language}
-              onChange={(e) => setLanguageState(e.target.value as Language)}
-              className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
-            >
-              <option value="en">English (EN)</option>
-              <option value="ru">Русский (RU)</option>
-              <option value="uk">Українська (UK)</option>
-            </select>
-          </div>
-        </div>
 
         <div>
           <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('globalExclusionsLabel')}</label>
