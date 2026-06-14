@@ -97,8 +97,13 @@ export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
       const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
       
       if (isNearBottom || isInitialLoad.current) {
-        terminalEndRef.current?.scrollIntoView({ behavior: isInitialLoad.current ? 'auto' : 'smooth' });
-        isInitialLoad.current = false;
+        const timer = setTimeout(() => {
+          terminalEndRef.current?.scrollIntoView({ behavior: isInitialLoad.current ? 'auto' : 'smooth' });
+          if (debugLogs.length > 0) {
+            isInitialLoad.current = false;
+          }
+        }, 50);
+        return () => clearTimeout(timer);
       }
     }
   }, [debugLogs, debugMode]);

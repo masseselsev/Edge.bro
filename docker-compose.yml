@@ -30,6 +30,7 @@ services:
       REDIS_URL: ${REDIS_URL}
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
       ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
+      PYTHONPATH: /app
     volumes:
       - ./backend:/app
       - borg-data:/data/borg
@@ -53,6 +54,7 @@ services:
       REDIS_URL: ${REDIS_URL}
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
       ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
+      PYTHONPATH: /app
     volumes:
       - ./backend:/app
       - /dev:/dev
@@ -76,6 +78,7 @@ services:
       REDIS_URL: ${REDIS_URL}
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
       ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
+      PYTHONPATH: /app
     volumes:
       - ./backend:/app
       - borg-data:/data/borg

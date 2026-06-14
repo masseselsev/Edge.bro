@@ -53,6 +53,12 @@ function LanguageSelector() {
     }
   };
 
+  const flags: Record<Language, string> = {
+    en: '🇬🇧',
+    ru: '🇷🇺',
+    uk: '🇺🇦'
+  };
+
   const labels: Record<Language, string> = {
     en: 'English (EN)',
     ru: 'Русский (RU)',
@@ -65,7 +71,7 @@ function LanguageSelector() {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer outline-none"
       >
-        <Globe2 size={13} className="text-zinc-400" />
+        <span className="text-sm leading-none">{flags[language]}</span>
         <span>{labels[language] || language.toUpperCase()}</span>
         <svg className={`w-3 h-3 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -73,7 +79,7 @@ function LanguageSelector() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-1.5 w-40 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl p-1 z-50 origin-top-right animate-dropdown-in">
+        <div className="absolute right-0 mt-1.5 w-44 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl p-1 z-50 origin-top-right animate-dropdown-in">
           {(['en', 'ru', 'uk'] as Language[]).map((lang) => (
             <button
               key={lang}
@@ -84,7 +90,10 @@ function LanguageSelector() {
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
               }`}
             >
-              <span>{labels[lang]}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm leading-none">{flags[lang]}</span>
+                <span>{labels[lang]}</span>
+              </div>
               {language === lang && <span className="text-[10px] text-indigo-450">✓</span>}
             </button>
           ))}
@@ -277,7 +286,7 @@ function AppContent() {
               <div>
                 <h1 className="text-base font-bold text-white tracking-tight leading-none flex items-center gap-2">
                   <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded font-mono font-bold text-xs uppercase tracking-wider">Edge B.R.O.</span>
-                  <span className="text-[10px] bg-zinc-800 text-zinc-400 border border-zinc-700 px-1.5 py-0.5 rounded font-mono font-bold">{appVersion}</span>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono font-bold">{appVersion}</span>
                 </h1>
                 <p className="text-[9px] text-zinc-500 font-semibold mt-1.5 uppercase tracking-wider">
                   {language === 'ru' ? 'Оркестратор бэкапа и восстановления Edge' : language === 'uk' ? 'Оркестратор бекапу та відновлення Edge' : 'Edge Backup & Restore Orchestrator'}
@@ -355,7 +364,7 @@ function AppContent() {
                       : 'text-zinc-400 hover:text-zinc-100'
                   }`}
                 >
-                  <Server size={14} /> {t('tabFleet')}
+                  <Server size={14} className="text-indigo-400" /> {t('tabFleet')}
                 </button>
               )}
               {!isKiosk && (
@@ -367,7 +376,7 @@ function AppContent() {
                       : 'text-zinc-400 hover:text-zinc-100'
                   }`}
                 >
-                  <Calendar size={14} /> {t('tabSchedule')}
+                  <Calendar size={14} className="text-indigo-400" /> {t('tabSchedule')}
                 </button>
               )}
               <button
@@ -378,7 +387,7 @@ function AppContent() {
                     : 'text-zinc-400 hover:text-zinc-100'
                 }`}
               >
-                <HardDrive size={14} /> {t('tabFlasher')}
+                <HardDrive size={14} className="text-indigo-400" /> {t('tabFlasher')}
               </button>
               {!isKiosk && (
                 <button
@@ -389,7 +398,7 @@ function AppContent() {
                       : 'text-zinc-400 hover:text-zinc-100'
                   }`}
                 >
-                  <Cpu size={14} /> {t('liveUsbGenerator')}
+                  <Cpu size={14} className="text-indigo-400" /> {t('liveUsbGenerator')}
                 </button>
               )}
               <button
@@ -400,7 +409,7 @@ function AppContent() {
                     : 'text-zinc-400 hover:text-zinc-100'
                 }`}
               >
-                <History size={14} /> {t('tabHistory')}
+                <History size={14} className="text-indigo-400" /> {t('tabHistory')}
               </button>
               <button
                 onClick={() => setActiveTab('logs')}
@@ -410,7 +419,7 @@ function AppContent() {
                     : 'text-zinc-400 hover:text-zinc-100'
                 }`}
               >
-                <Terminal size={14} /> {t('tabLogs')}
+                <Terminal size={14} className="text-indigo-400" /> {t('tabLogs')}
               </button>
               {!isKiosk && (
                 <button
@@ -421,7 +430,7 @@ function AppContent() {
                       : 'text-zinc-400 hover:text-zinc-100'
                   }`}
                 >
-                  <Gear size={14} /> {t('tabSettings')}
+                  <Gear size={14} className="text-indigo-400" /> {t('tabSettings')}
                 </button>
               )}
             </nav>
