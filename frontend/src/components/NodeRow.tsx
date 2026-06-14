@@ -173,7 +173,7 @@ export function NodeRow({
       <td className="px-4 py-2.5 text-right flex flex-wrap items-center justify-end gap-2 text-zinc-300 font-sans">
         <button
           onClick={onShowDetails}
-          className="px-2.5 py-1.5 text-xs font-semibold bg-zinc-800 hover:bg-zinc-750 text-slate-200 border border-zinc-700/80 rounded hover:text-indigo-400 transition-colors"
+          className="px-2.5 py-1.5 text-xs font-semibold bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700/80 rounded hover:text-indigo-400 transition-colors"
         >
           {t('nodeDetails')}
         </button>

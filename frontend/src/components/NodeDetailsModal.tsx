@@ -192,28 +192,28 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
   if (!node) {
     return (
-      <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 flex items-center gap-3">
+      <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 flex items-center gap-3">
           <RefreshCw className="h-6 w-6 text-indigo-400 animate-spin" />
-          <span className="text-slate-200">Loading node details...</span>
+          <span className="text-zinc-200">Loading node details...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-modal-in">
+    <div className="fixed inset-0 bg-zinc-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-modal-in">
         {/* Header */}
-        <div className="flex justify-between items-center p-5 border-b border-slate-800">
+        <div className="flex justify-between items-center p-5 border-b border-zinc-800">
           <div>
-            <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+            <h3 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
               <Database className="h-5 w-5 text-indigo-400" />
               {node.hostname}
             </h3>
-            <p className="text-xs text-slate-400 font-mono mt-0.5">{node.ip_address}:{node.ssh_port}</p>
+            <p className="text-xs text-zinc-400 font-mono mt-0.5">{node.ip_address}:{node.ssh_port}</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200 p-1 rounded-md hover:bg-slate-800 transition">
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition">
             <X className="h-6 w-6" />
           </button>
         </div>
@@ -222,41 +222,41 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Hardware Specs Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-slate-950/40 border border-slate-800/80 rounded-lg p-3.5 flex items-center gap-3">
+            <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
               <Cpu className="h-8 w-8 text-cyan-400/90" />
               <div>
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">{t('cpu')}</span>
-                <span className="text-sm font-semibold text-slate-200 truncate max-w-[150px] block" title={node.cpu_info || 'UNKNOWN'}>
+                <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('cpu')}</span>
+                <span className="text-sm font-semibold text-zinc-200 truncate max-w-[150px] block" title={node.cpu_info || 'UNKNOWN'}>
                   {node.cpu_info || 'Generic CPU'}
                 </span>
               </div>
             </div>
 
-            <div className="bg-slate-950/40 border border-slate-800/80 rounded-lg p-3.5 flex items-center gap-3">
+            <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
               <MemIcon className="h-8 w-8 text-purple-400/90" />
               <div>
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">{t('memory')}</span>
-                <span className="text-sm font-semibold text-slate-200 block">
+                <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('memory')}</span>
+                <span className="text-sm font-semibold text-zinc-200 block">
                   {node.memory_info || 'Unknown RAM'}
                 </span>
               </div>
             </div>
 
-            <div className="bg-slate-950/40 border border-slate-800/80 rounded-lg p-3.5 flex items-center gap-3">
+            <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
               <HardDrive className="h-8 w-8 text-amber-400/90" />
               <div>
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">Disk Drive</span>
-                <span className="text-sm font-semibold text-slate-200 block">
+                <span className="text-[10px] uppercase font-bold text-zinc-500 block">Disk Drive</span>
+                <span className="text-sm font-semibold text-zinc-200 block">
                   {node.disk_type}
                 </span>
               </div>
             </div>
 
-            <div className="bg-slate-950/40 border border-slate-800/80 rounded-lg p-3.5 flex items-center gap-3">
+            <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
               <Info className="h-8 w-8 text-emerald-400/90" />
               <div>
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">{t('edgeVersion')}</span>
-                <span className="text-sm font-semibold text-slate-200 block">
+                <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('edgeVersion')}</span>
+                <span className="text-sm font-semibold text-zinc-200 block">
                   {node.edge_version || 'UNKNOWN'}
                 </span>
               </div>
@@ -266,21 +266,21 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Scheduling and actions */}
             <div className="lg:col-span-2 space-y-4">
-              <div className="bg-slate-950/30 border border-slate-800/80 rounded-xl p-5 space-y-4">
-                <h4 className="font-bold text-slate-200 text-sm border-b border-slate-800 pb-2 flex items-center gap-1.5">
+              <div className="bg-zinc-950/30 border border-zinc-800/80 rounded-xl p-5 space-y-4">
+                <h4 className="font-bold text-zinc-200 text-sm border-b border-zinc-800 pb-2 flex items-center gap-1.5">
                   <Calendar className="h-4.5 w-4.5 text-indigo-400" />
                   Scheduler Configurations
                 </h4>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
                       {t('backupGroup')}
                     </label>
                     <select
                       value={groupId}
                       onChange={(e) => handleGroupAssign(Number(e.target.value))}
-                      className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
+                      className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:border-indigo-500"
                     >
                       <option value={0}>{t('noGroup')}</option>
                       {groups.map(g => (
@@ -290,7 +290,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="block text-xs font-semibold text-slate-400">Status Tags</span>
+                    <span className="block text-xs font-semibold text-zinc-400">Status Tags</span>
                     <div className="flex gap-2.5">
                       {node.backup_paused ? (
                         <span className="px-2 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md text-xs font-semibold">
@@ -333,7 +333,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                   <button
                     onClick={handleBackupToday}
                     disabled={triggeringAction || node.backup_paused || node.backup_today}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-lg text-sm font-semibold transition shadow-md shadow-indigo-900/10"
+                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-lg text-sm font-semibold transition shadow-md shadow-indigo-900/10"
                   >
                     <Calendar className="h-4 w-4" />
                     {t('backupToday')}
@@ -342,7 +342,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                   <button
                     onClick={handleProvision}
                     disabled={triggeringAction}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700/80 rounded-lg text-sm font-semibold transition hover:text-indigo-400"
+                    className="flex items-center gap-1.5 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700/80 rounded-lg text-sm font-semibold transition hover:text-indigo-400"
                   >
                     <RefreshCw className="h-4 w-4" />
                     {t('reprovision')}
@@ -352,9 +352,9 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
             </div>
 
             {/* Notes Section */}
-            <div className="bg-slate-950/30 border border-slate-800/80 rounded-xl p-5 flex flex-col justify-between">
+            <div className="bg-zinc-950/30 border border-zinc-800/80 rounded-xl p-5 flex flex-col justify-between">
               <div className="space-y-3">
-                <h4 className="font-bold text-slate-200 text-sm border-b border-slate-800 pb-2 flex items-center gap-1.5">
+                <h4 className="font-bold text-zinc-200 text-sm border-b border-zinc-800 pb-2 flex items-center gap-1.5">
                   <Edit className="h-4.5 w-4.5 text-indigo-400" />
                   {t('notes')}
                 </h4>
@@ -363,7 +363,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder={t('notesPlaceholder')}
                   rows={4}
-                  className="w-full p-3 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 text-sm resize-none"
+                  className="w-full p-3 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-indigo-500 text-sm resize-none"
                 />
               </div>
               <button
@@ -378,16 +378,16 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           </div>
 
           {/* Backup History Datatable */}
-          <div className="bg-slate-950/30 border border-slate-800/80 rounded-xl p-5 space-y-4">
-            <h4 className="font-bold text-slate-200 text-sm border-b border-slate-800 pb-2 flex items-center gap-1.5">
+          <div className="bg-zinc-950/30 border border-zinc-800/80 rounded-xl p-5 space-y-4">
+            <h4 className="font-bold text-zinc-200 text-sm border-b border-zinc-800 pb-2 flex items-center gap-1.5">
               <History className="h-4.5 w-4.5 text-indigo-400" />
               Backup History & Archives
             </h4>
             
-            <div className="overflow-x-auto rounded-lg border border-slate-800">
+            <div className="overflow-x-auto rounded-lg border border-zinc-800">
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
-                  <tr className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                  <tr className="bg-zinc-950 text-zinc-400 font-semibold border-b border-zinc-800">
                     <th className="p-3">Archive Name</th>
                     <th className="p-3">Date & Time (UTC)</th>
                     <th className="p-3">Original Size</th>
@@ -398,7 +398,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                 </thead>
                 <tbody>
                   {history.map((row) => (
-                    <tr key={row.id} className="border-b border-slate-800/80 hover:bg-slate-850/30 text-slate-200">
+                    <tr key={row.id} className="border-b border-zinc-800/80 hover:bg-zinc-850/30 text-zinc-200">
                       <td className="p-3 font-mono text-xs">{row.archive_name}</td>
                       <td className="p-3 font-mono text-xs">
                         {new Date(row.timestamp).toLocaleString(language === 'ru' ? 'ru-RU' : language === 'uk' ? 'uk-UA' : 'en-US')}
@@ -414,14 +414,14 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                           {row.status}
                         </span>
                       </td>
-                      <td className="p-3 max-w-[200px] truncate text-slate-400" title={row.comment || ''}>
+                      <td className="p-3 max-w-[200px] truncate text-zinc-400" title={row.comment || ''}>
                         {row.comment || '-'}
                       </td>
                     </tr>
                   ))}
                   {history.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="p-6 text-center text-slate-500">
+                      <td colSpan={6} className="p-6 text-center text-zinc-500">
                         No backup snapshots executed yet.
                       </td>
                     </tr>

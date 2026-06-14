@@ -161,11 +161,11 @@ export default function ScheduleTab() {
     <div className="space-y-8 animate-fade-in p-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-100 flex items-center gap-2">
+          <h2 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
             <Calendar className="h-6 w-6 text-indigo-400" />
             {t('tabSchedule')}
           </h2>
-          <p className="text-slate-400 mt-1">
+          <p className="text-zinc-400 mt-1">
             Manage automated backup groups, scheduling policies, and execution windows.
           </p>
         </div>
@@ -179,8 +179,8 @@ export default function ScheduleTab() {
       </div>
 
       {/* Scheduler Planned Loads */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-md space-y-6">
-        <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2 border-b border-slate-800 pb-3">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-md space-y-6">
+        <h3 className="text-lg font-semibold text-zinc-200 flex items-center gap-2 border-b border-zinc-800 pb-3">
           <Activity className="h-5 w-5 text-indigo-400 animate-pulse" />
           {t('schedulerLoad')}
         </h3>
@@ -189,12 +189,12 @@ export default function ScheduleTab() {
           {/* Day Load Grid (24 Hour Markers) */}
           <div className="flex flex-col h-full space-y-3">
             <div className="flex justify-between items-center h-5">
-              <span className="text-sm font-medium text-slate-300">{t('hourlyLoad')}</span>
-              <button onClick={fetchData} className="text-slate-400 hover:text-slate-200">
+              <span className="text-sm font-medium text-zinc-300">{t('hourlyLoad')}</span>
+              <button onClick={fetchData} className="text-zinc-400 hover:text-zinc-200">
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            <div className="flex-1 flex flex-col justify-center p-4 bg-slate-950/50 rounded-lg border border-slate-800/80">
+            <div className="flex-1 flex flex-col justify-center p-4 bg-zinc-950/50 rounded-lg border border-zinc-800/80">
               <div className="grid grid-cols-8 gap-2.5 justify-items-center">
                 {loadData.day_load.map((count, hr) => {
                   const color = getDayMarkerColor(count);
@@ -210,7 +210,7 @@ export default function ScheduleTab() {
                         {hr}
                       </div>
                       {/* Tooltip */}
-                      <div className="absolute bottom-full mb-1.5 hidden group-hover:block bg-slate-900 text-slate-100 text-xs py-1 px-2.5 rounded shadow-lg whitespace-nowrap border border-slate-800 z-10 font-mono">
+                      <div className="absolute bottom-full mb-1.5 hidden group-hover:block bg-zinc-900 text-zinc-100 text-xs py-1 px-2.5 rounded shadow-lg whitespace-nowrap border border-zinc-800 z-10 font-mono">
                         {hr.toString().padStart(2, '0')}:00 - {count} {t('backups')}
                       </div>
                     </div>
@@ -218,7 +218,7 @@ export default function ScheduleTab() {
                 })}
               </div>
             </div>
-            <div className="flex justify-between items-center text-xs text-slate-500 font-mono h-5">
+            <div className="flex justify-between items-center text-xs text-zinc-500 font-mono h-5">
               <span>0 = Green</span>
               <div className="flex items-center gap-1.5">
                 <input
@@ -226,7 +226,7 @@ export default function ScheduleTab() {
                   min={1}
                   value={dayThreshold}
                   onChange={(e) => handleDayThresholdChange(Number(e.target.value))}
-                  className="w-12 px-1 py-0.5 bg-slate-950 border border-slate-800 rounded text-slate-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
+                  className="w-12 px-1 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
                 />
                 <span>= Red</span>
               </div>
@@ -236,22 +236,22 @@ export default function ScheduleTab() {
           {/* Week Load Grid (7 Days) */}
           <div className="flex flex-col h-full space-y-3">
             <div className="flex justify-between items-center h-5">
-              <span className="text-sm font-medium text-slate-300 block">{t('weeklyLoad')}</span>
+              <span className="text-sm font-medium text-zinc-300 block">{t('weeklyLoad')}</span>
             </div>
-            <div className="flex-1 flex flex-col justify-center p-4 bg-slate-950/50 rounded-lg border border-slate-800/80">
+            <div className="flex-1 flex flex-col justify-center p-4 bg-zinc-950/50 rounded-lg border border-zinc-800/80">
               <div className="grid grid-cols-7 gap-2">
                 {loadData.week_load.map((count, idx) => {
                   const color = getWeekMarkerColor(count);
                   return (
                     <div key={idx} className="group relative flex flex-col items-center gap-1.5">
-                      <span className="text-xs text-slate-400 font-medium">{getDayOfWeekName(idx)}</span>
+                      <span className="text-xs text-zinc-400 font-medium">{getDayOfWeekName(idx)}</span>
                       <div
                         className="h-20 w-full rounded-md flex items-center justify-center text-xs font-bold text-white transition-all hover:scale-105"
                         style={{ backgroundColor: color }}
                       >
                         {count}
                       </div>
-                      <div className="absolute bottom-full mb-1.5 hidden group-hover:block bg-slate-900 text-slate-100 text-xs py-1 px-2.5 rounded shadow-lg whitespace-nowrap border border-slate-800 z-10 font-mono">
+                      <div className="absolute bottom-full mb-1.5 hidden group-hover:block bg-zinc-900 text-zinc-100 text-xs py-1 px-2.5 rounded shadow-lg whitespace-nowrap border border-zinc-800 z-10 font-mono">
                         {getDayOfWeekName(idx)}: {count} {t('backups')}
                       </div>
                     </div>
@@ -259,7 +259,7 @@ export default function ScheduleTab() {
                 })}
               </div>
             </div>
-            <div className="flex justify-between items-center text-xs text-slate-500 font-mono h-5">
+            <div className="flex justify-between items-center text-xs text-zinc-500 font-mono h-5">
               <span>0 = Green</span>
               <div className="flex items-center gap-1.5">
                 <input
@@ -267,7 +267,7 @@ export default function ScheduleTab() {
                   min={1}
                   value={weekThreshold}
                   onChange={(e) => handleWeekThresholdChange(Number(e.target.value))}
-                  className="w-12 px-1 py-0.5 bg-slate-950 border border-slate-800 rounded text-slate-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
+                  className="w-12 px-1 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
                 />
                 <span>= Red</span>
               </div>
@@ -277,22 +277,22 @@ export default function ScheduleTab() {
           {/* Month Load Grid (4 Weeks) */}
           <div className="flex flex-col h-full space-y-3">
             <div className="flex justify-between items-center h-5">
-              <span className="text-sm font-medium text-slate-300 block">{t('monthlyLoad')}</span>
+              <span className="text-sm font-medium text-zinc-300 block">{t('monthlyLoad')}</span>
             </div>
-            <div className="flex-1 flex flex-col justify-center p-4 bg-slate-950/50 rounded-lg border border-slate-800/80">
+            <div className="flex-1 flex flex-col justify-center p-4 bg-zinc-950/50 rounded-lg border border-zinc-800/80">
               <div className="grid grid-cols-4 gap-3">
                 {loadData.month_load.map((count, idx) => {
                   const color = getMonthMarkerColor(count);
                   return (
                     <div key={idx} className="group relative flex flex-col items-center gap-1.5 w-full">
-                      <span className="text-xs text-slate-400 font-medium">W{idx + 1}</span>
+                      <span className="text-xs text-zinc-400 font-medium">W{idx + 1}</span>
                       <div
                         className="w-full h-20 rounded-md flex items-center justify-center text-xs font-bold text-white transition-all hover:scale-105"
                         style={{ backgroundColor: color }}
                       >
                         {count}
                       </div>
-                      <div className="absolute bottom-full mb-1.5 hidden group-hover:block bg-slate-900 text-slate-100 text-xs py-1 px-2.5 rounded shadow-lg whitespace-nowrap border border-slate-800 z-10 font-mono">
+                      <div className="absolute bottom-full mb-1.5 hidden group-hover:block bg-zinc-900 text-zinc-100 text-xs py-1 px-2.5 rounded shadow-lg whitespace-nowrap border border-zinc-800 z-10 font-mono">
                         Week {idx + 1}: {count} {t('backups')}
                       </div>
                     </div>
@@ -300,7 +300,7 @@ export default function ScheduleTab() {
                 })}
               </div>
             </div>
-            <div className="flex justify-between items-center text-xs text-slate-500 font-mono h-5">
+            <div className="flex justify-between items-center text-xs text-zinc-500 font-mono h-5">
               <span>0 = Green</span>
               <div className="flex items-center gap-1.5">
                 <input
@@ -308,7 +308,7 @@ export default function ScheduleTab() {
                   min={1}
                   value={monthThreshold}
                   onChange={(e) => handleMonthThresholdChange(Number(e.target.value))}
-                  className="w-12 px-1 py-0.5 bg-slate-950 border border-slate-800 rounded text-slate-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
+                  className="w-12 px-1 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
                 />
                 <span>= Red</span>
               </div>
@@ -324,22 +324,22 @@ export default function ScheduleTab() {
           return (
             <div
               key={group.id}
-              className="bg-slate-900 border border-slate-800 hover:border-slate-700/80 transition-all rounded-xl p-5 shadow-lg flex flex-col justify-between"
+              className="bg-zinc-900 border border-zinc-800 hover:border-zinc-700/80 transition-all rounded-2xl p-5 shadow-lg flex flex-col justify-between"
             >
               <div>
                 <div className="flex justify-between items-start">
-                  <h4 className="text-lg font-bold text-slate-100">{group.name}</h4>
+                  <h4 className="text-lg font-bold text-zinc-100">{group.name}</h4>
                   <div className="flex gap-1">
                     <button
                       onClick={() => handleOpenEdit(group)}
-                      className="p-1.5 text-slate-400 hover:text-indigo-400 rounded-md hover:bg-slate-800 transition"
+                      className="p-1.5 text-zinc-400 hover:text-indigo-400 rounded-md hover:bg-zinc-800 transition"
                       title={t('editGroup')}
                     >
                       <Edit2 className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteGroup(group.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-400 rounded-md hover:bg-slate-800 transition"
+                      className="p-1.5 text-zinc-400 hover:text-rose-400 rounded-md hover:bg-zinc-800 transition"
                       title={t('deleteNodeConfirm')}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -349,37 +349,37 @@ export default function ScheduleTab() {
 
                 <div className="mt-4 space-y-2.5 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-slate-400">{t('interval')}:</span>
-                    <span className="font-semibold text-slate-200 uppercase">{t(group.interval)}</span>
+                    <span className="text-zinc-400">{t('interval')}:</span>
+                    <span className="font-semibold text-zinc-200 uppercase">{t(group.interval)}</span>
                   </div>
                   {group.interval !== 'weekly' && (
                     <div className="flex justify-between">
-                      <span className="text-slate-400">{t('targetWeek')}:</span>
-                      <span className="font-semibold text-slate-200">Week {group.target_week}</span>
+                      <span className="text-zinc-400">{t('targetWeek')}:</span>
+                      <span className="font-semibold text-zinc-200">Week {group.target_week}</span>
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Execution Window:</span>
-                    <span className="font-semibold text-slate-200 font-mono">
+                    <span className="text-zinc-400">Execution Window:</span>
+                    <span className="font-semibold text-zinc-200 font-mono">
                       {group.start_time} - {group.end_time}{' '}
-                      <span className="text-xs text-slate-400 font-sans">
+                      <span className="text-xs text-zinc-400 font-sans">
                         ({group.timezone === 'Browser Local' ? t('useBrowserLocal') : group.timezone})
                       </span>
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">{t('concurrencyLimit')}:</span>
-                    <span className="font-semibold text-slate-200">{group.concurrency_limit} nodes</span>
+                    <span className="text-zinc-400">{t('concurrencyLimit')}:</span>
+                    <span className="font-semibold text-zinc-200">{group.concurrency_limit} nodes</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Distribution:</span>
-                    <span className="font-semibold text-slate-200">
+                    <span className="text-zinc-400">Distribution:</span>
+                    <span className="font-semibold text-zinc-200">
                       {group.randomize_days ? 'Staggered over Week' : 'Single Day Launch'}
                     </span>
                   </div>
-                  <div className="flex flex-col gap-1 pt-1.5 border-t border-slate-800/50 mt-1.5">
-                    <span className="text-xs text-slate-500 font-semibold uppercase">{t('retentionPolicy')}:</span>
-                    <span className="text-xs font-medium text-slate-300">
+                  <div className="flex flex-col gap-1 pt-1.5 border-t border-zinc-800/50 mt-1.5">
+                    <span className="text-xs text-zinc-500 font-semibold uppercase">{t('retentionPolicy')}:</span>
+                    <span className="text-xs font-medium text-zinc-300">
                       {group.override_retention ? (
                         group.retention_policy ? (
                           group.retention_policy.type === 'interval' ? (
@@ -398,7 +398,7 @@ export default function ScheduleTab() {
                           )
                         ) : 'None'
                       ) : (
-                        <span className="text-slate-400 italic">{t('retentionInherit')}</span>
+                        <span className="text-zinc-400 italic">{t('retentionInherit')}</span>
                       )}
                     </span>
                   </div>
@@ -406,14 +406,14 @@ export default function ScheduleTab() {
               </div>
 
               {/* Status and manual run */}
-              <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-between">
+              <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between">
                 <div className="flex gap-4">
                   <div className="text-xs">
-                    <span className="text-slate-500 block uppercase font-semibold">Active Nodes</span>
+                    <span className="text-zinc-500 block uppercase font-semibold">Active Nodes</span>
                     <span className="text-emerald-400 font-bold text-sm">{stats.active}</span>
                   </div>
                   <div className="text-xs">
-                    <span className="text-slate-500 block uppercase font-semibold">Paused Nodes</span>
+                    <span className="text-zinc-500 block uppercase font-semibold">Paused Nodes</span>
                     <span className="text-amber-400 font-bold text-sm">{stats.paused}</span>
                   </div>
                 </div>
@@ -424,7 +424,7 @@ export default function ScheduleTab() {
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow transition duration-150 ${
                     stats.active > 0
                       ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/30'
-                      : 'bg-slate-800 text-slate-500 border border-slate-800 cursor-not-allowed'
+                      : 'bg-zinc-800 text-zinc-500 border border-zinc-800 cursor-not-allowed'
                   }`}
                 >
                   <Play className="h-3.5 w-3.5 fill-current" />
@@ -436,7 +436,7 @@ export default function ScheduleTab() {
         })}
 
         {groups.length === 0 && (
-          <div className="col-span-full border-2 border-dashed border-slate-850 bg-slate-900/30 rounded-xl p-8 text-center text-slate-400">
+          <div className="col-span-full border-2 border-dashed border-zinc-850 bg-zinc-900/30 rounded-xl p-8 text-center text-zinc-400">
             No backup groups created yet. Click "{t('createGroup')}" in the top right to start scheduling.
           </div>
         )}

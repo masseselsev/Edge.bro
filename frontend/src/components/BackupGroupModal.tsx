@@ -209,14 +209,14 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md shadow-2xl overflow-hidden animate-modal-in">
-        <div className="flex justify-between items-center p-5 border-b border-slate-800">
-          <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+    <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-modal-in">
+        <div className="flex justify-between items-center p-5 border-b border-zinc-800">
+          <h3 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
             <Calendar className="h-5 w-5 text-indigo-400" />
             {editingGroup ? t('editGroup') : t('createGroup')}
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -230,7 +230,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
             )}
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                 {t('groupName')}
               </label>
               <input
@@ -238,20 +238,20 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 placeholder-slate-655 focus:outline-none focus:border-indigo-500"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder-zinc-655 focus:outline-none focus:border-indigo-500"
                 placeholder="e.g. Nightly Production Group"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                   {t('interval')}
                 </label>
                 <select
                   value={interval}
                   onChange={(e) => setIntervalVal(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                 >
                   <option value="weekly">{t('weekly')}</option>
                   <option value="monthly">{t('monthly')}</option>
@@ -262,13 +262,13 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
 
               {interval !== 'weekly' && (
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                     {t('targetWeek')}
                   </label>
                   <select
                     value={targetWeek}
                     onChange={(e) => setTargetWeek(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                   >
                     <option value={1}>Week 1</option>
                     <option value={2}>Week 2</option>
@@ -281,7 +281,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
 
             <div>
               <div className="flex justify-between items-center mb-1.5 min-h-[16px]">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400">
                   {t('groupTimezone')}
                 </label>
                 <div className="flex items-center gap-1.5">
@@ -301,9 +301,9 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                         } catch (err) {}
                       }
                     }}
-                    className="rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                    className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
                   />
-                  <label htmlFor="useLocalTimeGroup" className="text-[10px] font-bold text-slate-500 hover:text-slate-400 transition-colors uppercase tracking-wider cursor-pointer select-none">
+                  <label htmlFor="useLocalTimeGroup" className="text-[10px] font-bold text-zinc-500 hover:text-zinc-400 transition-colors uppercase tracking-wider cursor-pointer select-none">
                     {t('useBrowserLocal')}
                   </label>
                 </div>
@@ -319,7 +319,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                   {t('startTime')}
                 </label>
                 <input
@@ -327,12 +327,12 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                   required
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                   {t('endTime')}
                 </label>
                 <input
@@ -340,13 +340,13 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                   required
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                 {t('concurrencyLimit')}
               </label>
               <input
@@ -356,7 +356,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                 max={20}
                 value={concurrencyLimit}
                 onChange={(e) => setConcurrencyLimit(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500 font-mono"
               />
             </div>
 
@@ -366,35 +366,35 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                 id="randomize_days"
                 checked={randomizeDays}
                 onChange={(e) => setRandomizeDays(e.target.checked)}
-                className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 border-slate-800 rounded bg-slate-950"
+                className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 border-zinc-800 rounded bg-zinc-950"
               />
-              <label htmlFor="randomize_days" className="text-sm font-medium text-slate-350 cursor-pointer">
+              <label htmlFor="randomize_days" className="text-sm font-medium text-zinc-350 cursor-pointer">
                 {t('randomizeDays')}
               </label>
             </div>
 
-            <div className="border-t border-slate-800 my-4 pt-4">
+            <div className="border-t border-zinc-800 my-4 pt-4">
               <div className="flex items-center gap-3">
                 <input
                   type="checkbox"
                   id="override_retention"
                   checked={overrideRetention}
                   onChange={(e) => setOverrideRetention(e.target.checked)}
-                  className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 border-slate-800 rounded bg-slate-950"
+                  className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 border-zinc-800 rounded bg-zinc-950"
                 />
-                <label htmlFor="override_retention" className="text-sm font-medium text-slate-350 cursor-pointer">
+                <label htmlFor="override_retention" className="text-sm font-medium text-zinc-350 cursor-pointer">
                   {t('overrideRetention')}
                 </label>
               </div>
 
               {overrideRetention && (
-                <div className="mt-4 space-y-4 p-4 bg-slate-950/40 border border-slate-800/85 rounded-xl animate-fade-in">
+                <div className="mt-4 space-y-4 p-4 bg-zinc-950/40 border border-zinc-800/85 rounded-xl animate-fade-in">
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">{t('retentionType')}</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">{t('retentionType')}</label>
                     <select
                       value={policyType}
                       onChange={(e) => setPolicyType(e.target.value as any)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                     >
                       <option value="interval">{t('policyInterval')}</option>
                       <option value="count">{t('policyCount')}</option>
@@ -405,36 +405,36 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                   {policyType === 'interval' && (
                     <div className="grid grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('keepDaily')}</label>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">{t('keepDaily')}</label>
                         <input
                           type="number"
                           required
                           min={0}
                           value={policyKeepDaily}
                           onChange={(e) => setPolicyKeepDaily(parseInt(e.target.value) || 0)}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('keepWeekly')}</label>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">{t('keepWeekly')}</label>
                         <input
                           type="number"
                           required
                           min={0}
                           value={policyKeepWeekly}
                           onChange={(e) => setPolicyKeepWeekly(parseInt(e.target.value) || 0)}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('keepMonthly')}</label>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">{t('keepMonthly')}</label>
                         <input
                           type="number"
                           required
                           min={0}
                           value={policyKeepMonthly}
                           onChange={(e) => setPolicyKeepMonthly(parseInt(e.target.value) || 0)}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                         />
                       </div>
                     </div>
@@ -442,14 +442,14 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
 
                   {policyType === 'count' && (
                     <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">{t('keepLastLabel')}</label>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">{t('keepLastLabel')}</label>
                       <input
                         type="number"
                         required
                         min={1}
                         value={policyKeepLast}
                         onChange={(e) => setPolicyKeepLast(parseInt(e.target.value) || 1)}
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                       />
                     </div>
                   )}
@@ -457,22 +457,22 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                   {policyType === 'timeframe' && (
                     <div className="grid grid-cols-3 gap-3">
                       <div className="col-span-2">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">{t('keepWithinLabel')}</label>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">{t('keepWithinLabel')}</label>
                         <input
                           type="number"
                           required
                           min={1}
                           value={policyWithinValue}
                           onChange={(e) => setPolicyWithinValue(parseInt(e.target.value) || 1)}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">&nbsp;</label>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">&nbsp;</label>
                         <select
                           value={policyWithinUnit}
                           onChange={(e) => setPolicyWithinUnit(e.target.value as any)}
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                         >
                           <option value="d">{t('timeframeUnitDays')}</option>
                           <option value="w">{t('timeframeUnitWeeks')}</option>
@@ -487,14 +487,14 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
             </div>
 
             {/* Resource Limits Section */}
-            <div className="border-t border-slate-800 my-4 pt-4 space-y-4">
-              <h4 className="text-sm font-semibold text-slate-200">
+            <div className="border-t border-zinc-800 my-4 pt-4 space-y-4">
+              <h4 className="text-sm font-semibold text-zinc-200">
                 {t('resourceLimits')}
               </h4>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                     {t('uploadRateLimit')}
                   </label>
                   <input
@@ -502,22 +502,22 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                     min={0}
                     value={uploadRateLimit}
                     onChange={(e) => setUploadRateLimit(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500 font-mono"
                     placeholder="e.g. 250"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                  <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
                     {t('uploadRateLimitHint')}
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                     {t('compressionMode')}
                   </label>
                   <select
                     value={compression}
                     onChange={(e) => setCompression(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
                   >
                     <option value="">{t('compressionGlobalDefault')}</option>
                     <option value="none">none</option>
@@ -532,7 +532,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                     {t('checkpointInterval')}
                   </label>
                   <input
@@ -540,16 +540,16 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                     min={0}
                     value={checkpointInterval}
                     onChange={(e) => setCheckpointInterval(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500 font-mono"
                     placeholder="e.g. 1800"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                  <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
                     {t('checkpointAuto')}
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                     {t('cpuQuota')}
                   </label>
                   <input
@@ -558,10 +558,10 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                     max={400}
                     value={cpuQuota}
                     onChange={(e) => setCpuQuota(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500 font-mono"
                     placeholder="e.g. 50"
                   />
-                  <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                  <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
                     {t('cpuQuotaHint')}
                   </p>
                 </div>
@@ -569,11 +569,11 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 p-5 border-t border-slate-800 bg-slate-900/50">
+          <div className="flex justify-end gap-3 p-5 border-t border-zinc-800 bg-zinc-900/50">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-medium transition duration-150"
+              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg font-medium transition duration-150"
             >
               {t('cancel')}
             </button>
