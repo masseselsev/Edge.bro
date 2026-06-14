@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  scrollbar-gutter: stable;
+}
+
 /* Kiosk Adaptive Scaling for HD-Ready, Full-HD, 2K, and 4K displays */
 @media (max-width: 1366px) {
   body {
