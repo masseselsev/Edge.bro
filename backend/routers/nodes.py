@@ -96,7 +96,15 @@ def get_nodes(db: Session = Depends(get_db)):
             "partition_layout": node.partition_layout,
             "os_version": node.os_version,
             "next_retry_at": None,
-            "repo_size_bytes": repo_size
+            "repo_size_bytes": repo_size,
+            "group_id": node.group_id,
+            "backup_paused": node.backup_paused,
+            "backup_today": node.backup_today,
+            "missed_window": node.missed_window,
+            "cpu_info": node.cpu_info,
+            "memory_info": node.memory_info,
+            "edge_version": node.edge_version,
+            "notes": node.notes
         }
         if node.status == "OFFLINE":
             try:
@@ -320,3 +328,66 @@ def trigger_provision(node_id: int, payload: schemas.NodeProvisionRequest, db: S
 
     task = run_bootstrap_task.delay(node.id, payload.bootstrap_password, payload.bootstrap_user)
     return {"message": "Provisioning triggered.", "task_id": task.id}
+
+
+@router.post("/{node_id}/notes")
+def update_node_notes(node_id: int, payload: schemas.NodeNotesUpdate, db: Session = Depends(get_db)):
+    """
+    Updates the notes field for a specific node.
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    
+    node.notes = payload.notes
+    db.commit()
+    return {"message": "Node notes updated successfully."}
+
+
+@router.post("/{node_id}/backup-today")
+def trigger_backup_today(node_id: int, db: Session = Depends(get_db)):
+    """
+    Sets backup_today to True for the node.
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    
+    node.backup_today = True
+    db.commit()
+    return {"message": "Node queued for backup execution during the next window."}
+
+
+@router.post("/{node_id}/toggle-pause")
+def toggle_backup_pause(node_id: int, db: Session = Depends(get_db)):
+    """
+    Toggles backup_paused state for the node.
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    
+    node.backup_paused = not node.backup_paused
+    db.commit()
+    return {"message": "Backup status toggled successfully.", "backup_paused": node.backup_paused}
+
+
+@router.post("/{node_id}/assign-group/{group_id}")
+def assign_node_group(node_id: int, group_id: int, db: Session = Depends(get_db)):
+    """
+    Assigns the node to a backup group. If group_id is 0 or negative, unassigns the node.
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    
+    if group_id <= 0:
+        node.group_id = None
+    else:
+        group = db.query(models.BackupGroup).filter(models.BackupGroup.id == group_id).first()
+        if not group:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup group not found.")
+        node.group_id = group_id
+        
+    db.commit()
+    return {"message": "Node group assignment updated successfully."}

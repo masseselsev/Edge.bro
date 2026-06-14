@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react';
-import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut } from 'lucide-react';
+import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
 import HistoryTab from './components/HistoryTab';
 import LogsTab from './components/LogsTab';
 import SettingsTab from './components/SettingsTab';
 import ClientIsoTab from './components/ClientIsoTab';
+import ScheduleTab from './components/ScheduleTab';
 import TaskLogsModal from './components/TaskLogsModal';
 import NetworkSettingsModal from './components/NetworkSettingsModal';
 import { DropdownTextInput } from './components/SearchableSelect';
 import { TranslationProvider, useTranslation } from './context/TranslationContext';
 
-type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings' | 'clientiso';
+type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings' | 'clientiso' | 'schedule';
 
 function AppContent() {
   const { t } = useTranslation();
@@ -169,6 +170,8 @@ function AppContent() {
         return <LogsTab onViewLogs={handleViewLogs} timezone={tz} />;
       case 'settings':
         return <SettingsTab onSettingsUpdated={setSettings} />;
+      case 'schedule':
+        return <ScheduleTab />;
       case 'fleet':
       default:
         return <FleetTab onViewLogs={handleViewLogs} timezone={tz} />;
@@ -205,6 +208,18 @@ function AppContent() {
                 }`}
               >
                 <Server size={14} /> {t('tabFleet')}
+              </button>
+            )}
+            {!isKiosk && (
+              <button
+                onClick={() => setActiveTab('schedule')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'schedule'
+                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                    : 'text-zinc-400 hover:text-zinc-100'
+                }`}
+              >
+                <Calendar size={14} /> {t('tabSchedule')}
               </button>
             )}
             <button

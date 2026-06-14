@@ -110,6 +110,12 @@ def run_ansible_playbook(
                     parsed_data["hostname"] = line.split("HOSTNAME:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
                 if "OS_VERSION:" in line:
                     parsed_data["os_version"] = line.split("OS_VERSION:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                if "CPU_INFO:" in line:
+                    parsed_data["cpu_info"] = line.split("CPU_INFO:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                if "MEM_INFO:" in line:
+                    parsed_data["memory_info"] = line.split("MEM_INFO:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                if "EDGE_VERSION:" in line:
+                    parsed_data["edge_version"] = line.split("EDGE_VERSION:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
                 if "PARTITION_LAYOUT_JSON:" in line:
                     parsed_data["partition_layout_raw"] = line.split("PARTITION_LAYOUT_JSON:")[1].strip()
 

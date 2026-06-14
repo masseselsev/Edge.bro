@@ -48,7 +48,7 @@ celery_app = Celery("tasks", broker=REDIS_URL, backend=REDIS_URL)
 import redis
 redis_client = redis.Redis.from_url(REDIS_URL)
 
-# Configure Celery Beat for global daily prune and auto retry
+# Configure Celery Beat for global daily prune, auto retry, and scheduler tick
 celery_app.conf.beat_schedule = {
     'global-daily-prune-task': {
         'task': 'backup_tasks.global_daily_prune',
@@ -57,6 +57,10 @@ celery_app.conf.beat_schedule = {
     'auto-retry-bootstrap-task': {
         'task': 'tasks.auto_retry_bootstrap_task',
         'schedule': 300.0, # Run every 5 minutes (300 seconds)
+    },
+    'scheduler-tick-task': {
+        'task': 'tasks.scheduler_tick',
+        'schedule': 60.0, # Run every minute
     },
 }
 celery_app.conf.timezone = 'UTC'
@@ -290,6 +294,24 @@ def auto_retry_bootstrap_task() -> Dict[str, Any]:
         return {"status": "SUCCESS", "triggered_node_ids": triggered}
     except Exception as e:
         logger.error(f"Error in auto_retry_bootstrap_task: {str(e)}")
+        return {"status": "FAILED", "error": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task
+def scheduler_tick() -> Dict[str, Any]:
+    """
+    Periodic task running every minute to evaluate node scheduling rules
+    and trigger automated backups within defined group windows.
+    """
+    from core.scheduler import check_and_trigger_backups
+    db: Session = SessionLocal()
+    try:
+        check_and_trigger_backups(db)
+        return {"status": "SUCCESS"}
+    except Exception as e:
+        logger.error(f"Error in scheduler_tick: {str(e)}")
         return {"status": "FAILED", "error": str(e)}
     finally:
         db.close()

@@ -15,6 +15,10 @@ export interface Node {
   efi_uuid: string | null;
   os_version: string | null;
   next_retry_at: string | null;
+  group_id: number | null;
+  backup_paused: boolean;
+  backup_today: boolean;
+  missed_window: boolean;
 }
 
 interface NodeRowProps {
@@ -27,6 +31,8 @@ interface NodeRowProps {
   onShowProvision: (node: Node) => void;
   onShowBackup: (node: Node) => void;
   onDeleteNode: (nodeId: number, hostname: string) => void;
+  onShowDetails: () => void;
+  groupName: string | null;
   timezone?: string;
 }
 
@@ -40,6 +46,8 @@ export function NodeRow({
   onShowProvision,
   onShowBackup,
   onDeleteNode,
+  onShowDetails,
+  groupName,
   timezone,
 }: NodeRowProps) {
   const { t } = useTranslation();
@@ -127,7 +135,28 @@ export function NodeRow({
       )}
       <td className="px-4 py-2.5 font-semibold text-white flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 24}px` }}>
         <Cpu size={14} className="text-zinc-500" />
-        <span className="break-all" title={node.hostname}>{node.hostname}</span>
+        <div className="flex flex-col">
+          <span className="break-all" title={node.hostname}>{node.hostname}</span>
+          {groupName && (
+            <span className="text-[10px] text-indigo-400 font-semibold leading-none mt-1">
+              Group: {groupName}
+            </span>
+          )}
+          {(node.backup_paused || node.missed_window) && (
+            <div className="flex gap-1 mt-1">
+              {node.backup_paused && (
+                <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold">
+                  {t('paused')}
+                </span>
+              )}
+              {node.missed_window && (
+                <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded text-[9px] font-bold animate-pulse">
+                  {t('missedWindow')}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </td>
       <td className="px-4 py-2.5 text-zinc-400">{node.ip_address}:{node.ssh_port}</td>
       <td className="px-4 py-2.5 text-zinc-300 font-medium text-xs">{node.os_version || t('unknown')}</td>
@@ -141,7 +170,13 @@ export function NodeRow({
       <td className="px-4 py-2.5 text-zinc-400">
         {node.last_backup ? formatDate(node.last_backup, timezone) : t('never')}
       </td>
-      <td className="px-4 py-2.5 text-right flex flex-wrap items-center justify-end gap-2 text-zinc-300">
+      <td className="px-4 py-2.5 text-right flex flex-wrap items-center justify-end gap-2 text-zinc-300 font-sans">
+        <button
+          onClick={onShowDetails}
+          className="px-2.5 py-1.5 text-xs font-semibold bg-zinc-800 hover:bg-zinc-750 text-slate-200 border border-zinc-700/80 rounded hover:text-indigo-400 transition-colors"
+        >
+          {t('nodeDetails')}
+        </button>
         <button
           onClick={() => onShowBackup(node)}
           disabled={node.status !== 'READY'}

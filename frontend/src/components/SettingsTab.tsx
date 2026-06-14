@@ -13,9 +13,13 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
   const { t, setLanguage } = useTranslation();
   const [sshPort, setSshPort] = useState(12345);
   const [repoPath, setRepoPath] = useState('/data/borg');
-  const [keepDaily, setKeepDaily] = useState(7);
-  const [keepWeekly, setKeepWeekly] = useState(4);
-  const [keepMonthly, setKeepMonthly] = useState(6);
+  const [policyType, setPolicyType] = useState<'interval' | 'count' | 'timeframe'>('interval');
+  const [policyKeepDaily, setPolicyKeepDaily] = useState(7);
+  const [policyKeepWeekly, setPolicyKeepWeekly] = useState(4);
+  const [policyKeepMonthly, setPolicyKeepMonthly] = useState(6);
+  const [policyKeepLast, setPolicyKeepLast] = useState(5);
+  const [policyWithinValue, setPolicyWithinValue] = useState(3);
+  const [policyWithinUnit, setPolicyWithinUnit] = useState<'d' | 'w' | 'm' | 'y'>('m');
   const [globalExclusions, setGlobalExclusions] = useState('/dev/*,/proc/*,/sys/*,/run/*,/mnt/*');
   const [orchestratorIp, setOrchestratorIp] = useState('');
   const [availableIps, setAvailableIps] = useState<string[]>([]);
@@ -58,9 +62,23 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
       .then(data => {
         setSshPort(data.borg_ssh_port);
         setRepoPath(data.borg_repo_path);
-        setKeepDaily(data.keep_daily);
-        setKeepWeekly(data.keep_weekly);
-        setKeepMonthly(data.keep_monthly);
+        
+        const rp = data.retention_policy;
+        if (rp) {
+          setPolicyType(rp.type || 'interval');
+          setPolicyKeepDaily(rp.keep_daily ?? 7);
+          setPolicyKeepWeekly(rp.keep_weekly ?? 4);
+          setPolicyKeepMonthly(rp.keep_monthly ?? 6);
+          setPolicyKeepLast(rp.keep_last ?? 5);
+          setPolicyWithinValue(rp.within_value ?? 3);
+          setPolicyWithinUnit(rp.within_unit || 'm');
+        } else {
+          setPolicyType('interval');
+          setPolicyKeepDaily(data.keep_daily ?? 7);
+          setPolicyKeepWeekly(data.keep_weekly ?? 4);
+          setPolicyKeepMonthly(data.keep_monthly ?? 6);
+        }
+
         setGlobalExclusions(data.global_exclusions);
         setOrchestratorIp(data.orchestrator_ip || '');
         setAvailableIps(data.available_ips || []);
@@ -99,13 +117,22 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
         body: JSON.stringify({
           borg_ssh_port: sshPort,
           borg_repo_path: repoPath,
-          keep_daily: keepDaily,
-          keep_weekly: keepWeekly,
-          keep_monthly: keepMonthly,
+          keep_daily: policyKeepDaily,
+          keep_weekly: policyKeepWeekly,
+          keep_monthly: policyKeepMonthly,
           global_exclusions: globalExclusions,
           orchestrator_ip: orchestratorIp,
           timezone: savedTz,
-          language: language
+          language: language,
+          retention_policy: {
+            type: policyType,
+            keep_daily: policyKeepDaily,
+            keep_weekly: policyKeepWeekly,
+            keep_monthly: policyKeepMonthly,
+            keep_last: policyKeepLast,
+            within_value: policyWithinValue,
+            within_unit: policyWithinUnit
+          }
         })
       });
       if (res.ok) {
@@ -164,37 +191,100 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
 
         <div>
           <h4 className="text-xs font-bold text-white uppercase tracking-wider mt-4 mb-2">{t('globalPruning')}</h4>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-4">
             <div>
-              <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepDaily')}</label>
-              <input
-                type="number"
-                required
-                value={keepDaily}
-                onChange={(e) => setKeepDaily(parseInt(e.target.value))}
+              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('retentionType')}</label>
+              <select
+                value={policyType}
+                onChange={(e) => setPolicyType(e.target.value as any)}
                 className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
-              />
+              >
+                <option value="interval">{t('policyInterval')}</option>
+                <option value="count">{t('policyCount')}</option>
+                <option value="timeframe">{t('policyTimeframe')}</option>
+              </select>
             </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepWeekly')}</label>
-              <input
-                type="number"
-                required
-                value={keepWeekly}
-                onChange={(e) => setKeepWeekly(parseInt(e.target.value))}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepMonthly')}</label>
-              <input
-                type="number"
-                required
-                value={keepMonthly}
-                onChange={(e) => setKeepMonthly(parseInt(e.target.value))}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
-              />
-            </div>
+
+            {policyType === 'interval' && (
+              <div className="grid grid-cols-3 gap-3 animate-fade-in">
+                <div>
+                  <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepDaily')}</label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    value={policyKeepDaily}
+                    onChange={(e) => setPolicyKeepDaily(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepWeekly')}</label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    value={policyKeepWeekly}
+                    onChange={(e) => setPolicyKeepWeekly(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepMonthly')}</label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    value={policyKeepMonthly}
+                    onChange={(e) => setPolicyKeepMonthly(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {policyType === 'count' && (
+              <div className="animate-fade-in">
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('keepLastLabel')}</label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  value={policyKeepLast}
+                  onChange={(e) => setPolicyKeepLast(parseInt(e.target.value) || 1)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+            )}
+
+            {policyType === 'timeframe' && (
+              <div className="grid grid-cols-3 gap-3 animate-fade-in">
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('keepWithinLabel')}</label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    value={policyWithinValue}
+                    onChange={(e) => setPolicyWithinValue(parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">&nbsp;</label>
+                  <select
+                    value={policyWithinUnit}
+                    onChange={(e) => setPolicyWithinUnit(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                  >
+                    <option value="d">{t('timeframeUnitDays')}</option>
+                    <option value="w">{t('timeframeUnitWeeks')}</option>
+                    <option value="m">{t('timeframeUnitMonths')}</option>
+                    <option value="y">{t('timeframeUnitYears')}</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

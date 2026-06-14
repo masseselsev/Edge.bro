@@ -377,6 +377,31 @@ export default function ScheduleTab() {
                       {group.randomize_days ? 'Staggered over Week' : 'Single Day Launch'}
                     </span>
                   </div>
+                  <div className="flex flex-col gap-1 pt-1.5 border-t border-slate-800/50 mt-1.5">
+                    <span className="text-xs text-slate-500 font-semibold uppercase">{t('retentionPolicy')}:</span>
+                    <span className="text-xs font-medium text-slate-300">
+                      {group.override_retention ? (
+                        group.retention_policy ? (
+                          group.retention_policy.type === 'interval' ? (
+                            `Daily: ${group.retention_policy.keep_daily}, Weekly: ${group.retention_policy.keep_weekly}, Monthly: ${group.retention_policy.keep_monthly}`
+                          ) : group.retention_policy.type === 'count' ? (
+                            t('retentionSummaryLast').replace('{count}', String(group.retention_policy.keep_last))
+                          ) : (
+                            t('retentionSummaryWithin')
+                              .replace('{value}', String(group.retention_policy.within_value))
+                              .replace('{unit}', t(
+                                group.retention_policy.within_unit === 'd' ? 'timeframeUnitDays' :
+                                group.retention_policy.within_unit === 'w' ? 'timeframeUnitWeeks' :
+                                group.retention_policy.within_unit === 'm' ? 'timeframeUnitMonths' :
+                                'timeframeUnitYears'
+                              ).toLowerCase())
+                          )
+                        ) : 'None'
+                      ) : (
+                        <span className="text-slate-400 italic">{t('retentionInherit')}</span>
+                      )}
+                    </span>
+                  </div>
                 </div>
               </div>
 

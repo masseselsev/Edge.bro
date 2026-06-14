@@ -57,7 +57,9 @@ def create_group(payload: schemas.BackupGroupCreate, db: Session = Depends(get_d
         end_time=payload.end_time,
         concurrency_limit=payload.concurrency_limit,
         randomize_days=payload.randomize_days,
-        timezone=payload.timezone
+        timezone=payload.timezone,
+        override_retention=payload.override_retention,
+        retention_policy=payload.retention_policy.model_dump() if payload.retention_policy else None
     )
     db.add(group)
     db.commit()
@@ -81,6 +83,8 @@ def update_group(group_id: int, payload: schemas.BackupGroupCreate, db: Session 
     group.concurrency_limit = payload.concurrency_limit
     group.randomize_days = payload.randomize_days
     group.timezone = payload.timezone
+    group.override_retention = payload.override_retention
+    group.retention_policy = payload.retention_policy.model_dump() if payload.retention_policy else None
     
     db.commit()
     db.refresh(group)

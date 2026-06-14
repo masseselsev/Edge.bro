@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Settings as Gear, ShieldAlert, CheckCircle, RefreshCw, AlertTriangle, Trash2, Search, Folder, FolderOpen, ChevronRight, ChevronDown, Cpu, Square, CheckSquare } from 'lucide-react';
 import { AddNodeModal, ProvisionNodeModal, BackupCommentModal } from './NodeModals';
 import { NodeRow } from './NodeRow';
+import NodeDetailsModal from './NodeDetailsModal';
 import { useTranslation } from '../context/TranslationContext';
 
 interface Node {
@@ -16,6 +17,15 @@ interface Node {
   efi_uuid: string | null;
   os_version: string | null;
   next_retry_at: string | null;
+  group_id: number | null;
+  backup_paused: boolean;
+  backup_today: boolean;
+  missed_window: boolean;
+}
+
+interface BackupGroup {
+  id: number;
+  name: string;
 }
 
 interface FleetTabProps {
@@ -26,12 +36,14 @@ interface FleetTabProps {
 export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
   const { t } = useTranslation();
   const [nodes, setNodes] = useState<Node[]>([]);
+  const [groups, setGroups] = useState<BackupGroup[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
   const [showProvisionModal, setShowProvisionModal] = useState<Node | null>(null);
   const [showBackupModal, setShowBackupModal] = useState<Node | null>(null);
+  const [selectedNodeDetails, setSelectedNodeDetails] = useState<number | null>(null);
 
   // Search & Grouping State
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,9 +62,18 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
   const fetchNodes = async () => {
     try {
-      const res = await fetch('/api/nodes');
-      const data = await res.json();
-      setNodes(data);
+      const [nRes, gRes] = await Promise.all([
+        fetch('/api/nodes'),
+        fetch('/api/groups')
+      ]);
+      if (nRes.ok) {
+        const data = await nRes.json();
+        setNodes(data);
+      }
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        setGroups(gData);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -234,21 +255,27 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     );
   });
 
-  const renderNodeRow = (node: Node, depth = 0) => (
-    <NodeRow
-      key={node.id}
-      node={node}
-      depth={depth}
-      bulkDeleteMode={bulkDeleteMode}
-      selectedNodeIds={selectedNodeIds}
-      onSelectNode={handleSelectNode}
-      onRunPrepare={runPrepare}
-      onShowProvision={setShowProvisionModal}
-      onShowBackup={setShowBackupModal}
-      onDeleteNode={handleDeleteNode}
-      timezone={timezone}
-    />
-  );
+  const renderNodeRow = (node: Node, depth = 0) => {
+    const group = groups.find(g => g.id === node.group_id);
+    const groupName = group ? group.name : null;
+    return (
+      <NodeRow
+        key={node.id}
+        node={node}
+        depth={depth}
+        bulkDeleteMode={bulkDeleteMode}
+        selectedNodeIds={selectedNodeIds}
+        onSelectNode={handleSelectNode}
+        onRunPrepare={runPrepare}
+        onShowProvision={setShowProvisionModal}
+        onShowBackup={setShowBackupModal}
+        onDeleteNode={handleDeleteNode}
+        onShowDetails={() => setSelectedNodeDetails(node.id)}
+        groupName={groupName}
+        timezone={timezone}
+      />
+    );
+  };
 
   const renderGroupedContent = () => {
     if (grouping === 'flat') {
@@ -484,6 +511,13 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
       {showAddModal && <AddNodeModal onClose={() => setShowAddModal(false)} onSubmit={handleAddNode} submitting={submitting} error={error} />}
       {showProvisionModal && <ProvisionNodeModal node={showProvisionModal} onClose={() => setShowProvisionModal(null)} onSubmit={handleProvisionNode} submitting={provSubmitting} error={provError} />}
       {showBackupModal && <BackupCommentModal node={showBackupModal} onClose={() => setShowBackupModal(null)} onSubmit={runBackup} />}
+      {selectedNodeDetails !== null && (
+        <NodeDetailsModal
+          nodeId={selectedNodeDetails}
+          onClose={() => setSelectedNodeDetails(null)}
+          onRefreshList={fetchNodes}
+        />
+      )}
     </div>
   );
 }

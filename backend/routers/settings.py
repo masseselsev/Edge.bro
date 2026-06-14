@@ -67,6 +67,7 @@ def update_settings(payload: schemas.SettingsBase, db: Session = Depends(get_db)
     settings.orchestrator_ip = payload.orchestrator_ip
     settings.timezone = payload.timezone
     settings.language = payload.language
+    settings.retention_policy = payload.retention_policy.model_dump() if payload.retention_policy else None
     db.commit()
     settings.available_ips = get_local_ips()
     return settings

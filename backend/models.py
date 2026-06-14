@@ -19,6 +19,7 @@ class Settings(Base):
     orchestrator_ip = Column(String, default='', nullable=False)
     timezone = Column(String, default='Browser Local', nullable=False)
     language = Column(String, default='en', nullable=False)
+    retention_policy = Column(JSON, nullable=True)
 
 
 
@@ -36,6 +37,9 @@ class BackupGroup(Base):
     end_time = Column(String, default="05:00", nullable=False)
     concurrency_limit = Column(Integer, default=5, nullable=False)
     randomize_days = Column(Boolean, default=True, nullable=False)
+    timezone = Column(String, default='UTC', nullable=False)
+    override_retention = Column(Boolean, default=False, nullable=False)
+    retention_policy = Column(JSON, nullable=True)
 
 
 class Node(Base):

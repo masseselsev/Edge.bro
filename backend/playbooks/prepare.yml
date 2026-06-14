@@ -48,9 +48,38 @@
               exit 1
             fi
 
+            # Read CPU details
+            cpu_info=$(lscpu | grep 'Model name' | cut -d: -f2- | xargs || true)
+            if [ -z "$cpu_info" ]; then
+              cpu_info=$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | xargs || echo "Generic CPU")
+            fi
+
+            # Read Memory details (RAM)
+            mem_info=$(free -h | awk '/^Mem:/ {print $2}' || echo "Unknown RAM")
+
+            # Read EDGE Version from MOTD
+            edge_ver="UNKNOWN"
+            if [ -f /etc/motd ]; then
+              edge_ver=$(awk '/EDGE:/ {getline; print; exit}' /etc/motd | xargs || echo "UNKNOWN")
+            fi
+
+            # Read OS Version
+            os_ver="Unknown"
+            if [ -f /etc/os-release ]; then
+              . /etc/os-release
+              os_ver="$NAME $VERSION_ID"
+            elif [ -f /etc/debian_version ]; then
+              os_ver="Debian $(cat /etc/debian_version)"
+            fi
+
             echo "DISK_TYPE:$disk_type"
             echo "EFI_UUID:$efi_uuid"
             echo "INTERFACE:$net_iface"
+            echo "CPU_INFO:$cpu_info"
+            echo "MEM_INFO:$mem_info"
+            echo "EDGE_VERSION:$edge_ver"
+            echo "OS_VERSION:$os_ver"
+            echo "HOSTNAME:$(hostname)"
             echo "PART_ROOT:$part_root"
             echo "PART_BOOT:$part_boot"
             echo "PART_EFI:$part_efi"

@@ -15,6 +15,7 @@ from routers import restore as restore_router
 from routers import stats as stats_router
 from routers import iso as iso_router
 from routers import network as network_router
+from routers import groups as groups_router
 
 app = FastAPI(title="Borg Backup & Bare-Metal Restore Orchestrator API", version=VERSION)
 
@@ -102,3 +103,4 @@ app.include_router(restore_router.router)
 app.include_router(stats_router.router)
 app.include_router(iso_router.router, prefix="/api/iso", tags=["Client ISO"])
 app.include_router(network_router.router, prefix="/api")
+app.include_router(groups_router.router)

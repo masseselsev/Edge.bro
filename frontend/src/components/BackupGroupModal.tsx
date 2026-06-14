@@ -14,6 +14,16 @@ export interface BackupGroup {
   concurrency_limit: number;
   randomize_days: boolean;
   timezone: string;
+  override_retention?: boolean;
+  retention_policy?: {
+    type: string;
+    keep_daily: number;
+    keep_weekly: number;
+    keep_monthly: number;
+    keep_last: number;
+    within_value: number;
+    within_unit: string;
+  } | null;
 }
 
 interface BackupGroupModalProps {
@@ -36,6 +46,14 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
   const [randomizeDays, setRandomizeDays] = useState(true);
   const [useLocalTime, setUseLocalTime] = useState(false);
   const [timezone, setTimezone] = useState('UTC');
+  const [overrideRetention, setOverrideRetention] = useState(false);
+  const [policyType, setPolicyType] = useState<'interval' | 'count' | 'timeframe'>('interval');
+  const [policyKeepDaily, setPolicyKeepDaily] = useState(7);
+  const [policyKeepWeekly, setPolicyKeepWeekly] = useState(4);
+  const [policyKeepMonthly, setPolicyKeepMonthly] = useState(6);
+  const [policyKeepLast, setPolicyKeepLast] = useState(5);
+  const [policyWithinValue, setPolicyWithinValue] = useState(3);
+  const [policyWithinUnit, setPolicyWithinUnit] = useState<'d' | 'w' | 'm' | 'y'>('m');
   const [error, setError] = useState('');
 
   // Generate timezone options
@@ -65,6 +83,26 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
       setEndTime(editingGroup.end_time);
       setConcurrencyLimit(editingGroup.concurrency_limit);
       setRandomizeDays(editingGroup.randomize_days);
+      setOverrideRetention(!!editingGroup.override_retention);
+      
+      const rp = editingGroup.retention_policy;
+      if (rp) {
+        setPolicyType(rp.type as any || 'interval');
+        setPolicyKeepDaily(rp.keep_daily ?? 7);
+        setPolicyKeepWeekly(rp.keep_weekly ?? 4);
+        setPolicyKeepMonthly(rp.keep_monthly ?? 6);
+        setPolicyKeepLast(rp.keep_last ?? 5);
+        setPolicyWithinValue(rp.within_value ?? 3);
+        setPolicyWithinUnit(rp.within_unit as any || 'm');
+      } else {
+        setPolicyType('interval');
+        setPolicyKeepDaily(7);
+        setPolicyKeepWeekly(4);
+        setPolicyKeepMonthly(6);
+        setPolicyKeepLast(5);
+        setPolicyWithinValue(3);
+        setPolicyWithinUnit('m');
+      }
       
       const gTz = editingGroup.timezone || 'UTC';
       if (gTz === 'Browser Local') {
@@ -88,6 +126,14 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
       setRandomizeDays(true);
       setUseLocalTime(false);
       setTimezone('UTC');
+      setOverrideRetention(false);
+      setPolicyType('interval');
+      setPolicyKeepDaily(7);
+      setPolicyKeepWeekly(4);
+      setPolicyKeepMonthly(6);
+      setPolicyKeepLast(5);
+      setPolicyWithinValue(3);
+      setPolicyWithinUnit('m');
     }
     setError('');
   }, [editingGroup, isOpen]);
@@ -104,7 +150,17 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
       end_time: endTime,
       concurrency_limit: concurrencyLimit,
       randomize_days: randomizeDays,
-      timezone: useLocalTime ? 'Browser Local' : timezone
+      timezone: useLocalTime ? 'Browser Local' : timezone,
+      override_retention: overrideRetention,
+      retention_policy: overrideRetention ? {
+        type: policyType,
+        keep_daily: policyKeepDaily,
+        keep_weekly: policyKeepWeekly,
+        keep_monthly: policyKeepMonthly,
+        keep_last: policyKeepLast,
+        within_value: policyWithinValue,
+        within_unit: policyWithinUnit
+      } : null
     };
 
     try {
@@ -144,158 +200,273 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {error && (
-            <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm p-3 rounded-lg">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-              {t('groupName')}
-            </label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 placeholder-slate-655 focus:outline-none focus:border-indigo-500"
-              placeholder="e.g. Nightly Production Group"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                {t('interval')}
-              </label>
-              <select
-                value={interval}
-                onChange={(e) => setIntervalVal(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
-              >
-                <option value="weekly">{t('weekly')}</option>
-                <option value="monthly">{t('monthly')}</option>
-                <option value="quarterly">{t('quarterly')}</option>
-                <option value="yearly">{t('yearly')}</option>
-              </select>
-            </div>
-
-            {interval !== 'weekly' && (
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                  {t('targetWeek')}
-                </label>
-                <select
-                  value={targetWeek}
-                  onChange={(e) => setTargetWeek(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value={1}>Week 1</option>
-                  <option value={2}>Week 2</option>
-                  <option value={3}>Week 3</option>
-                  <option value={4}>Week 4</option>
-                </select>
+        <form onSubmit={handleSubmit} className="flex flex-col max-h-[85vh]">
+          <div className="p-5 space-y-4 overflow-y-auto flex-1">
+            {error && (
+              <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm p-3 rounded-lg">
+                {error}
               </div>
             )}
-          </div>
 
-          <div>
-            <div className="flex justify-between items-center mb-1.5 min-h-[16px]">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                {t('groupTimezone')}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                {t('groupName')}
               </label>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  id="useLocalTimeGroup"
-                  checked={useLocalTime}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setUseLocalTime(checked);
-                    if (checked) {
-                      try {
-                        const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                        if (localTz) {
-                          setTimezone(localTz);
-                        }
-                      } catch (err) {}
-                    }
-                  }}
-                  className="rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
-                />
-                <label htmlFor="useLocalTimeGroup" className="text-[10px] font-bold text-slate-500 hover:text-slate-400 transition-colors uppercase tracking-wider cursor-pointer select-none">
-                  {t('useBrowserLocal')}
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 placeholder-slate-655 focus:outline-none focus:border-indigo-500"
+                placeholder="e.g. Nightly Production Group"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  {t('interval')}
                 </label>
+                <select
+                  value={interval}
+                  onChange={(e) => setIntervalVal(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="weekly">{t('weekly')}</option>
+                  <option value="monthly">{t('monthly')}</option>
+                  <option value="quarterly">{t('quarterly')}</option>
+                  <option value="yearly">{t('yearly')}</option>
+                </select>
+              </div>
+
+              {interval !== 'weekly' && (
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                    {t('targetWeek')}
+                  </label>
+                  <select
+                    value={targetWeek}
+                    onChange={(e) => setTargetWeek(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value={1}>Week 1</option>
+                    <option value={2}>Week 2</option>
+                    <option value={3}>Week 3</option>
+                    <option value={4}>Week 4</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1.5 min-h-[16px]">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                  {t('groupTimezone')}
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    id="useLocalTimeGroup"
+                    checked={useLocalTime}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setUseLocalTime(checked);
+                      if (checked) {
+                        try {
+                          const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                          if (localTz) {
+                            setTimezone(localTz);
+                          }
+                        } catch (err) {}
+                      }
+                    }}
+                    className="rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                  />
+                  <label htmlFor="useLocalTimeGroup" className="text-[10px] font-bold text-slate-500 hover:text-slate-400 transition-colors uppercase tracking-wider cursor-pointer select-none">
+                    {t('useBrowserLocal')}
+                  </label>
+                </div>
+              </div>
+              <SearchableSelect
+                options={timezoneOptions}
+                value={timezone}
+                onChange={setTimezone}
+                disabled={useLocalTime}
+                placeholder={t('selectTimezone')}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  {t('startTime')}
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  {t('endTime')}
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                />
               </div>
             </div>
-            <SearchableSelect
-              options={timezoneOptions}
-              value={timezone}
-              onChange={setTimezone}
-              disabled={useLocalTime}
-              placeholder={t('selectTimezone')}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                {t('startTime')}
-              </label>
-              <input
-                type="time"
-                required
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
-              />
-            </div>
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                {t('endTime')}
+                {t('concurrencyLimit')}
               </label>
               <input
-                type="time"
+                type="number"
                 required
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                min={1}
+                max={20}
+                value={concurrencyLimit}
+                onChange={(e) => setConcurrencyLimit(Number(e.target.value))}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
               />
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <input
+                type="checkbox"
+                id="randomize_days"
+                checked={randomizeDays}
+                onChange={(e) => setRandomizeDays(e.target.checked)}
+                className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 border-slate-800 rounded bg-slate-950"
+              />
+              <label htmlFor="randomize_days" className="text-sm font-medium text-slate-350 cursor-pointer">
+                {t('randomizeDays')}
+              </label>
+            </div>
+
+            <div className="border-t border-slate-800 my-4 pt-4">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="override_retention"
+                  checked={overrideRetention}
+                  onChange={(e) => setOverrideRetention(e.target.checked)}
+                  className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 border-slate-800 rounded bg-slate-950"
+                />
+                <label htmlFor="override_retention" className="text-sm font-medium text-slate-350 cursor-pointer">
+                  {t('overrideRetention')}
+                </label>
+              </div>
+
+              {overrideRetention && (
+                <div className="mt-4 space-y-4 p-4 bg-slate-950/40 border border-slate-800/85 rounded-xl animate-fade-in">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">{t('retentionType')}</label>
+                    <select
+                      value={policyType}
+                      onChange={(e) => setPolicyType(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="interval">{t('policyInterval')}</option>
+                      <option value="count">{t('policyCount')}</option>
+                      <option value="timeframe">{t('policyTimeframe')}</option>
+                    </select>
+                  </div>
+
+                  {policyType === 'interval' && (
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('keepDaily')}</label>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={policyKeepDaily}
+                          onChange={(e) => setPolicyKeepDaily(parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('keepWeekly')}</label>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={policyKeepWeekly}
+                          onChange={(e) => setPolicyKeepWeekly(parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('keepMonthly')}</label>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={policyKeepMonthly}
+                          onChange={(e) => setPolicyKeepMonthly(parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {policyType === 'count' && (
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">{t('keepLastLabel')}</label>
+                      <input
+                        type="number"
+                        required
+                        min={1}
+                        value={policyKeepLast}
+                        onChange={(e) => setPolicyKeepLast(parseInt(e.target.value) || 1)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  )}
+
+                  {policyType === 'timeframe' && (
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="col-span-2">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">{t('keepWithinLabel')}</label>
+                        <input
+                          type="number"
+                          required
+                          min={1}
+                          value={policyWithinValue}
+                          onChange={(e) => setPolicyWithinValue(parseInt(e.target.value) || 1)}
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">&nbsp;</label>
+                        <select
+                          value={policyWithinUnit}
+                          onChange={(e) => setPolicyWithinUnit(e.target.value as any)}
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                        >
+                          <option value="d">{t('timeframeUnitDays')}</option>
+                          <option value="w">{t('timeframeUnitWeeks')}</option>
+                          <option value="m">{t('timeframeUnitMonths')}</option>
+                          <option value="y">{t('timeframeUnitYears')}</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-              {t('concurrencyLimit')}
-            </label>
-            <input
-              type="number"
-              required
-              min={1}
-              max={20}
-              value={concurrencyLimit}
-              onChange={(e) => setConcurrencyLimit(Number(e.target.value))}
-              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
-            />
-          </div>
-
-          <div className="flex items-center gap-3 pt-2">
-            <input
-              type="checkbox"
-              id="randomize_days"
-              checked={randomizeDays}
-              onChange={(e) => setRandomizeDays(e.target.checked)}
-              className="h-4.5 w-4.5 text-indigo-600 focus:ring-indigo-500 border-slate-800 rounded bg-slate-950"
-            />
-            <label htmlFor="randomize_days" className="text-sm font-medium text-slate-350 cursor-pointer">
-              {t('randomizeDays')}
-            </label>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+          <div className="flex justify-end gap-3 p-5 border-t border-slate-800 bg-slate-900/50">
             <button
               type="button"
               onClick={onClose}

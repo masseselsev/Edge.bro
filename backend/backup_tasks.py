@@ -14,9 +14,6 @@ from ansible_utils import run_ansible_playbook
 # Re-use logging configuration from tasks
 logger = logging.getLogger(__name__)
 
-# Import helper functions from tasks
-from tasks import log_to_task, fix_repo_permissions
-
 
 @shared_task(bind=True)
 def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
@@ -30,6 +27,7 @@ def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
         Status result dictionary.
     """
     task_id = self.request.id
+    from tasks import log_to_task
     db: Session = SessionLocal()
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
@@ -57,9 +55,16 @@ def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
         node.efi_uuid = res["parsed_data"].get("efi_uuid")
         if "partition_layout" in res["parsed_data"]:
             node.partition_layout = res["parsed_data"]["partition_layout"]
+        if "os_version" in res["parsed_data"]:
+            node.os_version = res["parsed_data"]["os_version"]
+        if "hostname" in res["parsed_data"]:
+            node.hostname = res["parsed_data"]["hostname"]
+        node.cpu_info = res["parsed_data"].get("cpu_info")
+        node.memory_info = res["parsed_data"].get("memory_info")
+        node.edge_version = res["parsed_data"].get("edge_version")
         node.status = "READY"
         db.commit()
-        log_to_task(task_id, f"Auto-prepare finished. Disk type: {node.disk_type}, EFI UUID: {node.efi_uuid}, Interface: {node.network_iface}", status="SUCCESS")
+        log_to_task(task_id, f"Auto-prepare finished. Disk type: {node.disk_type}, EFI UUID: {node.efi_uuid}, Interface: {node.network_iface}, CPU: {node.cpu_info}, RAM: {node.memory_info}, Edge Version: {node.edge_version}", status="SUCCESS")
     else:
         node.status = "NEEDS_FIX"
         db.commit()
@@ -83,6 +88,7 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         Status dictionary.
     """
     task_id = self.request.id
+    from tasks import log_to_task, fix_repo_permissions
     db: Session = SessionLocal()
     node = db.query(Node).filter(Node.id == node_id).first()
     settings = db.query(Settings).first()
@@ -94,6 +100,10 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
     if not node:
         db.close()
         return {"status": "FAILED", "error": "Node not found"}
+
+    import redis
+    redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+    redis_client.setex(f"backup_running:{node.id}", 14400, "1")
 
     task_log = TaskLog(id=task_id, task_type="BACKUP", status="RUNNING", log_output="")
     db.add(task_log)
@@ -202,6 +212,10 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         log_to_task(task_id, f"Exception occurred during backup task: {str(e)}", status="FAILED")
         return {"status": "FAILED", "error": str(e)}
     finally:
+        try:
+            redis_client.delete(f"backup_running:{node.id}")
+        except Exception:
+            pass
         db.close()
 
 
@@ -209,57 +223,97 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
 def global_daily_prune() -> Dict[str, Any]:
     """
     Celery scheduled cron task running at 3:00 AM daily.
-    Executes borg prune on all node repositories locally inside the shared volume.
+    Executes borg prune on a per-node basis using resolved retention policies,
+    then compacts the Borg repository.
     """
+    from models import BackupGroup
+    from tasks import fix_repo_permissions
     db: Session = SessionLocal()
     settings = db.query(Settings).first()
     if not settings:
         settings = Settings()
 
     nodes = db.query(Node).all()
-    results = {}
+    results = {"prunes": {}, "compact": "PENDING"}
 
     repo_path = "/data/borg/fleet"
-    if os.path.exists(repo_path):
-        env = os.environ.copy()
-        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+    if not os.path.exists(repo_path):
+        db.close()
+        return {"error": "Repository path not found"}
+
+    env = os.environ.copy()
+    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+
+    # Pre-fetch groups
+    groups = {g.id: g for g in db.query(BackupGroup).all()}
+
+    for node in nodes:
+        # Resolve policy
+        policy = None
+        group = groups.get(node.group_id) if node.group_id else None
         
-        prune_cmd = [
-            "borg", "prune",
-            "--keep-daily", str(settings.keep_daily),
-            "--keep-weekly", str(settings.keep_weekly),
-            "--keep-monthly", str(settings.keep_monthly),
-            repo_path
-        ]
-        
+        if group and group.override_retention and group.retention_policy:
+            policy = group.retention_policy
+        elif settings.retention_policy:
+            policy = settings.retention_policy
+
+        # Build command parameters
+        prune_cmd = ["borg", "prune", "--prefix", f"{node.hostname}-"]
+
+        if policy:
+            p_type = policy.get("type", "interval")
+            if p_type == "interval":
+                prune_cmd.extend([
+                    "--keep-daily", str(policy.get("keep_daily", 7)),
+                    "--keep-weekly", str(policy.get("keep_weekly", 4)),
+                    "--keep-monthly", str(policy.get("keep_monthly", 6))
+                ])
+            elif p_type == "count":
+                prune_cmd.extend(["--keep-last", str(policy.get("keep_last", 5))])
+            elif p_type == "timeframe":
+                val = policy.get("within_value", 3)
+                unit = policy.get("within_unit", "m")
+                prune_cmd.extend([
+                    "--keep-last", "1",
+                    "--keep-within", f"{val}{unit}"
+                ])
+        else:
+            # Fallback to legacy settings flat columns
+            prune_cmd.extend([
+                "--keep-daily", str(settings.keep_daily),
+                "--keep-weekly", str(settings.keep_weekly),
+                "--keep-monthly", str(settings.keep_monthly)
+            ])
+
+        prune_cmd.append(repo_path)
+
         try:
-            logger.info("Executing daily Borg prune...")
+            logger.info(f"Executing Borg prune for node {node.hostname}...")
             res_prune = subprocess.run(prune_cmd, env=env, capture_output=True, text=True)
             if res_prune.returncode == 0:
-                logger.info("Daily Borg prune executed successfully.")
-                results["prune"] = "SUCCESS"
+                results["prunes"][node.hostname] = "SUCCESS"
             else:
-                logger.error(f"Daily Borg prune failed: {res_prune.stderr}")
-                results["prune"] = f"FAILED: {res_prune.stderr}"
+                logger.error(f"Borg prune failed for node {node.hostname}: {res_prune.stderr}")
+                results["prunes"][node.hostname] = f"FAILED: {res_prune.stderr}"
         except Exception as e:
-            logger.error(f"Exception during daily Borg prune: {str(e)}")
-            results["prune"] = f"ERROR: {str(e)}"
+            logger.error(f"Exception pruning node {node.hostname}: {str(e)}")
+            results["prunes"][node.hostname] = f"ERROR: {str(e)}"
 
-        try:
-            logger.info("Starting Borg repository compaction after prune...")
-            compact_cmd = ["borg", "compact", repo_path]
-            res_compact = subprocess.run(compact_cmd, env=env, capture_output=True, text=True)
-            if res_compact.returncode == 0:
-                logger.info("Successfully compacted Borg repository after daily prune.")
-                results["compact"] = "SUCCESS"
-            else:
-                logger.error(f"Failed to compact Borg repository after daily prune: {res_compact.stderr}")
-                results["compact"] = f"FAILED: {res_compact.stderr}"
-        except Exception as e:
-            logger.error(f"Exception compacting Borg repository: {str(e)}")
-            results["compact"] = f"ERROR: {str(e)}"
+    # Compaction
+    try:
+        logger.info("Starting Borg repository compaction after daily prunes...")
+        compact_cmd = ["borg", "compact", repo_path]
+        res_compact = subprocess.run(compact_cmd, env=env, capture_output=True, text=True)
+        if res_compact.returncode == 0:
+            logger.info("Successfully compacted Borg repository.")
+            results["compact"] = "SUCCESS"
+        else:
+            logger.error(f"Failed to compact Borg repository: {res_compact.stderr}")
+            results["compact"] = f"FAILED: {res_compact.stderr}"
+    except Exception as e:
+        logger.error(f"Exception compacting Borg repository: {str(e)}")
+        results["compact"] = f"ERROR: {str(e)}"
 
-        fix_repo_permissions(repo_path)
-
+    fix_repo_permissions(repo_path)
     db.close()
     return results

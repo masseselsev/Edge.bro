@@ -2,6 +2,16 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 
+class RetentionPolicySchema(BaseModel):
+    type: str = Field(default='interval')  # 'interval', 'count', 'timeframe'
+    keep_daily: int = Field(default=7, ge=0)
+    keep_weekly: int = Field(default=4, ge=0)
+    keep_monthly: int = Field(default=6, ge=0)
+    keep_last: int = Field(default=5, ge=1)
+    within_value: int = Field(default=3, ge=1)
+    within_unit: str = Field(default='m')  # 'd', 'w', 'm', 'y'
+
+
 class SettingsBase(BaseModel):
     borg_ssh_port: int = Field(default=12345, ge=1, le=65535)
     borg_repo_path: str = Field(default='/data/borg')
@@ -12,6 +22,7 @@ class SettingsBase(BaseModel):
     orchestrator_ip: str = Field(default='')
     timezone: str = Field(default='Browser Local')
     language: str = Field(default='en')
+    retention_policy: Optional[RetentionPolicySchema] = None
 
 
 class SettingsResponse(SettingsBase):
@@ -31,6 +42,8 @@ class BackupGroupBase(BaseModel):
     concurrency_limit: int = 5
     randomize_days: bool = True
     timezone: str = Field(default='UTC')
+    override_retention: bool = False
+    retention_policy: Optional[RetentionPolicySchema] = None
 
 class BackupGroupCreate(BackupGroupBase):
     pass

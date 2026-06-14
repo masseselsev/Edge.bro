@@ -332,7 +332,22 @@ export const translations: Record<Language, Record<string, string>> = {
     endTime: 'End Time',
     concurrencyLimit: 'Concurrency Limit',
     randomizeDays: 'Stagger across days of the week',
-    groupBackupNow: 'Backup Group Now'
+    groupBackupNow: 'Backup Group Now',
+    retentionPolicy: 'Retention Policy',
+    overrideRetention: 'Override global retention policy',
+    retentionType: 'Retention Strategy',
+    policyInterval: 'By Time Intervals (Standard)',
+    policyCount: 'By Backup Count (Keep Last N)',
+    policyTimeframe: 'By Timeframe (Keep within period)',
+    keepLastLabel: 'Number of backups to keep',
+    keepWithinLabel: 'Keep backups within timeframe',
+    timeframeUnitDays: 'Days',
+    timeframeUnitWeeks: 'Weeks',
+    timeframeUnitMonths: 'Months',
+    timeframeUnitYears: 'Years',
+    retentionInherit: 'Inherited from global settings',
+    retentionSummaryLast: 'Keep last {count} backups',
+    retentionSummaryWithin: 'Keep within last {value} {unit} (at least 1)'
   },
   ru: {
     // Navigation / Tabs
@@ -664,7 +679,22 @@ export const translations: Record<Language, Record<string, string>> = {
     endTime: 'Время окончания',
     concurrencyLimit: 'Лимит одновременных задач',
     randomizeDays: 'Распределять по дням недели',
-    groupBackupNow: 'Запустить бэкап группы'
+    groupBackupNow: 'Запустить бэкап группы',
+    retentionPolicy: 'Политика удержания бэкапов',
+    overrideRetention: 'Переопределить глобальную политику удержания',
+    retentionType: 'Стратегия удержания',
+    policyInterval: 'По временным интервалам (стандартная)',
+    policyCount: 'По количеству (хранить последние N)',
+    policyTimeframe: 'По сроку (хранить за период)',
+    keepLastLabel: 'Количество сохраняемых бэкапов',
+    keepWithinLabel: 'Хранить бэкапы за последние',
+    timeframeUnitDays: 'дней',
+    timeframeUnitWeeks: 'недель',
+    timeframeUnitMonths: 'месяцев',
+    timeframeUnitYears: 'лет',
+    retentionInherit: 'Унаследовано из глобальных настроек',
+    retentionSummaryLast: 'Хранить последние {count} бэкапов',
+    retentionSummaryWithin: 'Хранить за последние {value} {unit} (минимум 1)'
   },
   uk: {
     // Navigation / Tabs
@@ -996,6 +1026,21 @@ export const translations: Record<Language, Record<string, string>> = {
     endTime: 'Час закінчення',
     concurrencyLimit: 'Ліміт одночасних задач',
     randomizeDays: 'Розподіляти по днях тижня',
-    groupBackupNow: 'Запустити бэкап групи'
+    groupBackupNow: 'Запустити бэкап групи',
+    retentionPolicy: 'Політика утримання бекапів',
+    overrideRetention: 'Перевизначити глобальну політику утримання',
+    retentionType: 'Стратегія утримання',
+    policyInterval: 'За часовими інтервалами (стандартна)',
+    policyCount: 'За кількістю (зберігати останні N)',
+    policyTimeframe: 'За терміном (зберігати за період)',
+    keepLastLabel: 'Кількість збережених бекапів',
+    keepWithinLabel: 'Зберігати бекапи за останні',
+    timeframeUnitDays: 'днів',
+    timeframeUnitWeeks: 'тижнів',
+    timeframeUnitMonths: 'місяців',
+    timeframeUnitYears: 'років',
+    retentionInherit: 'Унаслідовано з глобальних налаштувань',
+    retentionSummaryLast: 'Зберігати останні {count} бекапів',
+    retentionSummaryWithin: 'Зберігати за останні {value} {unit} (мінімум 1)'
   }
 };
