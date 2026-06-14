@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
@@ -53,10 +53,29 @@ function LanguageSelector() {
     }
   };
 
-  const flags: Record<Language, string> = {
-    en: '🇬🇧',
-    ru: '🇷🇺',
-    uk: '🇺🇦'
+  const flags: Record<Language, React.ReactNode> = {
+    en: (
+      <svg className="w-5 h-3.5 rounded-sm shadow-sm inline-block" viewBox="0 0 60 30" style={{verticalAlign: 'middle'}}>
+        <rect width="60" height="30" fill="#012169"/>
+        <path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" strokeWidth="6"/>
+        <path d="M0,0 L60,30 M60,0 L0,30" stroke="#C8102E" strokeWidth="4"/>
+        <path d="M30,0 V30 M0,15 H60" stroke="#fff" strokeWidth="10"/>
+        <path d="M30,0 V30 M0,15 H60" stroke="#C8102E" strokeWidth="6"/>
+      </svg>
+    ),
+    ru: (
+      <svg className="w-5 h-3.5 rounded-sm shadow-sm inline-block" viewBox="0 0 9 6" style={{verticalAlign: 'middle'}}>
+        <rect width="9" height="2" fill="#fff"/>
+        <rect y="2" width="9" height="2" fill="#0039A6"/>
+        <rect y="4" width="9" height="2" fill="#D52B1E"/>
+      </svg>
+    ),
+    uk: (
+      <svg className="w-5 h-3.5 rounded-sm shadow-sm inline-block" viewBox="0 0 3 2" style={{verticalAlign: 'middle'}}>
+        <rect width="3" height="1" fill="#0057B7"/>
+        <rect y="1" width="3" height="1" fill="#FFD700"/>
+      </svg>
+    )
   };
 
   const labels: Record<Language, string> = {
