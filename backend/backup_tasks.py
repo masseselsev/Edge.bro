@@ -46,9 +46,13 @@ def build_borg_create_cmd(
     optionally wrapped in systemd-run --scope for CPU limiting.
     SSH Compression=no because Borg already compresses data chunks.
     """
+    interval = int(os.getenv("SSH_KEEPALIVE_INTERVAL", "30"))
+    count = int(os.getenv("SSH_KEEPALIVE_COUNT", "3"))
+
     borg_rsh = (
         "ssh -i /home/borg/.ssh/id_ed25519 "
-        "-o StrictHostKeyChecking=no -o Compression=no"
+        "-o StrictHostKeyChecking=no -o Compression=no "
+        f"-o ServerAliveInterval={interval} -o ServerAliveCountMax={count}"
     )
     borg_env = f"BORG_RSH='{borg_rsh}' BORG_PASSPHRASE='{borg_passphrase}'"
     borg_create = (
@@ -70,7 +74,10 @@ def build_borg_create_cmd(
         inner_cmd = f"bash -c \"{borg_env} {borg_create}\""
 
     return [
-        "ssh", "-o", "StrictHostKeyChecking=no",
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", f"ServerAliveInterval={interval}",
+        "-o", f"ServerAliveCountMax={count}",
         "-p", str(node_ssh_port),
         "-i", "/root/.ssh/id_ed25519",
         f"root@{node_ip}",
@@ -190,12 +197,18 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
 
     fix_repo_permissions("/data/borg/fleet")
 
+    interval = int(os.getenv("SSH_KEEPALIVE_INTERVAL", "30"))
+    count = int(os.getenv("SSH_KEEPALIVE_COUNT", "3"))
+
     init_cmd = [
-        "ssh", "-o", "StrictHostKeyChecking=no",
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", f"ServerAliveInterval={interval}",
+        "-o", f"ServerAliveCountMax={count}",
         "-p", str(node.ssh_port),
         "-i", "/root/.ssh/id_ed25519",
         f"root@{node.ip_address}",
-        f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg init --encryption=repokey {borg_repo_url}"
+        f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ServerAliveInterval={interval} -o ServerAliveCountMax={count}' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg init --encryption=repokey {borg_repo_url}"
     ]
     log_to_task(task_id, "Checking/Initializing Borg repository...")
     try:

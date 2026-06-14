@@ -344,8 +344,14 @@ def test_checkpoint_calculation_and_command_builder():
     # Ensure correct format and options
     assert cmd_no_cpu[0] == "ssh"
     assert cmd_no_cpu[1] == "-o"
-    assert cmd_no_cpu[3] == "-p"
-    assert cmd_no_cpu[5] == "-i"
+    assert cmd_no_cpu[7] == "-p"
+    assert cmd_no_cpu[9] == "-i"
+
+    # Assert Keepalive options in ssh command list
+    assert "-o" in cmd_no_cpu
+    assert "ServerAliveInterval=30" in cmd_no_cpu
+    assert "ServerAliveCountMax=3" in cmd_no_cpu
+
     # Ensure BORG_PASSPHRASE is in the script run on the host
     inner_bash_cmd = cmd_no_cpu[-1]
     assert "BORG_PASSPHRASE='my-secret-passphrase'" in inner_bash_cmd
@@ -353,6 +359,8 @@ def test_checkpoint_calculation_and_command_builder():
     assert "--checkpoint-interval 204" in inner_bash_cmd
     assert "--compression lz4" in inner_bash_cmd
     assert "systemd-run" not in inner_bash_cmd
+    assert "ServerAliveInterval=30" in inner_bash_cmd
+    assert "ServerAliveCountMax=3" in inner_bash_cmd
 
     # 2.2 With CPU quota
     cmd_with_cpu = build_borg_create_cmd(
