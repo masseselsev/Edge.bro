@@ -189,8 +189,8 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
           </div>
         </div>
 
-        <div>
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider mt-4 mb-2">{t('globalPruning')}</h4>
+        <div className="p-5 bg-zinc-950/40 border border-zinc-800/80 rounded-xl space-y-4">
+          <h4 className="text-xs font-bold text-white uppercase tracking-wider">{t('globalPruning')}</h4>
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('retentionType')}</label>
