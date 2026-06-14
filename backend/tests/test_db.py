@@ -267,6 +267,113 @@ def test_backup_group_relations(db_session):
     assert node.notes == "Important server"
 
 
+def test_resource_limits_settings_and_group(db_session):
+    """
+    Verify backup resource limits columns on BackupGroup and Settings, and verify API schema defaults.
+    """
+    # 1. Test Settings resource limits columns
+    settings = db_session.query(models.Settings).first()
+    if not settings:
+        settings = models.Settings()
+        db_session.add(settings)
+        db_session.commit()
+        db_session.refresh(settings)
+
+    assert settings.default_compression == "zstd:3"
+    assert settings.default_cpu_quota is None
+
+    # Update global settings
+    settings.default_compression = "lz4"
+    settings.default_cpu_quota = 50
+    db_session.commit()
+    db_session.refresh(settings)
+    assert settings.default_compression == "lz4"
+    assert settings.default_cpu_quota == 50
+
+    # 2. Test BackupGroup resource limits columns
+    group = models.BackupGroup(
+        name="resource-limited-group",
+        interval="weekly",
+        start_time="02:00",
+        end_time="05:00",
+        upload_rate_limit=1024,
+        compression="zstd:5",
+        checkpoint_interval=300,
+        cpu_quota=75
+    )
+    db_session.add(group)
+    db_session.commit()
+    db_session.refresh(group)
+
+    assert group.upload_rate_limit == 1024
+    assert group.compression == "zstd:5"
+    assert group.checkpoint_interval == 300
+    assert group.cpu_quota == 75
+
+
+def test_checkpoint_calculation_and_command_builder():
+    """
+    Verify auto-calculation of Borg checkpoint interval and the generated systemd-run SSH CLI command.
+    """
+    from backup_tasks import compute_checkpoint_interval, build_borg_create_cmd
+
+    # 1. Test compute_checkpoint_interval helper
+    assert compute_checkpoint_interval(None) == 1800
+    assert compute_checkpoint_interval(0) == 1800
+    # Slow rate (<= 500 KiB/s)
+    assert compute_checkpoint_interval(250) == 204  # (50 * 1024) // 250
+    # Medium rate (<= 5000 KiB/s)
+    assert compute_checkpoint_interval(1000) == 204  # (200 * 1024) // 1000
+    # Fast rate (> 5000 KiB/s)
+    assert compute_checkpoint_interval(6000) == 1800
+
+    # 2. Test build_borg_create_cmd helper
+    # 2.1 Without CPU quota
+    cmd_no_cpu = build_borg_create_cmd(
+        node_ip="192.168.1.5",
+        node_ssh_port=22,
+        borg_repo_url="ssh://borg@192.168.1.1:12345/data/borg/fleet",
+        archive_name="test-node-archive",
+        exclude_str="--exclude '/proc/*'",
+        compression="lz4",
+        rate_limit_kib=1000,
+        checkpoint_secs=204,
+        cpu_quota=None,
+        borg_passphrase="my-secret-passphrase"
+    )
+    # Ensure correct format and options
+    assert cmd_no_cpu[0] == "ssh"
+    assert cmd_no_cpu[1] == "-o"
+    assert cmd_no_cpu[3] == "-p"
+    assert cmd_no_cpu[5] == "-i"
+    # Ensure BORG_PASSPHRASE is in the script run on the host
+    inner_bash_cmd = cmd_no_cpu[-1]
+    assert "BORG_PASSPHRASE='my-secret-passphrase'" in inner_bash_cmd
+    assert "--remote-ratelimit 1000" in inner_bash_cmd
+    assert "--checkpoint-interval 204" in inner_bash_cmd
+    assert "--compression lz4" in inner_bash_cmd
+    assert "systemd-run" not in inner_bash_cmd
+
+    # 2.2 With CPU quota
+    cmd_with_cpu = build_borg_create_cmd(
+        node_ip="192.168.1.5",
+        node_ssh_port=22,
+        borg_repo_url="ssh://borg@192.168.1.1:12345/data/borg/fleet",
+        archive_name="test-node-archive",
+        exclude_str="--exclude '/proc/*'",
+        compression="lz4",
+        rate_limit_kib=1000,
+        checkpoint_secs=204,
+        cpu_quota=85,
+        borg_passphrase="my-secret-passphrase"
+    )
+    inner_bash_cmd_cpu = cmd_with_cpu[-1]
+    assert "systemd-run --scope" in inner_bash_cmd_cpu
+    assert "-p CPUQuota=85%" in inner_bash_cmd_cpu
+    assert "-p IOSchedulingClass=idle" in inner_bash_cmd_cpu
+
+
+
 
 
 

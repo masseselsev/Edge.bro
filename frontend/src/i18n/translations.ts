@@ -346,7 +346,16 @@ export const translations: Record<Language, Record<string, string>> = {
     timeframeUnitYears: 'Years',
     retentionInherit: 'Inherited from global settings',
     retentionSummaryLast: 'Keep last {count} backups',
-    retentionSummaryWithin: 'Keep within last {value} {unit} (at least 1)'
+    retentionSummaryWithin: 'Keep within last {value} {unit} (at least 1)',
+    resourceLimits: 'Backup Resource Limits',
+    uploadRateLimit: 'Upload Rate Limit (KiB/s)',
+    uploadRateLimitHint: 'Maximum upload speed. 0 or empty means unlimited.',
+    compressionMode: 'Borg Compression',
+    compressionGlobalDefault: 'Inherit Global Default',
+    checkpointInterval: 'Checkpoint Interval (seconds)',
+    checkpointAuto: 'Auto-calculate based on speed',
+    cpuQuota: 'CPU Quota per Core (%)',
+    cpuQuotaHint: 'Limits backup CPU usage. 0 or empty means unlimited.'
   },
   ru: {
     // Navigation / Tabs
@@ -692,7 +701,16 @@ export const translations: Record<Language, Record<string, string>> = {
     timeframeUnitYears: 'лет',
     retentionInherit: 'Унаследовано из глобальных настроек',
     retentionSummaryLast: 'Хранить последние {count} бэкапов',
-    retentionSummaryWithin: 'Хранить за последние {value} {unit} (минимум 1)'
+    retentionSummaryWithin: 'Хранить за последние {value} {unit} (минимум 1)',
+    resourceLimits: 'Лимиты ресурсов бэкапа',
+    uploadRateLimit: 'Лимит скорости отдачи (КБ/с)',
+    uploadRateLimitHint: 'Максимальная скорость отдачи. 0 или пусто — без ограничений.',
+    compressionMode: 'Сжатие Borg',
+    compressionGlobalDefault: 'Унаследовать глобальное',
+    checkpointInterval: 'Интервал чекпоинтов (сек)',
+    checkpointAuto: 'Авторасчет по скорости канала',
+    cpuQuota: 'Квота CPU на ядро (%)',
+    cpuQuotaHint: 'Ограничение нагрузки CPU. 0 или пусто — без ограничений.'
   },
   uk: {
     // Navigation / Tabs
@@ -1038,6 +1056,15 @@ export const translations: Record<Language, Record<string, string>> = {
     timeframeUnitYears: 'років',
     retentionInherit: 'Унаслідовано з глобальних налаштувань',
     retentionSummaryLast: 'Зберігати останні {count} бекапів',
-    retentionSummaryWithin: 'Зберігати за останні {value} {unit} (мінімум 1)'
+    retentionSummaryWithin: 'Зберігати за останні {value} {unit} (мінімум 1)',
+    resourceLimits: 'Ліміти ресурсів бекапу',
+    uploadRateLimit: 'Ліміт швидкості віддачі (КБ/с)',
+    uploadRateLimitHint: 'Максимальна швидкість віддачі. 0 або пусто — без обмежень.',
+    compressionMode: 'Стиснення Borg',
+    compressionGlobalDefault: 'Унаслідувати глобальне',
+    checkpointInterval: 'Інтервал чекпоінтів (сек)',
+    checkpointAuto: 'Авторозрахунок по швидкості каналу',
+    cpuQuota: 'Квота CPU на ядро (%)',
+    cpuQuotaHint: 'Обмеження навантаження CPU. 0 або пусто — без обмежень.'
   }
 };

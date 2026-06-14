@@ -24,6 +24,8 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
   const [orchestratorIp, setOrchestratorIp] = useState('');
   const [availableIps, setAvailableIps] = useState<string[]>([]);
   const [language, setLanguageState] = useState<Language>('en');
+  const [defaultCompression, setDefaultCompression] = useState('zstd:3');
+  const [defaultCpuQuota, setDefaultCpuQuota] = useState<number | ''>('');
   
   const [useLocalTime, setUseLocalTime] = useState(true);
   const [timezone, setTimezone] = useState(() => {
@@ -83,6 +85,8 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
         setOrchestratorIp(data.orchestrator_ip || '');
         setAvailableIps(data.available_ips || []);
         setLanguageState(data.language || 'en');
+        setDefaultCompression(data.default_compression || 'zstd:3');
+        setDefaultCpuQuota(data.default_cpu_quota ?? '');
         
         const dbTz = data.timezone || 'Browser Local';
         let resolvedTz = 'Europe/Moscow';
@@ -124,6 +128,8 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
           orchestrator_ip: orchestratorIp,
           timezone: savedTz,
           language: language,
+          default_compression: defaultCompression,
+          default_cpu_quota: defaultCpuQuota === '' ? null : Number(defaultCpuQuota),
           retention_policy: {
             type: policyType,
             keep_daily: policyKeepDaily,
@@ -186,6 +192,39 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
               onChange={(e) => setRepoPath(e.target.value)}
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
             />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('compressionMode')}</label>
+            <select
+              value={defaultCompression}
+              onChange={(e) => setDefaultCompression(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="none">none</option>
+              <option value="lz4">lz4</option>
+              <option value="zstd:1">zstd:1</option>
+              <option value="zstd:3">zstd:3</option>
+              <option value="zstd:5">zstd:5</option>
+              <option value="zstd:9">zstd:9</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('cpuQuota')}</label>
+            <input
+              type="number"
+              min={0}
+              max={400}
+              value={defaultCpuQuota}
+              onChange={(e) => setDefaultCpuQuota(e.target.value === '' ? '' : Number(e.target.value))}
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none font-mono"
+              placeholder="e.g. 50"
+            />
+            <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
+              {t('cpuQuotaHint')}
+            </p>
           </div>
         </div>
 

@@ -59,7 +59,11 @@ def create_group(payload: schemas.BackupGroupCreate, db: Session = Depends(get_d
         randomize_days=payload.randomize_days,
         timezone=payload.timezone,
         override_retention=payload.override_retention,
-        retention_policy=payload.retention_policy.model_dump() if payload.retention_policy else None
+        retention_policy=payload.retention_policy.model_dump() if payload.retention_policy else None,
+        upload_rate_limit=payload.upload_rate_limit,
+        compression=payload.compression,
+        checkpoint_interval=payload.checkpoint_interval,
+        cpu_quota=payload.cpu_quota
     )
     db.add(group)
     db.commit()
@@ -85,6 +89,10 @@ def update_group(group_id: int, payload: schemas.BackupGroupCreate, db: Session 
     group.timezone = payload.timezone
     group.override_retention = payload.override_retention
     group.retention_policy = payload.retention_policy.model_dump() if payload.retention_policy else None
+    group.upload_rate_limit = payload.upload_rate_limit
+    group.compression = payload.compression
+    group.checkpoint_interval = payload.checkpoint_interval
+    group.cpu_quota = payload.cpu_quota
     
     db.commit()
     db.refresh(group)

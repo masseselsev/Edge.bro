@@ -24,6 +24,10 @@ export interface BackupGroup {
     within_value: number;
     within_unit: string;
   } | null;
+  upload_rate_limit?: number | null;
+  compression?: string | null;
+  checkpoint_interval?: number | null;
+  cpu_quota?: number | null;
 }
 
 interface BackupGroupModalProps {
@@ -54,6 +58,10 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
   const [policyKeepLast, setPolicyKeepLast] = useState(5);
   const [policyWithinValue, setPolicyWithinValue] = useState(3);
   const [policyWithinUnit, setPolicyWithinUnit] = useState<'d' | 'w' | 'm' | 'y'>('m');
+  const [uploadRateLimit, setUploadRateLimit] = useState<number | ''>('');
+  const [compression, setCompression] = useState<string>('');
+  const [checkpointInterval, setCheckpointInterval] = useState<number | ''>('');
+  const [cpuQuota, setCpuQuota] = useState<number | ''>('');
   const [error, setError] = useState('');
 
   // Generate timezone options
@@ -116,6 +124,11 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
         setUseLocalTime(false);
         setTimezone(gTz);
       }
+
+      setUploadRateLimit(editingGroup.upload_rate_limit ?? '');
+      setCompression(editingGroup.compression ?? '');
+      setCheckpointInterval(editingGroup.checkpoint_interval ?? '');
+      setCpuQuota(editingGroup.cpu_quota ?? '');
     } else {
       setName('');
       setIntervalVal('weekly');
@@ -134,6 +147,10 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
       setPolicyKeepLast(5);
       setPolicyWithinValue(3);
       setPolicyWithinUnit('m');
+      setUploadRateLimit('');
+      setCompression('');
+      setCheckpointInterval('');
+      setCpuQuota('');
     }
     setError('');
   }, [editingGroup, isOpen]);
@@ -160,7 +177,11 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
         keep_last: policyKeepLast,
         within_value: policyWithinValue,
         within_unit: policyWithinUnit
-      } : null
+      } : null,
+      upload_rate_limit: uploadRateLimit === '' ? null : Number(uploadRateLimit),
+      compression: compression === '' ? null : compression,
+      checkpoint_interval: checkpointInterval === '' ? null : Number(checkpointInterval),
+      cpu_quota: cpuQuota === '' ? null : Number(cpuQuota)
     };
 
     try {
@@ -463,6 +484,88 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Resource Limits Section */}
+            <div className="border-t border-slate-800 my-4 pt-4 space-y-4">
+              <h4 className="text-sm font-semibold text-slate-200">
+                {t('resourceLimits')}
+              </h4>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                    {t('uploadRateLimit')}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={uploadRateLimit}
+                    onChange={(e) => setUploadRateLimit(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
+                    placeholder="e.g. 250"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                    {t('uploadRateLimitHint')}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                    {t('compressionMode')}
+                  </label>
+                  <select
+                    value={compression}
+                    onChange={(e) => setCompression(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="">{t('compressionGlobalDefault')}</option>
+                    <option value="none">none</option>
+                    <option value="lz4">lz4</option>
+                    <option value="zstd:1">zstd:1</option>
+                    <option value="zstd:3">zstd:3</option>
+                    <option value="zstd:5">zstd:5</option>
+                    <option value="zstd:9">zstd:9</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                    {t('checkpointInterval')}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={checkpointInterval}
+                    onChange={(e) => setCheckpointInterval(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
+                    placeholder="e.g. 1800"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                    {t('checkpointAuto')}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                    {t('cpuQuota')}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={400}
+                    value={cpuQuota}
+                    onChange={(e) => setCpuQuota(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
+                    placeholder="e.g. 50"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                    {t('cpuQuotaHint')}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
