@@ -1,4 +1,4 @@
-# Руководство по установке и использованию Backup-edge-Restore
+# Руководство по установке и использованию Edge B.R.O.
 
 🇬🇧 **[English README](README.md)** | 🇬🇧 **[English Usage Guide](README_USAGE.md)** | 🇷🇺 **[Русский README](README_ru.md)** | 🇷🇺 **[Русская инструкция (Usage Guide)](README_USAGE_ru.md)**
 
@@ -26,8 +26,8 @@
 
 1. Склонируйте репозиторий проекта:
    ```bash
-   git clone https://github.com/masseselsev/Backup-edge-Restore.git /opt/stacks/Backup-edge-Restore
-   cd /opt/stacks/Backup-edge-Restore
+    git clone https://github.com/masseselsev/Edge.bro.git /opt/stacks/Edge.bro
+    cd /opt/stacks/Edge.bro
    ```
 
 2. Создайте файл `.env` в корневой папке проекта, скопировав шаблонный файл и отредактировав его. Обязательно задайте надежные пароли:

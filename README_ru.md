@@ -1,4 +1,4 @@
-# Borg Backup & Bare-Metal Restore Orchestrator
+# Edge B.R.O. — Edge Backup & Restore Orchestrator
 
 🇬🇧 **[English README](README.md)** | 🇬🇧 **[English Usage Guide](README_USAGE.md)** | 🇷🇺 **[Русский README](README_ru.md)** | 🇷🇺 **[Русская инструкция (Usage Guide)](README_USAGE_ru.md)**
 

@@ -1,4 +1,4 @@
-# React + TypeScript + Vite
+# Edge B.R.O. Frontend — React SPA
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

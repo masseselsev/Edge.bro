@@ -17,7 +17,7 @@ from routers import iso as iso_router
 from routers import network as network_router
 from routers import groups as groups_router
 
-app = FastAPI(title="Borg Backup & Bare-Metal Restore Orchestrator API", version=VERSION)
+app = FastAPI(title="Edge B.R.O. API", version=VERSION)
 
 # Configure CORS
 app.add_middleware(

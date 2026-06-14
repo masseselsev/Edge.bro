@@ -1,4 +1,4 @@
-# Backup-edge-Restore Installation & Usage Guide
+# Edge B.R.O. Installation & Usage Guide
 
 🇬🇧 **[English README](README.md)** | 🇬🇧 **[English Usage Guide](README_USAGE.md)** | 🇷🇺 **[Русский README](README_ru.md)** | 🇷🇺 **[Русская инструкция (Usage Guide)](README_USAGE_ru.md)**
 
@@ -26,8 +26,8 @@ A compact PC like an Intel NUC is perfectly suited to serve as the central manag
 
 1. Clone the project repository:
    ```bash
-   git clone https://github.com/masseselsev/Backup-edge-Restore.git /opt/stacks/Backup-edge-Restore
-   cd /opt/stacks/Backup-edge-Restore
+   git clone https://github.com/masseselsev/Edge.bro.git /opt/stacks/Edge.bro
+   cd /opt/stacks/Edge.bro
    ```
 
 2. Create a `.env` file in the project root by copying the template file and editing it. Be sure to use strong passwords:
