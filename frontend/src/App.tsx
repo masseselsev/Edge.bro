@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
@@ -11,11 +11,91 @@ import TaskLogsModal from './components/TaskLogsModal';
 import NetworkSettingsModal from './components/NetworkSettingsModal';
 import { DropdownTextInput } from './components/SearchableSelect';
 import { TranslationProvider, useTranslation } from './context/TranslationContext';
+import type { Language } from './i18n/translations';
 
 type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings' | 'clientiso' | 'schedule';
 
+function LanguageSelector() {
+  const { language, setLanguage } = useTranslation();
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelect = async (lang: Language) => {
+    setLanguage(lang);
+    setIsOpen(false);
+    
+    // Save selected language to settings database
+    try {
+      const getRes = await fetch('/api/settings');
+      if (getRes.ok) {
+        const settings = await getRes.json();
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...settings,
+            language: lang
+          })
+        });
+      }
+    } catch (err) {
+      console.error('Failed to sync language selection to settings backend:', err);
+    }
+  };
+
+  const labels: Record<Language, string> = {
+    en: 'English (EN)',
+    ru: 'Русский (RU)',
+    uk: 'Українська (UK)'
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer outline-none"
+      >
+        <Globe2 size={13} className="text-zinc-400" />
+        <span>{labels[language] || language.toUpperCase()}</span>
+        <svg className={`w-3 h-3 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 mt-1.5 w-40 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl p-1 z-50 origin-top-right animate-dropdown-in">
+          {(['en', 'ru', 'uk'] as Language[]).map((lang) => (
+            <button
+              key={lang}
+              onClick={() => handleSelect(lang)}
+              className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-md transition-colors flex items-center justify-between ${
+                language === lang
+                  ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
+            >
+              <span>{labels[lang]}</span>
+              {language === lang && <span className="text-[10px] text-indigo-450">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AppContent() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [activeTab, setActiveTab] = useState<Tab>('fleet');
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [networkStatus, setNetworkStatus] = useState<any>(null);
@@ -181,157 +261,170 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-[#0b0f19] text-zinc-100 flex flex-col font-sans select-none">
       {/* Global Header */}
-      <header className="bg-zinc-900/60 backdrop-blur-md border-b border-zinc-800/80 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 py-3 min-h-16 flex flex-col lg:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <div className="p-2 bg-indigo-600 rounded-lg shadow-indigo-600/20 shadow-md">
-              <Server className="text-white" size={20} />
+      <header className="bg-zinc-900/80 backdrop-blur-md border-b border-zinc-800/80 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 py-3 space-y-3">
+          {/* Row 1: Logo/Title + Quick Actions / Language Selector */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            {/* Left: Brand Identity with SVG logo */}
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <div className="relative p-2 bg-indigo-600/15 border border-indigo-500/30 rounded-lg shadow-lg flex items-center justify-center w-9 h-9">
+                <svg className="w-5 h-5 text-indigo-400 filter drop-shadow-[0_0_4px_rgba(99,102,241,0.6)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-orange-500 rounded-full animate-ping"></span>
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
+              </div>
+              <div>
+                <h1 className="text-base font-bold text-white tracking-tight leading-none flex items-center gap-2">
+                  <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded font-mono font-bold text-xs uppercase tracking-wider">Edge B.R.O.</span>
+                  <span className="text-[10px] bg-zinc-800 text-zinc-400 border border-zinc-700 px-1.5 py-0.5 rounded font-mono font-bold">{appVersion}</span>
+                </h1>
+                <p className="text-[9px] text-zinc-500 font-semibold mt-1.5 uppercase tracking-wider">
+                  {language === 'ru' ? 'Оркестратор бэкапа и восстановления Edge' : language === 'uk' ? 'Оркестратор бекапу та відновлення Edge' : 'Edge Backup & Restore Orchestrator'}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-base font-bold text-white tracking-tight leading-none flex items-center gap-2">
-                Borg Restore Orchestrator
-                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded font-mono font-bold">{appVersion}</span>
-              </h1>
-              <p className="text-[10px] text-zinc-500 font-semibold mt-0.5 uppercase tracking-wider">Fleet Edge Bare-Metal Flasher</p>
+
+            {/* Right: Actions + Custom Language Switcher Dropdown */}
+            <div className="flex flex-wrap items-center justify-center gap-3 flex-shrink-0">
+              {isKiosk && (
+                <>
+                  <button
+                    onClick={handleToggleMode}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer"
+                    title="Toggle restoration mode"
+                  >
+                    {restoreMode === 'online' ? (
+                      <>
+                        <Globe2 size={13} className="text-indigo-400" />
+                        <span>{t('modeOnline')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <HardDrive size={13} className="text-amber-400" />
+                        <span>{t('modeOffline')}</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setShowNetworkModal(true)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer"
+                  >
+                    {networkStatus?.wired?.connected ? (
+                      <>
+                        <Globe2 size={13} className="text-emerald-400" />
+                        <span>{t('wiredLink')}</span>
+                      </>
+                    ) : networkStatus?.wifi?.connected ? (
+                      <>
+                        <Wifi size={13} className="text-emerald-400" />
+                        <span>{networkStatus.wifi.ssid}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Globe2 size={13} className="text-rose-400" />
+                        <span className="text-rose-400 font-bold">{t('offline')}</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleExitKiosk}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 hover:border-red-900/60 text-xs text-red-400 font-bold transition-all duration-200 cursor-pointer"
+                    title="Exit Kiosk Mode"
+                  >
+                    <LogOut size={13} />
+                    <span>{t('exitKiosk')}</span>
+                  </button>
+                </>
+              )}
+
+              {/* Language Dropdown Selector */}
+              <LanguageSelector />
             </div>
           </div>
 
-          {/* Tab Navigation */}
-          <nav className="flex flex-wrap items-center justify-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800/60">
-            {!isKiosk && (
-              <button
-                onClick={() => setActiveTab('fleet')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  activeTab === 'fleet'
-                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
-                    : 'text-zinc-400 hover:text-zinc-100'
-                }`}
-              >
-                <Server size={14} /> {t('tabFleet')}
-              </button>
-            )}
-            {!isKiosk && (
-              <button
-                onClick={() => setActiveTab('schedule')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  activeTab === 'schedule'
-                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
-                    : 'text-zinc-400 hover:text-zinc-100'
-                }`}
-              >
-                <Calendar size={14} /> {t('tabSchedule')}
-              </button>
-            )}
-            <button
-              onClick={() => setActiveTab('flasher')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'flasher'
-                  ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
-                  : 'text-zinc-400 hover:text-zinc-100'
-              }`}
-            >
-              <HardDrive size={14} /> {t('tabFlasher')}
-            </button>
-            {!isKiosk && (
-              <button
-                onClick={() => setActiveTab('clientiso')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  activeTab === 'clientiso'
-                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
-                    : 'text-zinc-400 hover:text-zinc-100'
-                }`}
-              >
-                <Cpu size={14} /> {t('liveUsbGenerator')}
-              </button>
-            )}
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'history'
-                  ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
-                  : 'text-zinc-400 hover:text-zinc-100'
-              }`}
-            >
-              <History size={14} /> {t('tabHistory')}
-            </button>
-            <button
-              onClick={() => setActiveTab('logs')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                activeTab === 'logs'
-                  ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
-                  : 'text-zinc-400 hover:text-zinc-100'
-              }`}
-            >
-              <Terminal size={14} /> {t('tabLogs')}
-            </button>
-            {!isKiosk && (
-              <button
-                onClick={() => setActiveTab('settings')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                  activeTab === 'settings'
-                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
-                    : 'text-zinc-400 hover:text-zinc-100'
-                }`}
-              >
-                <Gear size={14} /> {t('tabSettings')}
-              </button>
-            )}
-          </nav>
-
-          <div className="flex flex-wrap items-center justify-center gap-3 flex-shrink-0">
-            {isKiosk && (
-              <>
+          {/* Row 2: Tab Navigation Buttons */}
+          <div className="border-t border-zinc-800/60 pt-2 flex justify-start">
+            <nav className="flex flex-wrap items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800/60">
+              {!isKiosk && (
                 <button
-                  onClick={handleToggleMode}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer"
-                  title="Toggle restoration mode"
+                  onClick={() => setActiveTab('fleet')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'fleet'
+                      ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                      : 'text-zinc-400 hover:text-zinc-100'
+                  }`}
                 >
-                  {restoreMode === 'online' ? (
-                    <>
-                      <Globe2 size={13} className="text-indigo-400" />
-                      <span>{t('modeOnline')}</span>
-                    </>
-                  ) : (
-                    <>
-                      <HardDrive size={13} className="text-amber-400" />
-                      <span>{t('modeOffline')}</span>
-                    </>
-                  )}
+                  <Server size={14} /> {t('tabFleet')}
                 </button>
+              )}
+              {!isKiosk && (
                 <button
-                  onClick={() => setShowNetworkModal(true)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer"
+                  onClick={() => setActiveTab('schedule')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'schedule'
+                      ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                      : 'text-zinc-400 hover:text-zinc-100'
+                  }`}
                 >
-                  {networkStatus?.wired?.connected ? (
-                    <>
-                      <Globe2 size={13} className="text-emerald-400" />
-                      <span>{t('wiredLink')}</span>
-                    </>
-                  ) : networkStatus?.wifi?.connected ? (
-                    <>
-                      <Wifi size={13} className="text-emerald-400" />
-                      <span>{networkStatus.wifi.ssid}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Globe2 size={13} className="text-rose-400" />
-                      <span className="text-rose-400 font-bold">{t('offline')}</span>
-                    </>
-                  )}
+                  <Calendar size={14} /> {t('tabSchedule')}
                 </button>
+              )}
+              <button
+                onClick={() => setActiveTab('flasher')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'flasher'
+                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                    : 'text-zinc-400 hover:text-zinc-100'
+                }`}
+              >
+                <HardDrive size={14} /> {t('tabFlasher')}
+              </button>
+              {!isKiosk && (
                 <button
-                  onClick={handleExitKiosk}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 hover:border-red-900/60 text-xs text-red-400 font-bold transition-all duration-200 cursor-pointer"
-                  title="Exit Kiosk Mode"
+                  onClick={() => setActiveTab('clientiso')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'clientiso'
+                      ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                      : 'text-zinc-400 hover:text-zinc-100'
+                  }`}
                 >
-                  <LogOut size={13} />
-                  <span>{t('exitKiosk')}</span>
+                  <Cpu size={14} /> {t('liveUsbGenerator')}
                 </button>
-              </>
-            )}
-            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider animate-pulse-subtle">
-              {t('systemOnline')}
-            </span>
+              )}
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'history'
+                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                    : 'text-zinc-400 hover:text-zinc-100'
+                }`}
+              >
+                <History size={14} /> {t('tabHistory')}
+              </button>
+              <button
+                onClick={() => setActiveTab('logs')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'logs'
+                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                    : 'text-zinc-400 hover:text-zinc-100'
+                }`}
+              >
+                <Terminal size={14} /> {t('tabLogs')}
+              </button>
+              {!isKiosk && (
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'settings'
+                      ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                      : 'text-zinc-400 hover:text-zinc-100'
+                  }`}
+                >
+                  <Gear size={14} /> {t('tabSettings')}
+                </button>
+              )}
+            </nav>
           </div>
         </div>
       </header>
@@ -390,6 +483,10 @@ function AppContent() {
                 <h3 className="text-base font-bold text-white leading-tight">{t('welcomeSetup')}</h3>
                 <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">{t('configureOrchestratorIp')}</p>
               </div>
+            </div>
+
+            <div className="flex justify-center py-2 bg-zinc-950/60 rounded-xl border border-zinc-800/80">
+              <img src="/edge_bro_logo.png" alt="Edge B.R.O. Logo" className="w-40 h-40 object-contain rounded-lg shadow-lg border border-indigo-500/20" />
             </div>
 
             <p className="text-xs text-zinc-300 leading-relaxed font-medium">
