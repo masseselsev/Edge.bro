@@ -99,7 +99,7 @@ function LanguageSelector() {
 
       {isOpen && (
         <div className="absolute right-0 mt-1.5 w-44 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl p-1 z-50 origin-top-right animate-dropdown-in">
-          {(['en', 'ru', 'uk'] as Language[]).map((lang) => (
+          {(['en', 'uk', 'ru'] as Language[]).map((lang) => (
             <button
               key={lang}
               onClick={() => handleSelect(lang)}
