@@ -20,6 +20,8 @@ class Settings(Base):
     timezone = Column(String, default='Browser Local', nullable=False)
     language = Column(String, default='en', nullable=False)
     retention_policy = Column(JSON, nullable=True)
+    default_compression = Column(String, default='zstd:3', nullable=False)
+    default_cpu_quota = Column(Integer, nullable=True)   # % of one core, NULL = no limit
 
 
 
@@ -40,6 +42,12 @@ class BackupGroup(Base):
     timezone = Column(String, default='UTC', nullable=False)
     override_retention = Column(Boolean, default=False, nullable=False)
     retention_policy = Column(JSON, nullable=True)
+
+    # Resource limits
+    upload_rate_limit = Column(Integer, nullable=True)   # KiB/s, NULL = unlimited
+    compression = Column(String, nullable=True)           # e.g. "zstd:3", NULL = global default
+    checkpoint_interval = Column(Integer, nullable=True)  # seconds, NULL = auto-calculate
+    cpu_quota = Column(Integer, nullable=True)            # % of one core, NULL = no limit
 
 
 class Node(Base):

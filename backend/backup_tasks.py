@@ -15,6 +15,71 @@ from ansible_utils import run_ansible_playbook
 logger = logging.getLogger(__name__)
 
 
+def compute_checkpoint_interval(rate_kib: Optional[int]) -> int:
+    """
+    Auto-calculate Borg checkpoint interval in seconds from upload rate limit.
+    Targets: ~50 MB at slow (<= 500 KiB/s), ~200 MB at medium, 1800s at fast/unlimited.
+    """
+    if rate_kib is None or rate_kib == 0:
+        return 1800  # Borg default (~500 MB at fast speeds)
+    if rate_kib <= 500:
+        return max(60, (50 * 1024) // rate_kib)
+    if rate_kib <= 5000:
+        return max(120, (200 * 1024) // rate_kib)
+    return 1800
+
+
+def build_borg_create_cmd(
+    node_ip: str,
+    node_ssh_port: int,
+    borg_repo_url: str,
+    archive_name: str,
+    exclude_str: str,
+    compression: str,
+    rate_limit_kib: int,
+    checkpoint_secs: int,
+    cpu_quota: Optional[int],
+    borg_passphrase: str,
+) -> list:
+    """
+    Builds the SSH command list to run borg create on the node,
+    optionally wrapped in systemd-run --scope for CPU limiting.
+    SSH Compression=no because Borg already compresses data chunks.
+    """
+    borg_rsh = (
+        "ssh -i /home/borg/.ssh/id_ed25519 "
+        "-o StrictHostKeyChecking=no -o Compression=no"
+    )
+    borg_env = f"BORG_RSH='{borg_rsh}' BORG_PASSPHRASE='{borg_passphrase}'"
+    borg_create = (
+        f"borg create --json --stats "
+        f"--compression {compression} "
+        f"--checkpoint-interval {checkpoint_secs} "
+        f"--remote-ratelimit {rate_limit_kib} "
+        f"{borg_repo_url}::{archive_name} / {exclude_str}"
+    )
+
+    if cpu_quota and cpu_quota > 0:
+        inner_cmd = (
+            f"systemd-run --scope "
+            f"-p CPUQuota={cpu_quota}% "
+            f"-p IOSchedulingClass=idle "
+            f"-- bash -c \"{borg_env} {borg_create}\""
+        )
+    else:
+        inner_cmd = f"bash -c \"{borg_env} {borg_create}\""
+
+    return [
+        "ssh", "-o", "StrictHostKeyChecking=no",
+        "-p", str(node_ssh_port),
+        "-i", "/root/.ssh/id_ed25519",
+        f"root@{node_ip}",
+        inner_cmd,
+    ]
+
+
+
+
 @shared_task(bind=True)
 def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
     """
@@ -148,15 +213,55 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
                 exclude_args.append(f"--exclude '{ex}'")
     exclude_str = " ".join(exclude_args)
 
-    ssh_cmd = [
-        "ssh", "-o", "StrictHostKeyChecking=no",
-        "-p", str(node.ssh_port),
-        "-i", "/root/.ssh/id_ed25519",
-        f"root@{node.ip_address}",
-        f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg create --json --stats {borg_repo_url}::{archive_name} / {exclude_str}"
-    ]
+    # --- Resolve resource settings (group -> global -> hardcoded fallback) ---
+    group = None
+    if node.group_id:
+        from models import BackupGroup
+        group = db.query(BackupGroup).filter(BackupGroup.id == node.group_id).first()
+
+    compression = (
+        (group.compression if group and group.compression else None)
+        or getattr(settings, 'default_compression', None)
+        or 'zstd:3'
+    )
+    rate_limit_kib = (
+        group.upload_rate_limit
+        if group and group.upload_rate_limit is not None
+        else 0
+    )
+    checkpoint_secs = (
+        group.checkpoint_interval
+        if group and group.checkpoint_interval is not None
+        else compute_checkpoint_interval(rate_limit_kib)
+    )
+    cpu_quota = (
+        group.cpu_quota
+        if group and group.cpu_quota is not None
+        else getattr(settings, 'default_cpu_quota', None)
+    )
+
+    log_to_task(task_id, (
+        f"Resource limits — compression: {compression}, "
+        f"rate: {rate_limit_kib} KiB/s, "
+        f"checkpoint: {checkpoint_secs}s, "
+        f"cpu_quota: {cpu_quota}%"
+    ))
+
+    ssh_cmd = build_borg_create_cmd(
+        node_ip=node.ip_address,
+        node_ssh_port=node.ssh_port,
+        borg_repo_url=borg_repo_url,
+        archive_name=archive_name,
+        exclude_str=exclude_str,
+        compression=compression,
+        rate_limit_kib=rate_limit_kib,
+        checkpoint_secs=checkpoint_secs,
+        cpu_quota=cpu_quota,
+        borg_passphrase=os.getenv('BORG_PASSPHRASE', ''),
+    )
 
     log_to_task(task_id, f"Running remote command on node: {' '.join(ssh_cmd[:6])} [COMMAND MASKED]")
+
 
     try:
         process = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

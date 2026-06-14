@@ -23,6 +23,8 @@ class SettingsBase(BaseModel):
     timezone: str = Field(default='Browser Local')
     language: str = Field(default='en')
     retention_policy: Optional[RetentionPolicySchema] = None
+    default_compression: str = Field(default='zstd:3')
+    default_cpu_quota: Optional[int] = Field(default=None, ge=0, le=400)
 
 
 class SettingsResponse(SettingsBase):
@@ -44,6 +46,11 @@ class BackupGroupBase(BaseModel):
     timezone: str = Field(default='UTC')
     override_retention: bool = False
     retention_policy: Optional[RetentionPolicySchema] = None
+    # Resource limits (None = inherit global default / unlimited)
+    upload_rate_limit: Optional[int] = Field(default=None, ge=0, description="KiB/s, None = unlimited")
+    compression: Optional[str] = Field(default=None, description="e.g. 'zstd:3', None = global default")
+    checkpoint_interval: Optional[int] = Field(default=None, ge=0, description="seconds, None = auto-calculate")
+    cpu_quota: Optional[int] = Field(default=None, ge=0, le=400, description="% of 1 core, None = no limit")
 
 class BackupGroupCreate(BackupGroupBase):
     pass
