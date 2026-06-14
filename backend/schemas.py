@@ -30,6 +30,7 @@ class BackupGroupBase(BaseModel):
     end_time: str
     concurrency_limit: int = 5
     randomize_days: bool = True
+    timezone: str = Field(default='UTC')
 
 class BackupGroupCreate(BackupGroupBase):
     pass
@@ -125,6 +126,10 @@ class SystemLogResponse(BaseModel):
         from_attributes = True
 
 
+class NodeNotesUpdate(BaseModel):
+    notes: Optional[str] = None
+
+
 class NodeProvisionRequest(BaseModel):
     bootstrap_user: str = "root"
     bootstrap_password: str
@@ -137,4 +142,10 @@ class DeviceResponse(BaseModel):
     rotational: bool
     disk_type: str # SATA, NVME
     is_usb: bool = False
+
+
+class SchedulerLoadResponse(BaseModel):
+    day_load: List[int]
+    week_load: List[int]
+    month_load: List[int]
 
