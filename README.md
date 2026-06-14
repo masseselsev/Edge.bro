@@ -39,7 +39,7 @@ The system is fully containerized and uses a decoupled architecture to manage co
 ```
 
 ### Components:
-1. **React SPA Frontend (Port 7777)**: Responsive, dark-themed dashboard mapped to tabs (Fleet, Flasher, History, Live-USB Client, Settings). Displays stats (de-duplication ratios, total space) and features a terminal console overlay to stream execution logs in real-time.
+1. **React SPA Frontend (Port 7777)**: Responsive, dark-themed dashboard mapped to tabs (Fleet, Flasher, History, Live-USB Client, Settings). Supports multi-language translation (English, Russian, Ukrainian) with a premium animated language selector dropdown. Displays stats (de-duplication ratios, total space) and features a terminal console overlay to stream execution logs in real-time.
 2. **FastAPI Backend (Port 8000)**: Serves RESTful APIs, implements the IP parser (supporting CIDR, lists, and ranges), validates drive type configurations, and tracks active jobs.
 3. **Celery Worker (Privileged Host-Device Mode)**: Subscribed to task queues to execute playbooks and perform flashing partition commands (requires access to `/dev` of the local orchestrator node during flashing).
 4. **Borg SSH Server (Port 12345)**: Isolated central repository environment where edge node public keys are automatically appended to `/home/borg/.ssh/authorized_keys` under forced command restrictions (`command="borg serve --restrict-to-path ..."`).
@@ -61,8 +61,14 @@ The system is fully containerized and uses a decoupled architecture to manage co
 - Captures and saves the unique EFI FAT32 filesystem UUID.
 - Rewrites the target's `/etc/fstab` to reference partition labels, shielding the operating system against hardware device drift (e.g., SATA `/dev/sda` transitioning to NVMe `/dev/nvme0n1` on new hardware).
 
-### 3. Backup Scheduling & Global Deduplication
+### 3. Backup Scheduling, Global Deduplication & Resource Limits
 - Backups are initiated remotely via `ssh` command and stream data to the central Borg SSH Server.
+- **SSH Connection Keepalive**: Outgoing backup and initialization commands are configured with client-side SSH keepalives (`ServerAliveInterval` and `ServerAliveCountMax` values configured via environment variables) to maintain tunnel stability over unreliable networks and prevent worker tasks from hanging indefinitely.
+- **Granular Resource limits**: To safeguard host performance and network bandwidth on edge sites, backups can be configured with:
+  - **Upload Rate Limit**: Limits maximum bandwidth throughput (in KiB/s) per backup group.
+  - **CPU Quota**: Restricts backup process CPU usage (0-400% of a single core) globally or per backup group, enforced on client nodes using `systemd-run --scope -p CPUQuota=...`.
+  - **Custom Compression**: Enables selecting specific compression algorithm/level (e.g., `lz4`, `zstd:3` as default, `zstd:5`, etc.) globally or overridden per backup group.
+  - **Optimized Checkpoint Intervals**: Borg's checkpoint interval is dynamically auto-calculated from the upload speed limit to maximize recovery points on slow connections (e.g. checkpointing every ~50 MB at <= 500 KiB/s, ~200 MB at <= 5000 KiB/s, or defaulting to 1800s), with manual group overrides available.
 - **Cross-Device Deduplication & Compression**: Because all edge nodes back up into a single, centralized Borg repository (`/data/borg/fleet`), Borg's chunk-level deduplication and compression span across all devices globally. Identical files, OS binaries, and application assets present on multiple Debian nodes are only stored **once** on the server.
   - *Example Savings (Assuming a 6 GB base OS footprint per node)*:
     - **1st Node (Standalone compression & deduplication)**: saves **55% - 65%** of its size right away due to Borg's built-in compression (e.g. `lz4`), reducing a 6 GB system to ~2.2 - 2.7 GB on disk.
@@ -71,7 +77,7 @@ The system is fully containerized and uses a decoupled architecture to manage co
     - This yields a massive overall storage footprint reduction for fleets running similar base images, with incremental runs remaining extremely lightweight.
 - **Configurable Global Exclusions**: In the **Orchestrator Settings** tab in the web UI, you can configure a comma-separated list of directories to exclude from backups (e.g. temporary/virtual mounts or heavy log/data folders).
   - **Default Exclusions**: `/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*`
-- To prevent database lock-ups on the shared Borg repositories, pruning is decoupled from individual backups. A global Celery Beat schedule triggers a local repository `borg prune` daily at 3:00 AM using the global prune rules (daily, weekly, monthly limits).
+- To prevent database lock-ups on the shared Borg repositories, pruning is decoupled from individual backups. A global Celery Beat schedule triggers a local repository `borg prune` daily at 3:00 AM using the global retention policy (configurable in Settings, or overridden per backup group). The system supports interval-based (daily/weekly/monthly), count-based (keep last N), or timeframe-based (keep within past days/weeks/months/years) retention.
 
 ### 4. Bare-Metal Flashing Restore
 - **Device Protection Safeguard**: Scans target block devices on the orchestrator host while shielding the host's own root system drive against accidental overwrite.

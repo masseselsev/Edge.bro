@@ -43,8 +43,12 @@ A compact PC like an Intel NUC is perfectly suited to serve as the central manag
    BORG_PASSPHRASE=your_secure_borg_passphrase
    DATABASE_URL=postgresql://postgres:your_secure_db_password@db:5432/borg_orchestrator
    ORCHESTRATOR_IP=192.168.222.2  # Orchestrator IP accessible to edge nodes
+
+   # SSH Keepalive connection stability settings (optional, defaults shown)
+   # SSH_KEEPALIVE_INTERVAL=30    # Send alive packets every X seconds
+   # SSH_KEEPALIVE_COUNT=3       # Drop connection after Y missed responses
    ```
-   *(Note: You can override this address on the fly later via the **Settings** tab in the web interface, without needing to edit the `.env` file or restart containers).*
+   *(Note: You can override the orchestrator IP address on the fly later via the **Settings** tab in the web interface, without needing to edit the `.env` file or restart containers).*
 
 3. **Configuring Backup Storage Location (Important!)**
    By default, all repositories are stored in an internal Docker volume (`borg-data`), which is physically located in `/var/lib/docker/volumes/`. Because backups can consume a lot of space, it is highly recommended to mount them on a separate large drive to avoid saturating the system root partition.
@@ -107,6 +111,22 @@ Navigate to the **Fleet** tab in the web interface to add edge nodes.
 4. System directories and configured paths are excluded dynamically based on the global exclusions setting (configured under the **Settings** tab in the web UI).
    - **Default Exclusions**: `/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*`
 5. You can track progress and final sizes in the **History** tab.
+
+### 4.1 Backup Resource Limits & Optimization
+
+To prevent backup tasks from saturating target node CPU or available site bandwidth, you can configure granular limits when creating or editing a **Backup Group**:
+* **Upload Rate Limit (Bandwidth)**: Constrain the maximum network throughput (in KiB/s) during backup data streams.
+* **CPU Quota**: Restricts the maximum CPU time (0-400% of a single core) allocated to the backup processes. This is enforced directly on the client node via `systemd-run --scope -p CPUQuota=...`.
+* **Compression**: Customizes the Borg compression algorithm (e.g., `lz4`, `zstd:1` up to `zstd:9`) per group.
+* **Checkpoint Interval**:
+  - By default, the system **auto-calculates** a dynamic checkpoint interval based on the configured bandwidth upload rate limit (e.g. checkpointing every ~50 MB of data at <= 500 KiB/s, or every ~200 MB at <= 5000 KiB/s) to ensure progress is saved frequently on slow links.
+  - You can also explicitly override this to a manual interval (in seconds).
+* **Retention Policy Override**: Toggle retention overrides to apply group-specific rules rather than inheriting the global policy. The system supports three pruning types:
+  - **Interval**: Keep a specified number of daily, weekly, and monthly backups.
+  - **Count**: Keep a fixed number of the last backups (e.g. keep last 5).
+  - **Timeframe**: Keep all backups created within a specific timeframe (e.g. within the past 3 months).
+
+Global default values for CPU Quotas, Compression levels, and the global Retention Policy can be adjusted inside the **Settings** tab.
 
 ### 💡 How Global Deduplication & Compression Work (Space Savings)
 Because all edge nodes are backed up into a **single, shared central repository** (`/data/borg/fleet`), Borg's built-in deduplication engine and compression work across all devices simultaneously. 
