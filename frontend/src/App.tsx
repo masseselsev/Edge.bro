@@ -344,8 +344,8 @@ function AppContent() {
           </div>
 
           {/* Row 2: Tab Navigation Buttons */}
-          <div className="border-t border-zinc-800/60 pt-2 flex justify-start">
-            <nav className="flex flex-wrap items-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800/60">
+          <div className="border-t border-zinc-800/60 pt-2 flex justify-center w-full">
+            <nav className="w-full flex flex-wrap items-center justify-center gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800/60">
               {!isKiosk && (
                 <button
                   onClick={() => setActiveTab('fleet')}
