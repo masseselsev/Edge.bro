@@ -144,7 +144,7 @@ export const translations: Record<Language, Record<string, string>> = {
     orchestratorSettingsSub: 'Configure global parameters and Borg pruning rules.',
     borgSshPort: 'Borg SSH Daemon Port',
     repoLocation: 'Repository Location',
-    globalPruning: 'Global Pruning Retention Policies',
+    globalPruning: 'Global Retention Policies',
     keepDaily: 'Keep Daily',
     keepWeekly: 'Keep Weekly',
     keepMonthly: 'Keep Monthly',
