@@ -173,21 +173,34 @@ function AppContent() {
   }, [isKiosk]);
 
   useEffect(() => {
-    // Fetch current app version from API
-    fetch('/api/version')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.version) {
-          setAppVersion(data.version);
-        }
-        if (data && data.is_kiosk) {
-          setIsKiosk(true);
-          setActiveTab('flasher');
-          setKioskOrchestratorIp(data.orchestrator_ip || '');
-          setConnectionKeyphrase(data.auth_token || '');
-        }
-      })
-      .catch(err => console.error('Error fetching version:', err));
+    // Fetch current app version from API with retries in case of startup delays
+    let retryCount = 0;
+    const fetchVersion = () => {
+      fetch('/api/version')
+        .then(res => {
+          if (!res.ok) throw new Error('HTTP error ' + res.status);
+          return res.json();
+        })
+        .then(data => {
+          if (data && data.version) {
+            setAppVersion(data.version);
+          }
+          if (data && data.is_kiosk) {
+            setIsKiosk(true);
+            setActiveTab('flasher');
+            setKioskOrchestratorIp(data.orchestrator_ip || '');
+            setConnectionKeyphrase(data.auth_token || '');
+          }
+        })
+        .catch(err => {
+          console.error('Error fetching version:', err);
+          if (retryCount < 5) {
+            retryCount++;
+            setTimeout(fetchVersion, 3000);
+          }
+        });
+    };
+    fetchVersion();
 
     // Fetch current settings on mount
     fetch('/api/settings')
