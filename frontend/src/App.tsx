@@ -399,7 +399,7 @@ function AppContent() {
                 <button
                   onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
                   className="p-1.5 bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-200 transition-all cursor-pointer flex items-center justify-center"
-                  title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                  title={theme === 'dark' ? t('switchToLightMode') : t('switchToDarkMode')}
                 >
                   {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
                 </button>
