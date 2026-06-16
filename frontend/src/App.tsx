@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar } from 'lucide-react';
+import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar, Sun, Moon } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
 import HistoryTab from './components/HistoryTab';
@@ -125,6 +125,20 @@ function LanguageSelector() {
 function AppContent() {
   const { t, language } = useTranslation();
   const [activeTab, setActiveTab] = useState<Tab>('fleet');
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem('theme');
+    return (saved === 'light' || saved === 'dark') ? saved : 'dark';
+  });
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [networkStatus, setNetworkStatus] = useState<any>(null);
   const [logTaskId, setLogTaskId] = useState<string | null>(null);
@@ -380,7 +394,16 @@ function AppContent() {
               )}
 
               {/* Language Dropdown Selector */}
-              <LanguageSelector />
+              <div className="flex items-center gap-2">
+                <LanguageSelector />
+                <button
+                  onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+                  className="p-1.5 bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-200 transition-all cursor-pointer flex items-center justify-center"
+                  title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                >
+                  {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+                </button>
+              </div>
             </div>
           </div>
 
