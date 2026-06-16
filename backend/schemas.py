@@ -120,6 +120,7 @@ class TaskLogResponse(BaseModel):
     id: str
     task_type: str
     status: str
+    node_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     log_output: str

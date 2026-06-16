@@ -391,3 +391,14 @@ def assign_node_group(node_id: int, group_id: int, db: Session = Depends(get_db)
         
     db.commit()
     return {"message": "Node group assignment updated successfully."}
+
+
+@router.get("/{node_id}/task-logs", response_model=List[schemas.TaskLogResponse])
+def get_node_task_logs(node_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieves background execution logs associated with a specific node.
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    return db.query(models.TaskLog).filter(models.TaskLog.node_id == node_id).order_by(models.TaskLog.created_at.desc()).limit(20).all()
