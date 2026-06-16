@@ -289,7 +289,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
       <div className="lg:col-span-2 space-y-6">
         <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
           <div>
-            <h3 className="text-lg font-bold text-white flex items-center gap-2"><Play size={18} className="text-indigo-400" /> {t('flasherTitle')}</h3>
+            <h3 className="text-lg font-bold text-zinc-50 flex items-center gap-2"><Play size={18} className="text-indigo-400" /> {t('flasherTitle')}</h3>
             <p className="text-xs text-zinc-400">{t('flasherSub')}</p>
           </div>
 
