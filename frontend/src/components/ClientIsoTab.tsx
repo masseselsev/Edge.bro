@@ -191,7 +191,7 @@ export default function ClientIsoTab() {
           <Cpu className="text-indigo-400" size={24} />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-white tracking-tight">{t('liveUsbGenerator')}</h2>
+          <h2 className="text-xl font-bold text-zinc-50 tracking-tight">{t('liveUsbGenerator')}</h2>
           <p className="text-xs text-zinc-400 mt-1">{t('liveUsbGeneratorSub')}</p>
         </div>
       </div>
@@ -199,7 +199,7 @@ export default function ClientIsoTab() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Configuration Panel */}
         <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <h3 className="text-sm font-bold text-zinc-50 flex items-center gap-2">
             {t('configPayloadTitle')}
           </h3>
           <p className="text-xs text-zinc-400 mb-4">
@@ -231,7 +231,7 @@ export default function ClientIsoTab() {
                 required
                 value={authToken}
                 onChange={(e) => setAuthToken(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
               />
             </div>
 
@@ -252,13 +252,13 @@ export default function ClientIsoTab() {
         {/* Status & Download Panel */}
         <div className="space-y-6">
           <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl">
-            <h3 className="text-sm font-bold text-white mb-4">{t('pipelineStatus')}</h3>
+            <h3 className="text-sm font-bold text-zinc-50 mb-4">{t('pipelineStatus')}</h3>
             
             <div className="space-y-4">
               <div className="p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <div className="text-xs font-bold text-white">{t('baseIsoCache')}</div>
+                    <div className="text-xs font-bold text-zinc-50">{t('baseIsoCache')}</div>
                     <div className="text-[10px] text-zinc-500">
                       {status?.base_iso_cached ? t('isoReady') : t('selectIsoSource')}
                     </div>
@@ -283,21 +283,21 @@ export default function ClientIsoTab() {
                       <button
                         type="button"
                         onClick={() => setIsoSourceType('official')}
-                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'official' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'official' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'}`}
                       >
                         {t('officialTab')}
                       </button>
                       <button
                         type="button"
                         onClick={() => setIsoSourceType('url')}
-                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'url' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'url' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'}`}
                       >
                         {t('customUrlTab')}
                       </button>
                       <button
                         type="button"
                         onClick={() => setIsoSourceType('upload')}
-                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'upload' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'upload' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'}`}
                       >
                         {t('uploadTab')}
                       </button>
@@ -309,7 +309,7 @@ export default function ClientIsoTab() {
                         <button
                           onClick={handleCacheBaseIso}
                           disabled={isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0)}
-                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? t('downloadProgress') : t('startDownload')}
                         </button>
@@ -323,12 +323,12 @@ export default function ClientIsoTab() {
                           placeholder="https://example.com/custom.iso"
                           value={customIsoUrl}
                           onChange={(e) => setCustomIsoUrl(e.target.value)}
-                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-md text-white text-xs focus:border-indigo-500 focus:outline-none"
+                          className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-md text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                         />
                         <button
                           onClick={handleCacheBaseIso}
                           disabled={isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) || !customIsoUrl}
-                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? t('downloadProgress') : t('downloadFromUrl')}
                         </button>
@@ -341,12 +341,12 @@ export default function ClientIsoTab() {
                           type="file" 
                           accept=".iso"
                           ref={fileInputRef}
-                          className="w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-zinc-800 file:text-white hover:file:bg-zinc-700 transition-colors"
+                          className="w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-zinc-800 file:text-zinc-100 hover:file:bg-zinc-700 transition-colors"
                         />
                         <button
                           onClick={handleUpload}
                           disabled={isUploading}
-                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-white rounded-md transition-colors disabled:opacity-50"
+                          className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-md transition-colors disabled:opacity-50"
                         >
                           {isUploading ? `${t('uploadProgressText')} (${uploadProgress}%)` : t('uploadIso')}
                         </button>
@@ -395,7 +395,7 @@ export default function ClientIsoTab() {
 
               <div className="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl">
                 <div>
-                  <div className="text-xs font-bold text-white">{t('compiledOfflineClient')}</div>
+                  <div className="text-xs font-bold text-zinc-50">{t('compiledOfflineClient')}</div>
                   <div className="text-[10px] text-zinc-500">technician_client_v1.iso</div>
                 </div>
                 {status?.client_iso_ready ? (

@@ -106,7 +106,7 @@ function LanguageSelector() {
               className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-md transition-colors flex items-center justify-between ${
                 language === lang
                   ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'
               }`}
             >
               <div className="flex items-center gap-2">
@@ -314,7 +314,7 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0f19] text-zinc-100 flex flex-col font-sans select-none">
+    <div className="min-h-screen flex flex-col font-sans select-none">
       {/* Global Header */}
       <header className="bg-zinc-900/80 backdrop-blur-md border-b border-zinc-800/80 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 py-3 space-y-3">
@@ -330,7 +330,7 @@ function AppContent() {
                 <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
               </div>
               <div>
-                <h1 className="text-base font-bold text-white tracking-tight leading-none flex items-center gap-2">
+                <h1 className="text-base font-bold text-zinc-50 tracking-tight leading-none flex items-center gap-2">
                   <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded font-mono font-bold text-xs uppercase tracking-wider">Edge B.R.O.</span>
                   <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono font-bold">{appVersion}</span>
                 </h1>
@@ -415,7 +415,7 @@ function AppContent() {
                   onClick={() => setActiveTab('fleet')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                     activeTab === 'fleet'
-                      ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                      ? 'bg-zinc-900 text-zinc-100 shadow-sm border border-zinc-800'
                       : 'text-zinc-400 hover:text-zinc-100'
                   }`}
                 >
@@ -427,7 +427,7 @@ function AppContent() {
                   onClick={() => setActiveTab('schedule')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                     activeTab === 'schedule'
-                      ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                      ? 'bg-zinc-900 text-zinc-100 shadow-sm border border-zinc-800'
                       : 'text-zinc-400 hover:text-zinc-100'
                   }`}
                 >
@@ -438,7 +438,7 @@ function AppContent() {
                 onClick={() => setActiveTab('flasher')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                   activeTab === 'flasher'
-                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                    ? 'bg-zinc-900 text-zinc-100 shadow-sm border border-zinc-800'
                     : 'text-zinc-400 hover:text-zinc-100'
                 }`}
               >
@@ -449,7 +449,7 @@ function AppContent() {
                   onClick={() => setActiveTab('clientiso')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                     activeTab === 'clientiso'
-                      ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                      ? 'bg-zinc-900 text-zinc-100 shadow-sm border border-zinc-800'
                       : 'text-zinc-400 hover:text-zinc-100'
                   }`}
                 >
@@ -460,7 +460,7 @@ function AppContent() {
                 onClick={() => setActiveTab('history')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                   activeTab === 'history'
-                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                    ? 'bg-zinc-900 text-zinc-100 shadow-sm border border-zinc-800'
                     : 'text-zinc-400 hover:text-zinc-100'
                 }`}
               >
@@ -470,7 +470,7 @@ function AppContent() {
                 onClick={() => setActiveTab('logs')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                   activeTab === 'logs'
-                    ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                    ? 'bg-zinc-900 text-zinc-100 shadow-sm border border-zinc-800'
                     : 'text-zinc-400 hover:text-zinc-100'
                 }`}
               >
@@ -481,7 +481,7 @@ function AppContent() {
                   onClick={() => setActiveTab('settings')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
                     activeTab === 'settings'
-                      ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800'
+                      ? 'bg-zinc-900 text-zinc-100 shadow-sm border border-zinc-800'
                       : 'text-zinc-400 hover:text-zinc-100'
                   }`}
                 >
@@ -544,7 +544,7 @@ function AppContent() {
                 <Gear size={20} />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white leading-tight">{t('welcomeSetup')}</h3>
+                <h3 className="text-base font-bold text-zinc-50 leading-tight">{t('welcomeSetup')}</h3>
                 <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">{t('configureOrchestratorIp')}</p>
               </div>
             </div>

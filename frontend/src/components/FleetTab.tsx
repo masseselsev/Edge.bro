@@ -397,7 +397,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white">{t('nodeListTitle')}</h2>
+          <h2 className="text-2xl font-bold tracking-tight text-zinc-50">{t('nodeListTitle')}</h2>
           <p className="text-sm text-zinc-400">{t('nodeListSub')}</p>
         </div>
         <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
@@ -443,7 +443,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
             placeholder={t('searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
+            className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
           />
         </div>
         <div className="flex items-center gap-2 border-l border-zinc-800 pl-0 md:pl-4">

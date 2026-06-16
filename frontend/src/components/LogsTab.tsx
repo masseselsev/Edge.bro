@@ -151,7 +151,7 @@ export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+          <h2 className="text-2xl font-bold tracking-tight text-zinc-50 flex items-center gap-2">
             <Terminal size={24} className="text-indigo-400" />
             {t('systemLogsTitle')}
           </h2>
@@ -179,7 +179,7 @@ export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
               placeholder={t('searchLogs')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
+              className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
             />
           </div>
 
@@ -207,7 +207,7 @@ export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
                   filteredTasks.map(task => (
                     <tr key={task.id} className="hover:bg-zinc-800/30 transition-colors">
                       <td className="px-4 py-2.5 font-mono text-xs text-zinc-400">{task.id}</td>
-                      <td className="px-4 py-2.5 font-semibold text-white capitalize">{task.task_type.toLowerCase()}</td>
+                      <td className="px-4 py-2.5 font-semibold text-zinc-100 capitalize">{task.task_type.toLowerCase()}</td>
                       <td className="px-4 py-2.5">{getStatusBadge(task.status)}</td>
                       <td className="px-4 py-2.5 text-zinc-400">
                         {formatDate(task.created_at, timezone)}

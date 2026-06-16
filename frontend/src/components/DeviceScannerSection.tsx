@@ -42,7 +42,7 @@ export function DeviceScannerSection({
     <div className="space-y-6">
       <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
         <div className="flex justify-between items-center">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <h3 className="text-sm font-bold text-zinc-50 flex items-center gap-2">
             <HardDrive size={16} /> {t('deviceScanner')}
           </h3>
           <button
@@ -59,7 +59,7 @@ export function DeviceScannerSection({
           ) : (
             devices.map((d) => (
               <div key={d.name} className="p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl space-y-1">
-                <div className="flex justify-between text-xs font-bold text-white">
+                <div className="flex justify-between text-xs font-bold text-zinc-50">
                   <span className="flex items-center gap-1.5">
                     {d.name}
                     {d.is_usb && (
@@ -86,7 +86,7 @@ export function DeviceScannerSection({
       {isKiosk && storageInfo && (
         <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 animate-fade-in">
           <div className="flex justify-between items-center">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-zinc-50 flex items-center gap-2">
               <HardDrive size={16} className="text-indigo-400" />
               {t('localBackupStorage')}
             </h3>
@@ -112,7 +112,7 @@ export function DeviceScannerSection({
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs font-semibold">
                 <span className="text-zinc-400">{t('usedSpace', { size: getFormatSize(storageInfo.used) })}</span>
-                <span className="text-white">
+                <span className="text-zinc-100">
                   {((storageInfo.used / storageInfo.total) * 100).toFixed(0)}%
                 </span>
               </div>

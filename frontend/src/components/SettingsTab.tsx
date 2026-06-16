@@ -166,7 +166,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
     <div className="max-w-2xl mx-auto p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-6">
       <div className="flex justify-between items-center border-b border-zinc-800 pb-4">
         <div>
-          <h3 className="text-lg font-bold text-white flex items-center gap-2"><Gear size={18} /> {t('orchestratorSettings')}</h3>
+          <h3 className="text-lg font-bold text-zinc-50 flex items-center gap-2"><Gear size={18} /> {t('orchestratorSettings')}</h3>
           <p className="text-xs text-zinc-400">{t('orchestratorSettingsSub')}</p>
         </div>
       </div>
@@ -180,7 +180,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
               required
               value={sshPort}
               onChange={(e) => setSshPort(parseInt(e.target.value))}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
             />
           </div>
           <div>
@@ -190,7 +190,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
               required
               value={repoPath}
               onChange={(e) => setRepoPath(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
             />
           </div>
         </div>
@@ -201,7 +201,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
             <select
               value={defaultCompression}
               onChange={(e) => setDefaultCompression(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
             >
               <option value="none">none</option>
               <option value="lz4">lz4</option>
@@ -219,7 +219,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
               max={400}
               value={defaultCpuQuota}
               onChange={(e) => setDefaultCpuQuota(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none font-mono"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none font-mono"
               placeholder="e.g. 50"
             />
             <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
@@ -281,19 +281,19 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
             rows={3}
             value={globalExclusions}
             onChange={(e) => setGlobalExclusions(e.target.value)}
-            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm font-mono focus:border-indigo-500 focus:outline-none"
+            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm font-mono focus:border-indigo-500 focus:outline-none"
           />
         </div>
 
         <div className="p-5 bg-zinc-950/40 border border-zinc-800/80 rounded-xl space-y-4">
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider">{t('globalPruning')}</h4>
+          <h4 className="text-xs font-bold text-zinc-50 uppercase tracking-wider">{t('globalPruning')}</h4>
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('retentionType')}</label>
               <select
                 value={policyType}
                 onChange={(e) => setPolicyType(e.target.value as any)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
               >
                 <option value="interval">{t('policyInterval')}</option>
                 <option value="count">{t('policyCount')}</option>
@@ -311,7 +311,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                     min={0}
                     value={policyKeepDaily}
                     onChange={(e) => setPolicyKeepDaily(parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -322,7 +322,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                     min={0}
                     value={policyKeepWeekly}
                     onChange={(e) => setPolicyKeepWeekly(parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -333,7 +333,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                     min={0}
                     value={policyKeepMonthly}
                     onChange={(e) => setPolicyKeepMonthly(parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -348,7 +348,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                   min={1}
                   value={policyKeepLast}
                   onChange={(e) => setPolicyKeepLast(parseInt(e.target.value) || 1)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                 />
               </div>
             )}
@@ -363,7 +363,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                     min={1}
                     value={policyWithinValue}
                     onChange={(e) => setPolicyWithinValue(parseInt(e.target.value) || 1)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -371,7 +371,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                   <select
                     value={policyWithinUnit}
                     onChange={(e) => setPolicyWithinUnit(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                   >
                     <option value="d">{t('timeframeUnitDays')}</option>
                     <option value="w">{t('timeframeUnitWeeks')}</option>
