@@ -105,7 +105,7 @@ function LanguageSelector() {
               onClick={() => handleSelect(lang)}
               className={`w-full text-left px-3 py-2 text-xs font-semibold rounded-md transition-colors flex items-center justify-between ${
                 language === lang
-                  ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                  ? 'bg-indigo-50 dark:bg-indigo-600/20 text-indigo-800 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-500/20'
                   : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'
               }`}
             >

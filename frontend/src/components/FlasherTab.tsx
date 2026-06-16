@@ -311,10 +311,10 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
             </div>
 
             {selectedNodeId && isKiosk && restoreMode === 'online' && (
-              <div className="p-4 bg-indigo-950/20 border border-indigo-900/30 rounded-xl space-y-3">
+              <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 rounded-xl space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider">{t('localBackupStorage')}</h4>
+                    <h4 className="text-xs font-bold text-indigo-800 dark:text-indigo-300 uppercase tracking-wider">{t('localBackupStorage')}</h4>
                     <p className="text-[10px] text-zinc-400 mt-1">
                       {t('offlineCapabilitiesText')}
                     </p>

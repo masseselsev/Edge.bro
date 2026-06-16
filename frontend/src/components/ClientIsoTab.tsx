@@ -431,9 +431,9 @@ export default function ClientIsoTab() {
             )}
           </div>
           
-          <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-start gap-3">
-            <ShieldAlert className="text-indigo-400 shrink-0 mt-0.5" size={18} />
-            <div className="text-xs text-indigo-200 leading-relaxed">
+          <div className="p-4 bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-xl flex items-start gap-3">
+            <ShieldAlert className="text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" size={18} />
+            <div className="text-xs text-indigo-800 dark:text-indigo-200 leading-relaxed">
               <strong>{t('offlineCapabilities')}</strong> {t('offlineCapabilitiesText')}
             </div>
           </div>
