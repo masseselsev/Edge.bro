@@ -40,6 +40,14 @@ interface BackupGroup {
   name: string;
 }
 
+interface TaskLog {
+  id: string;
+  task_type: string;
+  status: string;
+  created_at: string;
+  log_output: string;
+}
+
 interface NodeDetailsModalProps {
   nodeId: number;
   onClose: () => void;
@@ -58,13 +66,18 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const [savingNotes, setSavingNotes] = useState(false);
   const [triggeringAction, setTriggeringAction] = useState(false);
 
+  const [activeTab, setActiveTab] = useState<'info' | 'logs'>('info');
+  const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
+  const [selectedLogId, setSelectedLogId] = useState<string>('');
+
   const fetchNodeDetails = async () => {
     setLoading(true);
     try {
-      const [nRes, hRes, gRes] = await Promise.all([
+      const [nRes, hRes, gRes, tlRes] = await Promise.all([
         fetch('/api/nodes'),
         fetch(`/api/nodes/${nodeId}/history`),
-        fetch('/api/groups')
+        fetch('/api/groups'),
+        fetch(`/api/nodes/${nodeId}/task-logs`)
       ]);
 
       if (nRes.ok) {
@@ -85,6 +98,14 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
       
       if (gRes.ok) {
         setGroups(await gRes.json());
+      }
+
+      if (tlRes.ok) {
+        const logsData: TaskLog[] = await tlRes.json();
+        setTaskLogs(logsData);
+        if (logsData.length > 0) {
+          setSelectedLogId(logsData[0].id);
+        }
       }
     } catch (err) {
       console.error("Failed to load node details:", err);
@@ -220,8 +241,26 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
         {/* Modal body (scrollable) */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Hardware Specs Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Tab Navigation Switches */}
+          <div className="flex gap-4 border-b border-zinc-800 pb-3 mb-4 font-sans text-xs">
+            <button
+              onClick={() => setActiveTab('info')}
+              className={`pb-2 px-1 font-bold transition-all cursor-pointer outline-none ${activeTab === 'info' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            >
+              System Info & Settings
+            </button>
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`pb-2 px-1 font-bold transition-all cursor-pointer outline-none ${activeTab === 'logs' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            >
+              Console Logs
+            </button>
+          </div>
+
+          {activeTab === 'info' && (
+            <>
+              {/* Hardware Specs Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
               <Cpu className="h-8 w-8 text-cyan-400/90" />
               <div>
@@ -430,6 +469,50 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               </table>
             </div>
           </div>
+        </>
+      )}
+
+          {activeTab === 'logs' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-zinc-400">Select Session:</label>
+                  <select
+                    value={selectedLogId}
+                    onChange={(e) => setSelectedLogId(e.target.value)}
+                    className="px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:border-indigo-500"
+                  >
+                    {taskLogs.map(tl => (
+                      <option key={tl.id} value={tl.id}>
+                        {tl.task_type} — {new Date(tl.created_at).toLocaleString()} ({tl.status})
+                      </option>
+                    ))}
+                    {taskLogs.length === 0 && <option value="">No log sessions recorded</option>}
+                  </select>
+                </div>
+                {selectedLogId && (
+                  <button
+                    onClick={() => {
+                      const currentLog = taskLogs.find(x => x.id === selectedLogId);
+                      if (currentLog) {
+                        navigator.clipboard.writeText(currentLog.log_output);
+                        alert("Log copied to clipboard!");
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-zinc-850 hover:bg-zinc-800 text-zinc-200 border border-zinc-700/80 rounded-lg text-xs font-semibold transition cursor-pointer"
+                  >
+                    Copy Log
+                  </button>
+                )}
+              </div>
+
+              <div className="bg-zinc-950 border border-zinc-850 rounded-xl p-4 font-mono text-xs overflow-hidden">
+                <pre className="text-emerald-400 bg-black p-4 rounded-lg overflow-y-auto max-h-[350px] whitespace-pre-wrap leading-relaxed">
+                  {taskLogs.find(x => x.id === selectedLogId)?.log_output || "Select a session from the list to display console logs."}
+                </pre>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
