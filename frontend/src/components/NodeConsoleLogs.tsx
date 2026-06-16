@@ -1,4 +1,5 @@
 import React from 'react';
+import { SearchableSelect } from './SearchableSelect';
 
 interface TaskLog {
   id: string;
@@ -32,23 +33,23 @@ export default function NodeConsoleLogs({
     }
   };
 
+  const logOptions = taskLogs.map((tl) => ({
+    value: tl.id,
+    label: tl.task_type,
+    sublabel: `${new Date(tl.created_at).toLocaleString(language === 'ru' ? 'ru-RU' : language === 'uk' ? 'uk-UA' : 'en-US')} (${tl.status})`
+  }));
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-zinc-400">{t('selectSession')}</label>
-          <select
+        <div className="flex items-center gap-2 flex-1 sm:flex-initial min-w-[200px]">
+          <label className="text-xs font-semibold text-zinc-400 whitespace-nowrap">{t('selectSession')}</label>
+          <SearchableSelect
+            options={logOptions}
             value={selectedLogId}
-            onChange={(e) => setSelectedLogId(e.target.value)}
-            className="px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:border-indigo-500"
-          >
-            {taskLogs.map((tl) => (
-              <option key={tl.id} value={tl.id}>
-                {tl.task_type} — {new Date(tl.created_at).toLocaleString(language === 'ru' ? 'ru-RU' : language === 'uk' ? 'uk-UA' : 'en-US')} ({tl.status})
-              </option>
-            ))}
-            {taskLogs.length === 0 && <option value="">{t('noLogSessions')}</option>}
-          </select>
+            onChange={setSelectedLogId}
+            placeholder={taskLogs.length === 0 ? t('noLogSessions') : t('selectSession')}
+          />
         </div>
         {selectedLogId && (
           <button

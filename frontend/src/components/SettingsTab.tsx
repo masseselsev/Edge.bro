@@ -58,6 +58,28 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
     }));
   }, []);
 
+  const compressionOptions = React.useMemo(() => [
+    { value: 'none', label: 'none' },
+    { value: 'lz4', label: 'lz4' },
+    { value: 'zstd:1', label: 'zstd:1' },
+    { value: 'zstd:3', label: 'zstd:3' },
+    { value: 'zstd:5', label: 'zstd:5' },
+    { value: 'zstd:9', label: 'zstd:9' }
+  ], []);
+
+  const policyTypeOptions = React.useMemo(() => [
+    { value: 'interval', label: t('policyInterval') },
+    { value: 'count', label: t('policyCount') },
+    { value: 'timeframe', label: t('policyTimeframe') }
+  ], [t]);
+
+  const unitOptions = React.useMemo(() => [
+    { value: 'd', label: t('timeframeUnitDays') },
+    { value: 'w', label: t('timeframeUnitWeeks') },
+    { value: 'm', label: t('timeframeUnitMonths') },
+    { value: 'y', label: t('timeframeUnitYears') }
+  ], [t]);
+
   useEffect(() => {
     fetch('/api/settings')
       .then(res => res.json())
@@ -198,18 +220,12 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('compressionMode')}</label>
-            <select
+            <SearchableSelect
+              options={compressionOptions}
               value={defaultCompression}
-              onChange={(e) => setDefaultCompression(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-            >
-              <option value="none">none</option>
-              <option value="lz4">lz4</option>
-              <option value="zstd:1">zstd:1</option>
-              <option value="zstd:3">zstd:3</option>
-              <option value="zstd:5">zstd:5</option>
-              <option value="zstd:9">zstd:9</option>
-            </select>
+              onChange={setDefaultCompression}
+              placeholder="-- Select Compression --"
+            />
           </div>
           <div>
             <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('cpuQuota')}</label>
@@ -290,15 +306,12 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('retentionType')}</label>
-              <select
+              <SearchableSelect
+                options={policyTypeOptions}
                 value={policyType}
-                onChange={(e) => setPolicyType(e.target.value as any)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-              >
-                <option value="interval">{t('policyInterval')}</option>
-                <option value="count">{t('policyCount')}</option>
-                <option value="timeframe">{t('policyTimeframe')}</option>
-              </select>
+                onChange={setPolicyType}
+                placeholder="-- Select Policy Type --"
+              />
             </div>
 
             {policyType === 'interval' && (
@@ -368,16 +381,12 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-zinc-400 mb-1.5">&nbsp;</label>
-                  <select
+                  <SearchableSelect
+                    options={unitOptions}
                     value={policyWithinUnit}
-                    onChange={(e) => setPolicyWithinUnit(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                  >
-                    <option value="d">{t('timeframeUnitDays')}</option>
-                    <option value="w">{t('timeframeUnitWeeks')}</option>
-                    <option value="m">{t('timeframeUnitMonths')}</option>
-                    <option value="y">{t('timeframeUnitYears')}</option>
-                  </select>
+                    onChange={setPolicyWithinUnit}
+                    placeholder="-- Select Unit --"
+                  />
                 </div>
               </div>
             )}

@@ -4,6 +4,7 @@ import { useTranslation } from '../context/TranslationContext';
 import type { Language } from '../i18n/translations';
 import NodeConsoleLogs from './NodeConsoleLogs';
 import NodeBackupHistory from './NodeBackupHistory';
+import { SearchableSelect } from './SearchableSelect';
 
 interface Node {
   id: number;
@@ -318,16 +319,15 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                     <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
                       {t('backupGroup')}
                     </label>
-                    <select
+                    <SearchableSelect
+                      options={[
+                        { value: 0, label: t('noGroup') },
+                        ...groups.map(g => ({ value: g.id, label: g.name }))
+                      ]}
                       value={groupId}
-                      onChange={(e) => handleGroupAssign(Number(e.target.value))}
-                      className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:border-indigo-500"
-                    >
-                      <option value={0}>{t('noGroup')}</option>
-                      {groups.map(g => (
-                        <option key={g.id} value={g.id}>{g.name}</option>
-                      ))}
-                    </select>
+                      onChange={(val) => handleGroupAssign(Number(val))}
+                      placeholder={t('backupGroup')}
+                    />
                   </div>
 
                   <div className="space-y-1.5">

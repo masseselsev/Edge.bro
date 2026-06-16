@@ -495,7 +495,9 @@ function AppContent() {
 
       {/* Main Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
-        {renderTabContent()}
+        <div key={activeTab} className="animate-fade-in">
+          {renderTabContent()}
+        </div>
       </main>
 
       {/* Kiosk Mode Footer */}
