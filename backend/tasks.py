@@ -158,7 +158,7 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
         db.close()
         return {"status": "FAILED", "error": "Node not found"}
 
-    task_log = TaskLog(id=task_id, task_type="BOOTSTRAP", status="RUNNING", log_output="")
+    task_log = TaskLog(id=task_id, task_type="BOOTSTRAP", status="RUNNING", node_id=node_id, log_output="")
     db.add(task_log)
     db.commit()
     log_to_task(task_id, f"Starting bootstrap for {node.hostname} ({node.ip_address})")
