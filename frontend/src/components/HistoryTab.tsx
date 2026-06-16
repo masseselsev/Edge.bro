@@ -27,6 +27,7 @@ interface Node {
 }
 
 import { formatDate } from './dateUtils';
+import NodeDetailsModal from './NodeDetailsModal';
 
 interface HistoryTabProps {
   onViewLogs?: (taskId: string, title: string) => void;
@@ -46,6 +47,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [grouping, setGrouping] = useState<'flat' | 'hostname' | 'prefix' | 'subnet'>('hostname');
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -180,8 +182,17 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
             return (
               <tr key={h.id} className="hover:bg-zinc-900/40 transition-colors">
                 {showNodeInfo && (
-                  <td className="px-6 py-3.5 font-semibold text-zinc-300">
-                    {node ? node.hostname : 'Unknown'}
+                  <td className="px-6 py-3.5 font-semibold">
+                    {node ? (
+                      <span
+                        onClick={() => setSelectedNodeId(node.id)}
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        {node.hostname}
+                      </span>
+                    ) : (
+                      <span className="text-zinc-500">Unknown</span>
+                    )}
                   </td>
                 )}
                 {showNodeInfo && (
@@ -225,7 +236,15 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
           <div className="flex items-center gap-3">
             <ChevronRight size={16} className={`text-zinc-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
             <Cpu size={14} className="text-zinc-500" />
-            <span className="text-sm font-semibold text-zinc-100 group-hover:text-zinc-50 transition-colors">{node.hostname}</span>
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedNodeId(node.id);
+              }}
+              className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+            >
+              {node.hostname}
+            </span>
             <span className="text-xs text-zinc-400">({node.ip_address})</span>
             <span className="text-xs text-zinc-500">— {subnodesCount} {t('snapshotColumn').toLowerCase()}(s)</span>
             {success > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{success} ok</span>}
@@ -483,6 +502,14 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
               renderGroupedContent()
             )}
           </div>
+        )}
+
+        {selectedNodeId !== null && (
+          <NodeDetailsModal
+            nodeId={selectedNodeId}
+            onClose={() => setSelectedNodeId(null)}
+            onRefreshList={fetchStats}
+          />
         )}
       </div>
     </div>

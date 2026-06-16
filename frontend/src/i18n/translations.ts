@@ -6,7 +6,7 @@ export const translations: Record<Language, Record<string, string>> = {
     tabFleet: 'Fleet',
     tabFlasher: 'Flasher',
     tabKiosk: 'Kiosk',
-    tabHistory: 'History',
+    tabHistory: 'Archive',
     tabLogs: 'Logs',
     tabSettings: 'Settings',
     kioskTitle: 'Client Mode (Kiosk)',
@@ -115,7 +115,7 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskOfflineNodesWarning: 'Offline Mode (No local cache found)',
 
     // History Tab
-    historyTitle: 'Global Backup History',
+    historyTitle: 'Global Backup Archive',
     historySub: 'Browse generated snapshots, sizes, and task outputs.',
     nodeColumn: 'Node',
     snapshotColumn: 'Snapshot Archive',
@@ -129,7 +129,7 @@ export const translations: Record<Language, Record<string, string>> = {
     historyOriginalTotal: 'Total Original Size:',
     historyDedupTotal: 'Borg Dedup Size:',
     dedupRatio: 'Deduplication Ratio:',
-    noHistoryFound: 'No backup history records found in database.',
+    noHistoryFound: 'No backup archive records found in database.',
 
     // Logs Tab
     systemLogsTitle: 'System & Security Logs',
@@ -371,7 +371,7 @@ export const translations: Record<Language, Record<string, string>> = {
     tabFleet: 'Узлы (Fleet)',
     tabFlasher: 'Прошивальщик',
     tabKiosk: 'Киоск',
-    tabHistory: 'История',
+    tabHistory: 'Архив',
     tabLogs: 'Логи',
     tabSettings: 'Настройки',
     kioskTitle: 'Режим клиента (киоск)',
@@ -480,7 +480,7 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskOfflineNodesWarning: 'Офлайн-режим (Локальный кэш пуст)',
 
     // History Tab
-    historyTitle: 'Глобальная история бэкапов',
+    historyTitle: 'Глобальный архив бэкапов',
     historySub: 'Просмотр созданных архивов, размеров и логов задач.',
     nodeColumn: 'Узел',
     snapshotColumn: 'Архив бэкапа',
@@ -494,7 +494,7 @@ export const translations: Record<Language, Record<string, string>> = {
     historyOriginalTotal: 'Суммарный размер:',
     historyDedupTotal: 'Сжатый размер Borg:',
     dedupRatio: 'Коэффициент сжатия:',
-    noHistoryFound: 'В базе данных нет записей об истории бэкапов.',
+    noHistoryFound: 'В базе данных нет записей об архиве бэкапов.',
 
     // Logs Tab
     systemLogsTitle: 'Системные логи и безопасность',
@@ -735,7 +735,7 @@ export const translations: Record<Language, Record<string, string>> = {
     tabFleet: 'Вузли (Fleet)',
     tabFlasher: 'Прошивальник',
     tabKiosk: 'Кіоск',
-    tabHistory: 'Історія',
+    tabHistory: 'Архів',
     tabLogs: 'Логи',
     tabSettings: 'Налаштування',
     kioskTitle: 'Режим клієнта (кіоск)',
@@ -844,10 +844,10 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskOfflineNodesWarning: 'Офлайн-режим (Локальний кеш порожній)',
 
     // History Tab
-    historyTitle: 'Глобальна історія бэкапів',
+    historyTitle: 'Глобальний архів бекапів',
     historySub: 'Перегляд створених архівів, розмірів та логів завдань.',
     nodeColumn: 'Вузол',
-    snapshotColumn: 'Архів бэкапу',
+    snapshotColumn: 'Архів бекапу',
     timestampColumn: 'Час створення',
     originalSizeColumn: 'Вихідний розмір',
     dedupSizeColumn: 'Розмір у Borg (Дедуп)',
@@ -858,7 +858,7 @@ export const translations: Record<Language, Record<string, string>> = {
     historyOriginalTotal: 'Сумарний розмір:',
     historyDedupTotal: 'Стиснутий розмір Borg:',
     dedupRatio: 'Коефіцієнт стиснення:',
-    noHistoryFound: 'У базі даних немає записів про історію бэкапів.',
+    noHistoryFound: 'У базі даних немає записів про архів бекапів.',
 
     // Logs Tab
     systemLogsTitle: 'Системні логи та безпека',
