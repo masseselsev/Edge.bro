@@ -2,6 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --zinc-50: 250 250 250;
+  --zinc-100: 244 244 245;
+  --zinc-200: 228 228 231;
+  --zinc-300: 212 212 216;
+  --zinc-400: 161 161 170;
+  --zinc-500: 113 113 122;
+  --zinc-700: 63 63 70;
+  --zinc-750: 48 48 54;
+  --zinc-800: 39 39 42;
+  --zinc-900: 24 24 27;
+  --zinc-950: 9 9 11;
+  --body-bg: 11 15 25;      /* #0b0f19 */
+  --body-text: 243 244 246; /* #f3f4f6 */
+}
+
+.light {
+  --zinc-950: 255 255 255;  /* #ffffff */
+  --zinc-900: 248 250 252;  /* #f8fafc */
+  --zinc-800: 226 232 240;  /* #e2e8f0 */
+  --zinc-750: 241 245 249;  /* #f1f5f9 */
+  --zinc-700: 203 213 225;  /* #cbd5e1 */
+  --zinc-500: 100 116 139;  /* #64748b */
+  --zinc-400: 71 85 105;    /* #475569 */
+  --zinc-300: 30 41 59;     /* #1e293b */
+  --zinc-200: 15 23 42;     /* #0f172a */
+  --zinc-100: 2 6 23;       /* #020617 */
+  --zinc-50: 0 0 0;
+  --body-bg: 248 250 252;   /* #f8fafc */
+  --body-text: 15 23 42;    /* #0f172a */
+}
+
 html {
   scrollbar-gutter: stable;
 }
@@ -33,10 +65,11 @@ html {
 
 body {
   margin: 0;
-  background-color: #0b0f19;
-  color: #f3f4f6;
+  background-color: rgb(var(--body-bg));
+  color: rgb(var(--body-text));
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Premium Transition Animations */
