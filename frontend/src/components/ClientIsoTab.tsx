@@ -185,7 +185,7 @@ export default function ClientIsoTab() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-3 mb-8">
         <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
           <Cpu className="text-indigo-400" size={24} />

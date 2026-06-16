@@ -158,7 +158,7 @@ export default function ScheduleTab() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in p-6">
+    <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
