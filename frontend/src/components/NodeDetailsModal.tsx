@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Play, Pause, Edit, Cpu, HardDrive, Cpu as MemIcon, Info, RefreshCw, Save, Database, History, Terminal, Calendar } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import type { Language } from '../i18n/translations';
@@ -215,17 +216,18 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   };
 
   if (!node) {
-    return (
+    return createPortal(
       <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 flex items-center gap-3">
           <RefreshCw className="h-6 w-6 text-indigo-400 animate-spin" />
           <span className="text-zinc-200">Loading node details...</span>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-zinc-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-modal-in">
         {/* Header */}
@@ -439,6 +441,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
