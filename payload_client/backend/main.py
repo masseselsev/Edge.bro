@@ -32,6 +32,7 @@ orchestrator_api_port = 8000
 orchestrator_ssh_port = 12345
 auth_token = ""
 language = "en"
+kiosk_uuid = ""
 
 if os.path.exists(CONFIG_PATH):
     try:
@@ -42,8 +43,35 @@ if os.path.exists(CONFIG_PATH):
             orchestrator_ssh_port = cfg.get("orchestrator_ssh_port", 12345)
             auth_token = cfg.get("auth_token", "")
             language = cfg.get("language", "en")
+            kiosk_uuid = cfg.get("kiosk_uuid", "")
     except Exception as e:
         logging.error(f"Failed to load config.json: {e}")
+
+# Generate persistent UUID if not present
+if not kiosk_uuid:
+    import uuid
+    kiosk_uuid = str(uuid.uuid4())
+    try:
+        cfg_data = {}
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, "r") as f:
+                cfg_data = json.load(f)
+        cfg_data["kiosk_uuid"] = kiosk_uuid
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(cfg_data, f, indent=4)
+    except Exception as e:
+        logging.error(f"Failed to save kiosk_uuid to config.json: {e}")
+
+# Generate local SSH keypair if missing
+SSH_KEY_PATH = os.path.join(os.path.dirname(__file__), "id_ed25519")
+if not os.path.exists(SSH_KEY_PATH):
+    try:
+        subprocess.run([
+            "ssh-keygen", "-t", "ed25519", "-N", "", "-f", SSH_KEY_PATH
+        ], check=True)
+    except Exception as e:
+        logging.error(f"Failed to generate kiosk SSH keypair: {e}")
+
 
 restore_mode = "offline"
 
@@ -156,6 +184,10 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
     except Exception as e:
         log_callback(f"FATAL EXCEPTION: {str(e)}", status="FAILED")
 
+class ConnectRequest(BaseModel):
+    orchestrator_ip: str
+    key: str
+
 @app.get("/api/version")
 def get_version():
     """Returns the unified application version and kiosk configurations."""
@@ -164,8 +196,96 @@ def get_version():
         "is_kiosk": True,
         "orchestrator_ip": orchestrator_ip,
         "auth_token": auth_token,
-        "language": language
+        "language": language,
+        "kiosk_uuid": kiosk_uuid
     }
+
+@app.post("/api/kiosk/connect")
+def connect_to_orchestrator(req: ConnectRequest):
+    # Read local SSH public key
+    pub_key_path = SSH_KEY_PATH + ".pub"
+    if not os.path.exists(pub_key_path):
+        raise HTTPException(status_code=500, detail="Local SSH public key is missing")
+    
+    try:
+        with open(pub_key_path, "r") as f:
+            pub_key_data = f.read().strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read local SSH public key: {str(e)}")
+    
+    # Perform HTTP request to orchestrator handshake API
+    handshake_url = f"http://{req.orchestrator_ip}:8000/api/kiosks/handshake"
+    payload = {
+        "uuid": kiosk_uuid,
+        "key": req.key.strip(),
+        "ssh_pub_key": pub_key_data
+    }
+    
+    try:
+        post_data = json.dumps(payload).encode("utf-8")
+        req_obj = urllib.request.Request(
+            handshake_url, 
+            data=post_data,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req_obj, timeout=10) as response:
+            res_data = json.loads(response.read().decode())
+            
+        token = res_data.get("auth_token")
+        orch_ssh_pub = res_data.get("orchestrator_ssh_pub_key")
+        
+        # Update current runtime state
+        global orchestrator_ip, auth_token, restore_mode
+        orchestrator_ip = req.orchestrator_ip
+        auth_token = token
+        restore_mode = "online"
+        
+        # Update config.json file
+        cfg_data = {}
+        if os.path.exists(CONFIG_PATH):
+            try:
+                with open(CONFIG_PATH, "r") as f:
+                    cfg_data = json.load(f)
+            except Exception as e:
+                logging.error(f"Failed to parse config.json for writing: {e}")
+        
+        cfg_data["orchestrator_ip"] = req.orchestrator_ip
+        cfg_data["auth_token"] = token
+        cfg_data["restore_mode"] = "online"
+        
+        try:
+            with open(CONFIG_PATH, "w") as f:
+                json.dump(cfg_data, f, indent=4)
+        except Exception as e:
+            logging.error(f"Failed to write config.json during connection pairing: {e}")
+            
+        # Append orchestrator public SSH key to kiosk authorized_keys if returned
+        if orch_ssh_pub:
+            kiosk_auth_path = "/root/.ssh/authorized_keys"
+            try:
+                os.makedirs(os.path.dirname(kiosk_auth_path), exist_ok=True)
+                content = ""
+                if os.path.exists(kiosk_auth_path):
+                    with open(kiosk_auth_path, "r") as f:
+                        content = f.read()
+                if orch_ssh_pub.strip() not in content:
+                    with open(kiosk_auth_path, "a") as f:
+                        f.write(orch_ssh_pub.strip() + "\n")
+            except Exception as e:
+                logging.error(f"Failed to write orchestrator public SSH key to kiosk authorized_keys: {e}")
+                
+        return {"status": "SUCCESS"}
+    except urllib.error.HTTPError as he:
+        err_body = he.read().decode()
+        try:
+            err_json = json.loads(err_body)
+            detail = err_json.get("detail", "Handshake failed")
+        except:
+            detail = f"Orchestrator returned error code {he.code}"
+        raise HTTPException(status_code=400, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to connect to orchestrator: {str(e)}")
+
 
 @app.get("/api/scanner/devices")
 def scan_devices():

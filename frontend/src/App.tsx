@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar, Sun, Moon } from 'lucide-react';
+import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar, Sun, Moon, Link2, Copy } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
 import HistoryTab from './components/HistoryTab';
@@ -155,6 +155,55 @@ function AppContent() {
   const [kioskOrchestratorIp, setKioskOrchestratorIp] = useState('');
   const [connectionKeyphrase, setConnectionKeyphrase] = useState('');
 
+  // Pairing states
+  const [kioskUuid, setKioskUuid] = useState('');
+  const [showPairingModal, setShowPairingModal] = useState(false);
+  const [pairingIp, setPairingIp] = useState('');
+  const [pairingKey, setPairingKey] = useState('');
+  const [pairingSubmitting, setPairingSubmitting] = useState(false);
+  const [pairingError, setPairingError] = useState('');
+  const [pairingSuccess, setPairingSuccess] = useState('');
+
+  const handlePairingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPairingSubmitting(true);
+    setPairingError('');
+    setPairingSuccess('');
+    try {
+      const res = await fetch('/api/kiosk/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orchestrator_ip: pairingIp.trim(),
+          key: pairingKey.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Connection handshake failed');
+      }
+      
+      setPairingSuccess(t('kioskPairingSuccess') || 'Connected and paired successfully!');
+      setKioskOrchestratorIp(pairingIp.trim());
+      
+      setTimeout(async () => {
+        try {
+          const vRes = await fetch('/api/version');
+          if (vRes.ok) {
+            const vData = await vRes.json();
+            setConnectionKeyphrase(vData.auth_token || '');
+          }
+        } catch {}
+        setShowPairingModal(false);
+      }, 1500);
+      
+    } catch (err: any) {
+      setPairingError(err.message);
+    } finally {
+      setPairingSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     if (!isKiosk) return;
     fetch('/api/kiosk/mode')
@@ -204,6 +253,7 @@ function AppContent() {
             setActiveTab('flasher');
             setKioskOrchestratorIp(data.orchestrator_ip || '');
             setConnectionKeyphrase(data.auth_token || '');
+            setKioskUuid(data.kiosk_uuid || '');
           }
         })
         .catch(err => {
@@ -361,6 +411,22 @@ function AppContent() {
                       </>
                     )}
                   </button>
+                  {restoreMode === 'online' && (
+                    <button
+                      onClick={() => {
+                        setPairingIp(kioskOrchestratorIp || window.location.hostname);
+                        setPairingKey('');
+                        setPairingError('');
+                        setPairingSuccess('');
+                        setShowPairingModal(true);
+                      }}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-950/40 hover:bg-indigo-950/60 border border-indigo-900/30 hover:border-indigo-900/60 text-xs text-indigo-400 font-bold transition-all duration-200 cursor-pointer animate-fade-in"
+                      title="Link to Orchestrator Server"
+                    >
+                      <Link2 size={13} className="text-indigo-400 animate-pulse" />
+                      <span>{t('linkServerButton') || 'Pair Server'}</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowNetworkModal(true)}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer"
@@ -444,18 +510,6 @@ function AppContent() {
               >
                 <HardDrive size={14} className="text-indigo-400" /> {t('tabFlasher')}
               </button>
-              {!isKiosk && (
-                <button
-                  onClick={() => setActiveTab('clientiso')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                    activeTab === 'clientiso'
-                      ? 'bg-zinc-900 text-zinc-100 shadow-sm border border-zinc-800'
-                      : 'text-zinc-400 hover:text-zinc-100'
-                  }`}
-                >
-                  <Cpu size={14} className="text-indigo-400" /> {t('liveUsbGenerator')}
-                </button>
-              )}
               <button
                 onClick={() => setActiveTab('history')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
@@ -488,6 +542,19 @@ function AppContent() {
                   <Gear size={14} className="text-indigo-400" /> {t('tabSettings')}
                 </button>
               )}
+              {!isKiosk && (
+                <button
+                  onClick={() => setActiveTab('clientiso')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all border ${
+                    activeTab === 'clientiso'
+                      ? 'bg-indigo-600 text-white shadow-sm border-indigo-500 hover:bg-indigo-500'
+                      : 'bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 dark:text-indigo-300 border-indigo-500/30'
+                  }`}
+                >
+                  <Cpu size={14} className={activeTab === 'clientiso' ? 'text-white' : 'text-indigo-400 dark:text-indigo-300'} />
+                  <span>{t('tabLiveCdKiosks') || 'Live-CD & Kiosks'}</span>
+                </button>
+              )}
             </nav>
           </div>
         </div>
@@ -502,8 +569,10 @@ function AppContent() {
 
       {/* Kiosk Mode Footer */}
       {isKiosk && (
-        <footer className="bg-zinc-950/80 backdrop-blur-md border-t border-zinc-900 py-3 text-center text-xs text-zinc-500 flex items-center justify-center gap-4 animate-fade-in">
+        <footer className="bg-zinc-950/80 backdrop-blur-md border-t border-zinc-900 py-3 text-center text-xs text-zinc-500 flex flex-wrap items-center justify-center gap-4 animate-fade-in">
           <span>{t('kioskTitle')}</span>
+          <span className="h-4 w-px bg-zinc-800" />
+          <span>UUID: <span className="font-mono text-zinc-400 select-all font-bold">{kioskUuid || 'Generating...'}</span></span>
           <span className="h-4 w-px bg-zinc-800" />
           <div className="relative group flex items-center gap-1">
             <span>{t('configuredServer')}</span>
@@ -525,6 +594,86 @@ function AppContent() {
       {/* Network Settings Modal */}
       {showNetworkModal && (
         <NetworkSettingsModal onClose={() => setShowNetworkModal(false)} />
+      )}
+
+      {/* Pairing Modal */}
+      {showPairingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4 animate-modal-in">
+            <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
+              <div className="p-2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg">
+                <Link2 size={20} className="animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-zinc-50 leading-tight">{t('linkOrchestratorTitle') || 'Connect to Orchestrator'}</h3>
+                <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">{t('linkOrchestratorSub') || 'Establish secure paired connection'}</p>
+              </div>
+            </div>
+
+            <div className="bg-zinc-950 border border-zinc-800/80 p-3 rounded-xl flex items-center justify-between">
+              <div>
+                <span className="text-[9px] text-zinc-500 font-bold uppercase block mb-0.5">{t('thisKioskUuid') || 'This Kiosk UUID'}</span>
+                <span className="font-mono text-xs text-zinc-300 font-semibold select-all">{kioskUuid || 'Generating...'}</span>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(kioskUuid);
+                  alert(t('copied') || 'Copied!');
+                }}
+                className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-lg transition-colors cursor-pointer"
+                title={t('copyToClipboard') || 'Copy to Clipboard'}
+              >
+                <Copy size={14} />
+              </button>
+            </div>
+
+            <form onSubmit={handlePairingSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('orchestratorIpLabel') || 'Orchestrator IP Address'}</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 192.168.222.2"
+                  value={pairingIp}
+                  onChange={(e) => setPairingIp(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('pairKeyLabel') || 'Security Key (Format: ABCD-1234)'}</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="XXXX-XXXX"
+                  value={pairingKey}
+                  onChange={(e) => setPairingKey(e.target.value.toUpperCase())}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-amber-400 font-bold text-sm tracking-widest focus:border-indigo-500 focus:outline-none transition-colors font-mono text-center placeholder:font-sans placeholder:tracking-normal"
+                />
+              </div>
+
+              {pairingError && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{pairingError}</div>}
+              {pairingSuccess && <div className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg">{pairingSuccess}</div>}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShowPairingModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  {t('cancel') || 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={pairingSubmitting}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  {pairingSubmitting ? t('saving') : (t('connectButton') || 'Connect')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Active task console log stream overlay modal */}

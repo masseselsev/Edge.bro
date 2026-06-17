@@ -16,6 +16,7 @@ from routers import stats as stats_router
 from routers import iso as iso_router
 from routers import network as network_router
 from routers import groups as groups_router
+from routers import kiosks as kiosks_router
 
 app = FastAPI(title="Edge B.R.O. API", version=VERSION)
 
@@ -104,3 +105,4 @@ app.include_router(stats_router.router)
 app.include_router(iso_router.router, prefix="/api/iso", tags=["Client ISO"])
 app.include_router(network_router.router, prefix="/api")
 app.include_router(groups_router.router)
+app.include_router(kiosks_router.router)

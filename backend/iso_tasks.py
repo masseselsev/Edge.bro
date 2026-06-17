@@ -305,13 +305,17 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         import models
         settings = db.query(models.Settings).first()
         lang = settings.language if settings else "en"
+        import uuid
+        kiosk_uuid = str(uuid.uuid4())
         config_data = {
             "orchestrator_ip": target_ip,
             "auth_token": auth_token,
-            "language": lang
+            "language": lang,
+            "kiosk_uuid": kiosk_uuid
         }
         with open(os.path.join(opt_offline, "backend", "config.json"), "w") as f:
-            json.dump(config_data, f)
+            json.dump(config_data, f, indent=4)
+
 
         # Save token for validation in routers/iso.py
         token_file = os.path.join(CACHE_DIR, "auth_token.txt")

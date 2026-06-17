@@ -3,6 +3,7 @@ import { Download, Cpu, RefreshCw, CheckCircle, ShieldAlert } from 'lucide-react
 import TaskLogsModal from './TaskLogsModal';
 import { DropdownTextInput } from './SearchableSelect';
 import { useTranslation } from '../context/TranslationContext';
+import KioskManagementSection from './KioskManagementSection';
 
 interface IsoStatus {
   base_iso_cached: boolean;
@@ -22,6 +23,7 @@ export default function ClientIsoTab() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [subTab, setSubTab] = useState<'generator' | 'kiosks'>('generator');
 
   // Custom ISO Source States
   const [isoSourceType, setIsoSourceType] = useState<'official' | 'url' | 'upload'>('official');
@@ -191,12 +193,41 @@ export default function ClientIsoTab() {
           <Cpu className="text-indigo-400" size={24} />
         </div>
         <div>
-          <h2 className="text-xl font-bold text-zinc-50 tracking-tight">{t('liveUsbGenerator')}</h2>
-          <p className="text-xs text-zinc-400 mt-1">{t('liveUsbGeneratorSub')}</p>
+          <h2 className="text-xl font-bold text-zinc-50 tracking-tight">{t('tabLiveCdKiosks') || 'Live-CD & Kiosks'}</h2>
+          <p className="text-xs text-zinc-400 mt-1">{t('tabLiveCdKiosksSub') || 'Compile Live-CD ISO images and manage paired Kiosk terminals.'}</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Sub-tab Selection */}
+      <div className="flex border-b border-zinc-800 pb-px mb-6 animate-fade-in">
+        <button
+          onClick={() => setSubTab('generator')}
+          className={`px-4 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+            subTab === 'generator'
+              ? 'border-indigo-500 text-indigo-400'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          {t('isoGeneratorTab') || 'ISO Generator'}
+        </button>
+        <button
+          onClick={() => setSubTab('kiosks')}
+          className={`px-4 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+            subTab === 'kiosks'
+              ? 'border-indigo-500 text-indigo-400'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          {t('kioskManagementTab') || 'Kiosk Control'}
+        </button>
+      </div>
+
+      {subTab === 'kiosks' ? (
+        <div className="animate-fade-in">
+          <KioskManagementSection />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
         {/* Configuration Panel */}
         <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
           <h3 className="text-sm font-bold text-zinc-50 flex items-center gap-2">
@@ -439,6 +470,7 @@ export default function ClientIsoTab() {
           </div>
         </div>
       </div>
+      )}
 
       {activeTaskId && (
         <TaskLogsModal

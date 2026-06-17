@@ -170,3 +170,33 @@ class SchedulerLoadResponse(BaseModel):
     week_load: List[int]
     month_load: List[int]
 
+
+class KioskBase(BaseModel):
+    name: Optional[str] = None
+    uuid: str
+
+
+class KioskCreate(KioskBase):
+    pass
+
+
+class KioskResponse(KioskBase):
+    id: int
+    key: str
+    status: str
+    ip_address: Optional[str] = None
+    ssh_pub_key: Optional[str] = None
+    auth_token: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class HandshakeRequest(BaseModel):
+    uuid: str
+    key: str
+    ssh_pub_key: str
+
+

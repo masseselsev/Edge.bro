@@ -124,3 +124,22 @@ class SystemLog(Base):
     level = Column(String, nullable=False)
     message = Column(Text, nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
+
+
+class Kiosk(Base):
+    """
+    Model for dynamic Kiosk connection and pairing.
+    """
+    __tablename__ = 'kiosks'
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=True)
+    uuid = Column(String, unique=True, index=True, nullable=False)
+    key = Column(String, unique=True, index=True, nullable=False)
+    status = Column(String, default='PENDING', nullable=False) # PENDING, APPROVED, REVOKED
+    ip_address = Column(String, nullable=True)
+    ssh_pub_key = Column(Text, nullable=True)
+    auth_token = Column(String, unique=True, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
