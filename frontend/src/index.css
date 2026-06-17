@@ -134,4 +134,13 @@ button, a, label, span, p, h1, h2, h3, h4, h5, h6 {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
+/* Global fallback to disable backdrop-filter blur which causes renderer crashes on XFCE Live-CD (VirtualBox) without HW acceleration */
+.backdrop-blur-sm,
+.backdrop-blur-md,
+.backdrop-blur-lg,
+.backdrop-blur {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 

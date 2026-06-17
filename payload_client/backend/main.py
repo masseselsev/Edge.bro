@@ -33,6 +33,7 @@ orchestrator_ssh_port = 12345
 auth_token = ""
 language = "en"
 kiosk_uuid = ""
+restore_mode = "offline"
 
 if os.path.exists(CONFIG_PATH):
     try:
@@ -44,6 +45,7 @@ if os.path.exists(CONFIG_PATH):
             auth_token = cfg.get("auth_token", "")
             language = cfg.get("language", "en")
             kiosk_uuid = cfg.get("kiosk_uuid", "")
+            restore_mode = cfg.get("restore_mode", "online" if auth_token else "offline")
     except Exception as e:
         logging.error(f"Failed to load config.json: {e}")
 
@@ -71,9 +73,6 @@ if not os.path.exists(SSH_KEY_PATH):
         ], check=True)
     except Exception as e:
         logging.error(f"Failed to generate kiosk SSH keypair: {e}")
-
-
-restore_mode = "offline"
 
 # Try to register the shared network configurations router if available
 try:
@@ -480,16 +479,73 @@ def exit_kiosk():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/tasks")
+def get_kiosk_tasks():
+    global restore_mode
+    if restore_mode == "online":
+        try:
+            req = urllib.request.Request(
+                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/tasks",
+                headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                return json.loads(response.read().decode())
+        except Exception as e:
+            logging.error(f"Failed to fetch tasks from orchestrator: {e}")
+            raise HTTPException(status_code=502, detail=f"Failed to contact orchestrator: {str(e)}")
+    else:
+        # Construct list from local task logs
+        tasks_list = []
+        for tid in task_status:
+            task_type = "RESTORE" if "restore" in task_logs.get(tid, "").lower() else "SYNC"
+            tasks_list.append({
+                "id": tid,
+                "task_type": task_type,
+                "status": task_status[tid],
+                "created_at": "2026-06-17T00:00:00Z",
+                "updated_at": "2026-06-17T00:00:00Z",
+            })
+        return tasks_list
+
+@app.get("/api/tasks/debug-logs")
+def get_kiosk_debug_logs():
+    global restore_mode
+    if restore_mode == "online":
+        try:
+            req = urllib.request.Request(
+                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/tasks/debug-logs",
+                headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                return json.loads(response.read().decode())
+        except Exception as e:
+            logging.error(f"Failed to fetch debug logs from orchestrator: {e}")
+            raise HTTPException(status_code=502, detail=f"Failed to contact orchestrator: {str(e)}")
+    else:
+        return []
+
 @app.get("/api/tasks/{task_id}")
 def get_task_status(task_id: str):
-    if task_id not in task_status:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return {
-        "task_id": task_id,
-        "status": task_status[task_id],
-        "progress": task_progress.get(task_id, 0),
-        "logs": task_logs.get(task_id, "")
-    }
+    if task_id in task_status:
+        return {
+            "task_id": task_id,
+            "status": task_status[task_id],
+            "progress": task_progress.get(task_id, 0),
+            "logs": task_logs.get(task_id, "")
+        }
+    global restore_mode
+    if restore_mode == "online":
+        try:
+            req = urllib.request.Request(
+                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/tasks/{task_id}",
+                headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                return json.loads(response.read().decode())
+        except Exception as e:
+            logging.error(f"Failed to fetch task from orchestrator: {e}")
+            raise HTTPException(status_code=502, detail=f"Failed to contact orchestrator: {str(e)}")
+    raise HTTPException(status_code=404, detail="Task not found")
 
 def run_kiosk_sync(task_id: str, hostname: str):
     task_status[task_id] = "RUNNING"
