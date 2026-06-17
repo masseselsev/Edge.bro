@@ -107,12 +107,12 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose }: Task
         <div className="p-4 bg-zinc-900 border-b border-zinc-800 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <TermIcon className="text-zinc-400" size={18} />
-            <span className="font-bold text-white text-sm">{title}</span>
+            <span className="font-bold text-zinc-50 text-sm">{title}</span>
             {getStatusIndicator()}
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition-colors"
+            className="p-1 text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 rounded transition-colors"
           >
             <X size={18} />
           </button>
@@ -183,8 +183,8 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose }: Task
             </span>
             <button
               onClick={onClose}
-              className={`px-4 py-2 text-xs font-semibold text-white rounded-lg transition-colors ${
-                status === 'SUCCESS' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-zinc-800 hover:bg-zinc-700'
+              className={`px-4 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                status === 'SUCCESS' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100'
               }`}
             >
               {t('closeConsole')}

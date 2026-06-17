@@ -175,7 +175,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
             <div className="p-2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg">
               <Settings size={18} />
             </div>
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">{t('networkSettingsTitle')}</h3>
+            <h3 className="text-sm font-bold text-zinc-50 uppercase tracking-wider">{t('networkSettingsTitle')}</h3>
           </div>
           <button onClick={onClose} className="text-zinc-400 hover:text-white transition-colors">
             <X size={18} />
@@ -219,7 +219,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
             <form onSubmit={handleApplyWired} className="space-y-4">
               <div className="bg-zinc-950/50 border border-zinc-800/50 p-3.5 rounded-xl flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-bold text-white block">{t('wiredLinkState')}</span>
+                  <span className="text-xs font-bold text-zinc-50 block">{t('wiredLinkState')}</span>
                   <span className="text-[10px] text-zinc-400 mt-1 block">
                     {status?.wired?.connected 
                       ? t('connectedWithParam').replace('{device}', status.wired.device).replace('{ip}', status.wired.ip || 'No IP') 
@@ -267,7 +267,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                       value={ipAddress}
                       onChange={e => setIpAddress(e.target.value)}
                       placeholder="e.g. 192.168.1.50"
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:border-indigo-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
                   <div className="col-span-1">
@@ -278,7 +278,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                       value={netmask}
                       onChange={e => setNetmask(e.target.value)}
                       placeholder="e.g. 255.255.255.0"
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:border-indigo-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
                   <div className="col-span-2">
@@ -288,7 +288,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                       value={gateway}
                       onChange={e => setGateway(e.target.value)}
                       placeholder="e.g. 192.168.1.1 (Optional)"
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:border-indigo-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -315,14 +315,14 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                       value={dns1}
                       onChange={e => setDns1(e.target.value)}
                       placeholder={t('primaryDns')}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:border-indigo-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                     />
                     <input
                       type="text"
                       value={dns2}
                       onChange={e => setDns2(e.target.value)}
                       placeholder={t('secondaryDns')}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:border-indigo-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
                 )}
@@ -350,7 +350,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                         key={idx}
                         onClick={() => { setSelectedSsid(net.ssid); setShowHiddenForm(false); }}
                         className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all duration-200 ${
-                          selectedSsid === net.ssid ? 'bg-indigo-600/10 border-indigo-500 text-white' : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                          selectedSsid === net.ssid ? 'bg-indigo-600/10 border-indigo-500 text-zinc-100' : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
                         }`}
                       >
                         <div className="flex items-center gap-2">
@@ -395,7 +395,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                         value={hiddenSsid}
                         onChange={e => setHiddenSsid(e.target.value)}
                         placeholder="e.g. MyHiddenNetwork"
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:border-indigo-500 focus:outline-none"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                       />
                     </div>
                     <div>
@@ -403,7 +403,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                       <select
                         value={hiddenSecurity}
                         onChange={e => setHiddenSecurity(e.target.value)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:border-indigo-500 focus:outline-none"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                       >
                         <option value="WPA2">{t('wpaPersonalSecured')}</option>
                         <option value="Open">{t('openUnsecured')}</option>
@@ -422,7 +422,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
                     value={wifiPassword}
                     onChange={e => setWifiPassword(e.target.value)}
                     placeholder="Enter network password..."
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-xs focus:border-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
               )}

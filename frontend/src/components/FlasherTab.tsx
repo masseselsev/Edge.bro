@@ -289,7 +289,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
       <div className="lg:col-span-2 space-y-6">
         <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
           <div>
-            <h3 className="text-lg font-bold text-white flex items-center gap-2"><Play size={18} className="text-indigo-400" /> {t('flasherTitle')}</h3>
+            <h3 className="text-lg font-bold text-zinc-50 flex items-center gap-2"><Play size={18} className="text-indigo-400" /> {t('flasherTitle')}</h3>
             <p className="text-xs text-zinc-400">{t('flasherSub')}</p>
           </div>
 
@@ -311,10 +311,10 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
             </div>
 
             {selectedNodeId && isKiosk && restoreMode === 'online' && (
-              <div className="p-4 bg-indigo-950/20 border border-indigo-900/30 rounded-xl space-y-3">
+              <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 rounded-xl space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider">{t('localBackupStorage')}</h4>
+                    <h4 className="text-xs font-bold text-indigo-800 dark:text-indigo-300 uppercase tracking-wider">{t('localBackupStorage')}</h4>
                     <p className="text-[10px] text-zinc-400 mt-1">
                       {t('offlineCapabilitiesText')}
                     </p>

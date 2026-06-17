@@ -381,7 +381,31 @@ def test_checkpoint_calculation_and_command_builder():
     assert "-p IOSchedulingClass=idle" in inner_bash_cmd_cpu
 
 
+def test_task_log_node_association(db_session):
+    """
+    Verify that TaskLog can be associated with a Node and queried.
+    """
+    node = models.Node(
+        hostname="test-node-logs-assoc",
+        ip_address="192.168.1.251",
+        status="READY"
+    )
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
 
+    task_log = models.TaskLog(
+        id="test-task-uuid-1234",
+        task_type="BOOTSTRAP",
+        status="SUCCESS",
+        node_id=node.id,
+        log_output="Task completed successfully"
+    )
+    db_session.add(task_log)
+    db_session.commit()
 
-
-
+    retrieved = db_session.query(models.TaskLog).filter(models.TaskLog.node_id == node.id).first()
+    assert retrieved is not None
+    assert retrieved.id == "test-task-uuid-1234"
+    assert retrieved.node_id == node.id
+    assert retrieved.log_output == "Task completed successfully"

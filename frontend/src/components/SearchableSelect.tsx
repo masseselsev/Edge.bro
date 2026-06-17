@@ -53,7 +53,7 @@ export function SearchableSelect({ options, value, onChange, placeholder, disabl
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex justify-between items-center px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none text-left disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full flex justify-between items-center px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none text-left disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <span className="truncate">
           {selectedOption ? (
@@ -81,7 +81,7 @@ export function SearchableSelect({ options, value, onChange, placeholder, disabl
               placeholder="Search..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded text-white text-xs focus:outline-none focus:border-indigo-600"
+              className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs focus:outline-none focus:border-indigo-600"
             />
           </div>
           <div className="py-1">
@@ -145,7 +145,7 @@ export function DropdownTextInput({ value, onChange, options, placeholder, requi
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setIsOpen(true)}
           placeholder={placeholder}
-          className={className || "w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"}
+          className={className || "w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"}
         />
         {options.length > 0 && (
           <button

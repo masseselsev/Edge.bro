@@ -106,7 +106,7 @@ def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
         db.close()
         return {"status": "FAILED", "error": "Node not found"}
 
-    task_log = TaskLog(id=task_id, task_type="PREPARE", status="RUNNING", log_output="")
+    task_log = TaskLog(id=task_id, task_type="PREPARE", status="RUNNING", node_id=node_id, log_output="")
     db.add(task_log)
     db.commit()
 
@@ -177,7 +177,7 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
     redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
     redis_client.setex(f"backup_running:{node.id}", 14400, "1")
 
-    task_log = TaskLog(id=task_id, task_type="BACKUP", status="RUNNING", log_output="")
+    task_log = TaskLog(id=task_id, task_type="BACKUP", status="RUNNING", node_id=node_id, log_output="")
     db.add(task_log)
     db.commit()
 

@@ -40,7 +40,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
-        <h3 className="text-lg font-bold text-white">{t('addNodeAutoProvision')}</h3>
+        <h3 className="text-lg font-bold text-zinc-50">{t('addNodeAutoProvision')}</h3>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="flex items-center gap-2 mb-2 bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
             <input
@@ -64,7 +64,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
                 placeholder="edge-node-01"
                 value={hostname}
                 onChange={(e) => setHostname(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
               />
             </div>
           )}
@@ -77,7 +77,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
               placeholder={t('ipAddressPlaceholder')}
               value={ipAddress}
               onChange={(e) => setIpAddress(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -87,7 +87,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
                 type="number"
                 value={sshPort}
                 onChange={(e) => setSshPort(parseInt(e.target.value) || 22)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
               />
             </div>
             <div>
@@ -96,7 +96,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
               />
             </div>
           </div>
@@ -107,7 +107,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
             />
           </div>
 
@@ -160,7 +160,7 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
         <div>
-          <h3 className="text-lg font-bold text-white">{t('manualProvisionNode')}</h3>
+          <h3 className="text-lg font-bold text-zinc-50">{t('manualProvisionNode')}</h3>
           <p className="text-xs text-zinc-400">{t('triggerBootstrapForNode').replace('{name}', node.hostname).replace('{ip}', node.ip_address)}</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -171,7 +171,7 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
               required
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
             />
           </div>
           <div>
@@ -182,7 +182,7 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
             />
           </div>
 
@@ -232,7 +232,7 @@ export function BackupCommentModal({ node, onClose, onSubmit }: BackupCommentMod
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
         <div>
-          <h3 className="text-lg font-bold text-white">{t('triggerBackup')}</h3>
+          <h3 className="text-lg font-bold text-zinc-50">{t('triggerBackup')}</h3>
           <p className="text-xs text-zinc-400">{t('addOptionalBackupComment').replace('{name}', node.hostname)}</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -243,7 +243,7 @@ export function BackupCommentModal({ node, onClose, onSubmit }: BackupCommentMod
               placeholder={t('backupCommentPlaceholderNode')}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
               autoFocus
             />
           </div>

@@ -82,6 +82,43 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
     }));
   }, []);
 
+  const intervalOptions = React.useMemo(() => [
+    { value: 'weekly', label: t('weekly') },
+    { value: 'monthly', label: t('monthly') },
+    { value: 'quarterly', label: t('quarterly') },
+    { value: 'yearly', label: t('yearly') }
+  ], [t]);
+
+  const targetWeekOptions = React.useMemo(() => [
+    { value: 1, label: 'Week 1' },
+    { value: 2, label: 'Week 2' },
+    { value: 3, label: 'Week 3' },
+    { value: 4, label: 'Week 4' }
+  ], []);
+
+  const policyTypeOptions = React.useMemo(() => [
+    { value: 'interval', label: t('policyInterval') },
+    { value: 'count', label: t('policyCount') },
+    { value: 'timeframe', label: t('policyTimeframe') }
+  ], [t]);
+
+  const unitOptions = React.useMemo(() => [
+    { value: 'd', label: t('timeframeUnitDays') },
+    { value: 'w', label: t('timeframeUnitWeeks') },
+    { value: 'm', label: t('timeframeUnitMonths') },
+    { value: 'y', label: t('timeframeUnitYears') }
+  ], [t]);
+
+  const compressionOptions = React.useMemo(() => [
+    { value: '', label: t('compressionGlobalDefault') },
+    { value: 'none', label: 'none' },
+    { value: 'lz4', label: 'lz4' },
+    { value: 'zstd:1', label: 'zstd:1' },
+    { value: 'zstd:3', label: 'zstd:3' },
+    { value: 'zstd:5', label: 'zstd:5' },
+    { value: 'zstd:9', label: 'zstd:9' }
+  ], [t]);
+
   useEffect(() => {
     if (editingGroup) {
       setName(editingGroup.name);
@@ -248,16 +285,12 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                 <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                   {t('interval')}
                 </label>
-                <select
+                <SearchableSelect
+                  options={intervalOptions}
                   value={interval}
-                  onChange={(e) => setIntervalVal(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="weekly">{t('weekly')}</option>
-                  <option value="monthly">{t('monthly')}</option>
-                  <option value="quarterly">{t('quarterly')}</option>
-                  <option value="yearly">{t('yearly')}</option>
-                </select>
+                  onChange={setIntervalVal}
+                  placeholder="-- Select Interval --"
+                />
               </div>
 
               {interval !== 'weekly' && (
@@ -265,16 +298,12 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                   <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                     {t('targetWeek')}
                   </label>
-                  <select
+                  <SearchableSelect
+                    options={targetWeekOptions}
                     value={targetWeek}
-                    onChange={(e) => setTargetWeek(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value={1}>Week 1</option>
-                    <option value={2}>Week 2</option>
-                    <option value={3}>Week 3</option>
-                    <option value={4}>Week 4</option>
-                  </select>
+                    onChange={(val) => setTargetWeek(Number(val))}
+                    placeholder="-- Select Week --"
+                  />
                 </div>
               )}
             </div>
@@ -391,15 +420,12 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                 <div className="mt-4 space-y-4 p-4 bg-zinc-950/40 border border-zinc-800/85 rounded-xl animate-fade-in">
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">{t('retentionType')}</label>
-                    <select
+                    <SearchableSelect
+                      options={policyTypeOptions}
                       value={policyType}
-                      onChange={(e) => setPolicyType(e.target.value as any)}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
-                    >
-                      <option value="interval">{t('policyInterval')}</option>
-                      <option value="count">{t('policyCount')}</option>
-                      <option value="timeframe">{t('policyTimeframe')}</option>
-                    </select>
+                      onChange={setPolicyType}
+                      placeholder="-- Select Policy Type --"
+                    />
                   </div>
 
                   {policyType === 'interval' && (
@@ -469,16 +495,12 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                       </div>
                       <div>
                         <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">&nbsp;</label>
-                        <select
+                        <SearchableSelect
+                          options={unitOptions}
                           value={policyWithinUnit}
-                          onChange={(e) => setPolicyWithinUnit(e.target.value as any)}
-                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
-                        >
-                          <option value="d">{t('timeframeUnitDays')}</option>
-                          <option value="w">{t('timeframeUnitWeeks')}</option>
-                          <option value="m">{t('timeframeUnitMonths')}</option>
-                          <option value="y">{t('timeframeUnitYears')}</option>
-                        </select>
+                          onChange={setPolicyWithinUnit}
+                          placeholder="-- Select Unit --"
+                        />
                       </div>
                     </div>
                   )}
@@ -514,19 +536,12 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                   <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                     {t('compressionMode')}
                   </label>
-                  <select
+                  <SearchableSelect
+                    options={compressionOptions}
                     value={compression}
-                    onChange={(e) => setCompression(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="">{t('compressionGlobalDefault')}</option>
-                    <option value="none">none</option>
-                    <option value="lz4">lz4</option>
-                    <option value="zstd:1">zstd:1</option>
-                    <option value="zstd:3">zstd:3</option>
-                    <option value="zstd:5">zstd:5</option>
-                    <option value="zstd:9">zstd:9</option>
-                  </select>
+                    onChange={setCompression}
+                    placeholder="-- Select Compression --"
+                  />
                 </div>
               </div>
 

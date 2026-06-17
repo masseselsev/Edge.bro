@@ -133,7 +133,7 @@ export function NodeRow({
           />
         </td>
       )}
-      <td className="px-4 py-2.5 font-semibold text-white flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 24}px` }}>
+      <td className="px-4 py-2.5 font-semibold text-zinc-50 flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 24}px` }}>
         <Cpu size={14} className="text-zinc-500" />
         <div className="flex flex-col">
           <span className="break-all" title={node.hostname}>{node.hostname}</span>

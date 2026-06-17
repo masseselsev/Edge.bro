@@ -27,6 +27,7 @@ interface Node {
 }
 
 import { formatDate } from './dateUtils';
+import NodeDetailsModal from './NodeDetailsModal';
 
 interface HistoryTabProps {
   onViewLogs?: (taskId: string, title: string) => void;
@@ -46,6 +47,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [grouping, setGrouping] = useState<'flat' | 'hostname' | 'prefix' | 'subnet'>('hostname');
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -180,8 +182,17 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
             return (
               <tr key={h.id} className="hover:bg-zinc-900/40 transition-colors">
                 {showNodeInfo && (
-                  <td className="px-6 py-3.5 font-semibold text-zinc-300">
-                    {node ? node.hostname : 'Unknown'}
+                  <td className="px-6 py-3.5 font-semibold">
+                    {node ? (
+                      <span
+                        onClick={() => setSelectedNodeId(node.id)}
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        {node.hostname}
+                      </span>
+                    ) : (
+                      <span className="text-zinc-500">Unknown</span>
+                    )}
                   </td>
                 )}
                 {showNodeInfo && (
@@ -190,7 +201,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
                   </td>
                 )}
                 <td className="px-6 py-3 flex flex-col justify-center">
-                  <span className="font-semibold text-white">{h.archive_name}</span>
+                  <span className="font-semibold text-zinc-50">{h.archive_name}</span>
                   {h.comment && <span className="text-[11px] text-zinc-500 mt-0.5 italic">Comment: {h.comment}</span>}
                 </td>
                 <td className="px-6 py-3.5 text-zinc-400">{formatDate(h.timestamp, timezone)}</td>
@@ -225,7 +236,15 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
           <div className="flex items-center gap-3">
             <ChevronRight size={16} className={`text-zinc-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
             <Cpu size={14} className="text-zinc-500" />
-            <span className="text-sm font-semibold text-zinc-100 group-hover:text-white transition-colors">{node.hostname}</span>
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedNodeId(node.id);
+              }}
+              className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+            >
+              {node.hostname}
+            </span>
             <span className="text-xs text-zinc-400">({node.ip_address})</span>
             <span className="text-xs text-zinc-500">— {subnodesCount} {t('snapshotColumn').toLowerCase()}(s)</span>
             {success > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{success} ok</span>}
@@ -357,10 +376,10 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
               <div className="p-2.5 bg-rose-500/10 rounded-xl border border-rose-500/20">
                 <AlertTriangle className="text-rose-400" size={22} />
               </div>
-              <h3 className="text-lg font-bold text-white">{t('flashWarningTitle')}</h3>
+              <h3 className="text-lg font-bold text-zinc-50">{t('flashWarningTitle')}</h3>
             </div>
             <p className="text-sm text-zinc-300 mb-1">
-              You are about to delete <strong className="text-white">all backup archives</strong> for:
+              You are about to delete <strong className="text-zinc-50">all backup archives</strong> for:
             </p>
             <p className="text-base font-semibold text-rose-400 mb-3">{purgeTarget.hostname}</p>
             <p className="text-xs text-zinc-500 mb-6">
@@ -392,7 +411,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
           </div>
           <div>
             <p className="text-xs text-zinc-400 font-medium uppercase tracking-wider">{t('originalSizeColumn')}</p>
-            <h4 className="text-xl font-bold text-white mt-1">
+            <h4 className="text-xl font-bold text-zinc-50 mt-1">
               {stats ? getFormatSize(stats.total_deduplicated_size_bytes) : '0 B'}
             </h4>
             <p className="text-[10px] text-zinc-500 mt-0.5">Physical size on central storage</p>
@@ -405,7 +424,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
           </div>
           <div>
             <p className="text-xs text-zinc-400 font-medium uppercase tracking-wider">{t('originalSizeColumn')}</p>
-            <h4 className="text-xl font-bold text-white mt-1">
+            <h4 className="text-xl font-bold text-zinc-50 mt-1">
               {stats ? getFormatSize(stats.total_original_size_bytes) : '0 B'}
             </h4>
             <p className="text-[10px] text-emerald-400 mt-0.5">Total size before deduplication</p>
@@ -418,7 +437,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
           </div>
           <div>
             <p className="text-xs text-zinc-400 font-medium uppercase tracking-wider">{t('localBackupStorage')}</p>
-            <h4 className="text-xl font-bold text-white mt-1">{getSavedSpace()}</h4>
+            <h4 className="text-xl font-bold text-zinc-50 mt-1">{getSavedSpace()}</h4>
             <p className="text-[10px] text-purple-400 mt-0.5">
               {t('dedupRatio')} {stats ? stats.deduplication_ratio : '1.0'}x
             </p>
@@ -430,12 +449,12 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
       <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h3 className="text-lg font-bold text-white">{t('tabHistory')}</h3>
+            <h3 className="text-lg font-bold text-zinc-50">{t('tabHistory')}</h3>
             <p className="text-xs text-zinc-400">{t('historySub')}</p>
           </div>
           <button
             onClick={fetchStats}
-            className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded transition-colors self-end"
+            className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-50 rounded transition-colors self-end"
           >
             <RefreshCw size={16} />
           </button>
@@ -450,7 +469,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
               placeholder={t('searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-white text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
+              className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
             />
           </div>
           <div className="flex items-center gap-2 border-l border-zinc-800 pl-0 md:pl-4">
@@ -460,7 +479,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
                 <button
                   key={mode}
                   onClick={() => setGrouping(mode)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors capitalize ${grouping === mode ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                  className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors capitalize ${grouping === mode ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50'}`}
                 >
                   {mode === 'flat' ? t('flatView') : mode === 'hostname' ? t('hostnameLabel') : mode === 'prefix' ? t('prefixGrouping') : t('subnetGrouping')}
                 </button>
@@ -483,6 +502,14 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
               renderGroupedContent()
             )}
           </div>
+        )}
+
+        {selectedNodeId !== null && (
+          <NodeDetailsModal
+            nodeId={selectedNodeId}
+            onClose={() => setSelectedNodeId(null)}
+            onRefreshList={fetchStats}
+          />
         )}
       </div>
     </div>

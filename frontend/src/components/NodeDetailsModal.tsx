@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Play, Pause, Edit, Cpu, HardDrive, Cpu as MemIcon, Info, RefreshCw, Save, Database, History, Terminal, Calendar } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import type { Language } from '../i18n/translations';
+import NodeConsoleLogs from './NodeConsoleLogs';
+import NodeBackupHistory from './NodeBackupHistory';
+import { SearchableSelect } from './SearchableSelect';
 
 interface Node {
   id: number;
@@ -40,6 +44,14 @@ interface BackupGroup {
   name: string;
 }
 
+interface TaskLog {
+  id: string;
+  task_type: string;
+  status: string;
+  created_at: string;
+  log_output: string;
+}
+
 interface NodeDetailsModalProps {
   nodeId: number;
   onClose: () => void;
@@ -58,13 +70,18 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const [savingNotes, setSavingNotes] = useState(false);
   const [triggeringAction, setTriggeringAction] = useState(false);
 
+  const [activeTab, setActiveTab] = useState<'info' | 'logs'>('info');
+  const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
+  const [selectedLogId, setSelectedLogId] = useState<string>('');
+
   const fetchNodeDetails = async () => {
     setLoading(true);
     try {
-      const [nRes, hRes, gRes] = await Promise.all([
+      const [nRes, hRes, gRes, tlRes] = await Promise.all([
         fetch('/api/nodes'),
         fetch(`/api/nodes/${nodeId}/history`),
-        fetch('/api/groups')
+        fetch('/api/groups'),
+        fetch(`/api/nodes/${nodeId}/task-logs`)
       ]);
 
       if (nRes.ok) {
@@ -85,6 +102,14 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
       
       if (gRes.ok) {
         setGroups(await gRes.json());
+      }
+
+      if (tlRes.ok) {
+        const logsData: TaskLog[] = await tlRes.json();
+        setTaskLogs(logsData);
+        if (logsData.length > 0) {
+          setSelectedLogId(logsData[0].id);
+        }
       }
     } catch (err) {
       console.error("Failed to load node details:", err);
@@ -191,17 +216,18 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   };
 
   if (!node) {
-    return (
+    return createPortal(
       <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 flex items-center gap-3">
           <RefreshCw className="h-6 w-6 text-indigo-400 animate-spin" />
           <span className="text-zinc-200">Loading node details...</span>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-zinc-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-modal-in">
         {/* Header */}
@@ -220,8 +246,26 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
         {/* Modal body (scrollable) */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Hardware Specs Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Tab Navigation Switches */}
+          <div className="flex gap-4 border-b border-zinc-800 pb-3 mb-4 font-sans text-xs">
+            <button
+              onClick={() => setActiveTab('info')}
+              className={`pb-2 px-1 font-bold transition-all cursor-pointer outline-none ${activeTab === 'info' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            >
+              {t('tabSystemInfoSettings')}
+            </button>
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`pb-2 px-1 font-bold transition-all cursor-pointer outline-none ${activeTab === 'logs' ? 'text-indigo-400 border-b-2 border-indigo-400' : 'text-zinc-400 hover:text-zinc-200'}`}
+            >
+              {t('tabConsoleLogs')}
+            </button>
+          </div>
+
+          {activeTab === 'info' && (
+            <>
+              {/* Hardware Specs Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
               <Cpu className="h-8 w-8 text-cyan-400/90" />
               <div>
@@ -277,16 +321,15 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                     <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
                       {t('backupGroup')}
                     </label>
-                    <select
+                    <SearchableSelect
+                      options={[
+                        { value: 0, label: t('noGroup') },
+                        ...groups.map(g => ({ value: g.id, label: g.name }))
+                      ]}
                       value={groupId}
-                      onChange={(e) => handleGroupAssign(Number(e.target.value))}
-                      className="w-full px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:border-indigo-500"
-                    >
-                      <option value={0}>{t('noGroup')}</option>
-                      {groups.map(g => (
-                        <option key={g.id} value={g.id}>{g.name}</option>
-                      ))}
-                    </select>
+                      onChange={(val) => handleGroupAssign(Number(val))}
+                      placeholder={t('backupGroup')}
+                    />
                   </div>
 
                   <div className="space-y-1.5">
@@ -378,60 +421,27 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           </div>
 
           {/* Backup History Datatable */}
-          <div className="bg-zinc-950/30 border border-zinc-800/80 rounded-xl p-5 space-y-4">
-            <h4 className="font-bold text-zinc-200 text-sm border-b border-zinc-800 pb-2 flex items-center gap-1.5">
-              <History className="h-4.5 w-4.5 text-indigo-400" />
-              Backup History & Archives
-            </h4>
-            
-            <div className="overflow-x-auto rounded-lg border border-zinc-800">
-              <table className="w-full text-left border-collapse text-sm">
-                <thead>
-                  <tr className="bg-zinc-950 text-zinc-400 font-semibold border-b border-zinc-800">
-                    <th className="p-3">Archive Name</th>
-                    <th className="p-3">Date & Time (UTC)</th>
-                    <th className="p-3">Original Size</th>
-                    <th className="p-3">Deduplicated Size</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3">Comment</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((row) => (
-                    <tr key={row.id} className="border-b border-zinc-800/80 hover:bg-zinc-850/30 text-zinc-200">
-                      <td className="p-3 font-mono text-xs">{row.archive_name}</td>
-                      <td className="p-3 font-mono text-xs">
-                        {new Date(row.timestamp).toLocaleString(language === 'ru' ? 'ru-RU' : language === 'uk' ? 'uk-UA' : 'en-US')}
-                      </td>
-                      <td className="p-3">{formatBytes(row.original_size)}</td>
-                      <td className="p-3">{formatBytes(row.deduplicated_size)}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                          row.status === 'SUCCESS'
-                            ? 'bg-emerald-500/10 text-emerald-400'
-                            : 'bg-rose-500/10 text-rose-400'
-                        }`}>
-                          {row.status}
-                        </span>
-                      </td>
-                      <td className="p-3 max-w-[200px] truncate text-zinc-400" title={row.comment || ''}>
-                        {row.comment || '-'}
-                      </td>
-                    </tr>
-                  ))}
-                  {history.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="p-6 text-center text-zinc-500">
-                        No backup snapshots executed yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <NodeBackupHistory
+            history={history}
+            language={language}
+            formatBytes={formatBytes}
+            t={t}
+          />
+        </>
+      )}
+
+          {activeTab === 'logs' && (
+            <NodeConsoleLogs
+              taskLogs={taskLogs}
+              selectedLogId={selectedLogId}
+              setSelectedLogId={setSelectedLogId}
+              language={language}
+              t={t}
+            />
+          )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

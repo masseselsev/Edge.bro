@@ -108,6 +108,7 @@ class TaskLog(Base):
     id = Column(String, primary_key=True, index=True) # UUID string representation
     task_type = Column(String, nullable=False) # BOOTSTRAP, PREPARE, BACKUP, RESTORE
     status = Column(String, default='PENDING', nullable=False) # PENDING, RUNNING, SUCCESS, FAILED
+    node_id = Column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'), nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     log_output = Column(Text, default='', nullable=False)
