@@ -40,25 +40,25 @@ html {
 
 /* Kiosk Adaptive Scaling for HD-Ready, Full-HD, 2K, and 4K displays */
 @media (max-width: 1366px) {
-  body {
+  html {
     zoom: 0.85;
   }
 }
 
 @media (min-width: 1920px) and (max-width: 2559px) {
-  body {
+  html {
     zoom: 1.15;
   }
 }
 
 @media (min-width: 2560px) and (max-width: 3839px) {
-  body {
+  html {
     zoom: 1.5;
   }
 }
 
 @media (min-width: 3840px) {
-  body {
+  html {
     zoom: 2.0;
   }
 }
