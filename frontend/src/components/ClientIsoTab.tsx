@@ -12,11 +12,18 @@ interface IsoStatus {
   base_iso_speed?: string;
 }
 
+const generateRandomToken = (): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const block1 = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  const block2 = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return `${block1}-${block2}`;
+};
+
 export default function ClientIsoTab() {
   const { t } = useTranslation();
   const [status, setStatus] = useState<IsoStatus | null>(null);
   const [orchestratorIp, setOrchestratorIp] = useState(window.location.hostname);
-  const [authToken, setAuthToken] = useState('offline-token-1234');
+  const [authToken, setAuthToken] = useState(() => generateRandomToken());
   const [availableIps, setAvailableIps] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloadingBase, setIsDownloadingBase] = useState(false);
@@ -251,11 +258,6 @@ export default function ClientIsoTab() {
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label className="block text-xs font-semibold text-zinc-400">{t('apiTokenLabel')}</label>
-                {authToken && (
-                  <span className="text-[10px] text-zinc-500 font-semibold font-mono">
-                    {t('keyphraseLabel')} <span className="text-amber-400 font-bold">{authToken}</span>
-                  </span>
-                )}
               </div>
               <input
                 type="text"
