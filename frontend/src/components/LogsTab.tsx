@@ -22,9 +22,10 @@ import { formatDate } from './dateUtils';
 interface LogsTabProps {
   onViewLogs: (taskId: string, title: string) => void;
   timezone?: string;
+  isKiosk?: boolean;
 }
 
-export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
+export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsTabProps) {
   const { t } = useTranslation();
   const [tasks, setTasks] = useState<TaskLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,9 +154,11 @@ export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-zinc-50 flex items-center gap-2">
             <Terminal size={24} className="text-indigo-400" />
-            {t('systemLogsTitle')}
+            {isKiosk ? (t('kioskLogsTitle') || 'Kiosk System Logs') : t('systemLogsTitle')}
           </h2>
-          <p className="text-sm text-zinc-400">{t('systemLogsSub')}</p>
+          <p className="text-sm text-zinc-400">
+            {isKiosk ? (t('kioskLogsSub') || 'Monitor real-time client kiosk operations.') : t('systemLogsSub')}
+          </p>
         </div>
 
         {/* Toggle Switch */}
@@ -232,7 +235,7 @@ export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
               <ShieldAlert size={14} className="text-amber-500" />
-              {t('liveOrchestratorLogs')}
+              {isKiosk ? (t('kioskLogsHeader') || 'Kiosk Backend Log Output') : t('liveOrchestratorLogs')}
             </span>
             {loadingDebug && <RefreshCw size={12} className="animate-spin text-zinc-500" />}
           </div>
@@ -241,7 +244,7 @@ export default function LogsTab({ onViewLogs, timezone }: LogsTabProps) {
             className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 font-mono text-xs overflow-y-auto h-[500px] flex flex-col space-y-1 scrollbar-thin scrollbar-thumb-zinc-800"
           >
             {debugLogs.length === 0 ? (
-              <span className="text-zinc-500">{t('waitingLogs')}</span>
+              <span className="text-zinc-500">{isKiosk ? (t('kioskWaitingLogs') || 'Waiting for log records...') : t('waitingLogs')}</span>
             ) : (
               debugLogs.map((log) => {
                 let colorClass = "text-zinc-300";

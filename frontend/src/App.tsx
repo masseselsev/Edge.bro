@@ -352,7 +352,7 @@ function AppContent() {
       case 'history':
         return <HistoryTab onViewLogs={handleViewLogs} timezone={tz} />;
       case 'logs':
-        return <LogsTab onViewLogs={handleViewLogs} timezone={tz} />;
+        return <LogsTab onViewLogs={handleViewLogs} timezone={tz} isKiosk={isKiosk} />;
       case 'settings':
         return <SettingsTab onSettingsUpdated={setSettings} />;
       case 'schedule':
@@ -364,7 +364,7 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col font-sans select-none">
+    <div className="min-h-full flex flex-col font-sans select-none">
       {/* Global Header */}
       <header className="bg-zinc-900/80 backdrop-blur-md border-b border-zinc-800/80 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 py-3 space-y-3">

@@ -52,18 +52,30 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
   const fetchStats = useCallback(async () => {
     try {
       const statsRes = await fetch('/api/stats');
-      const statsData = await statsRes.json();
-      setStats(statsData);
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setStats(statsData);
+      }
 
       const nodesRes = await fetch('/api/nodes');
-      const nodesData = await nodesRes.json();
-      setNodes(nodesData);
+      if (nodesRes.ok) {
+        const nodesData = await nodesRes.json();
+        setNodes(Array.isArray(nodesData) ? nodesData : []);
+      } else {
+        setNodes([]);
+      }
 
       const histRes = await fetch('/api/nodes/history');
-      const histData = await histRes.json();
-      setHistory(histData);
+      if (histRes.ok) {
+        const histData = await histRes.json();
+        setHistory(Array.isArray(histData) ? histData : []);
+      } else {
+        setHistory([]);
+      }
     } catch (e) {
       console.error(e);
+      setNodes([]);
+      setHistory([]);
     } finally {
       setLoading(false);
     }

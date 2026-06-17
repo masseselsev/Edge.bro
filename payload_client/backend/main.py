@@ -509,20 +509,68 @@ def get_kiosk_tasks():
 
 @app.get("/api/tasks/debug-logs")
 def get_kiosk_debug_logs():
-    global restore_mode
-    if restore_mode == "online":
-        try:
-            req = urllib.request.Request(
-                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/tasks/debug-logs",
-                headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
-            )
-            with urllib.request.urlopen(req, timeout=5) as response:
-                return json.loads(response.read().decode())
-        except Exception as e:
-            logging.error(f"Failed to fetch debug logs from orchestrator: {e}")
-            raise HTTPException(status_code=502, detail=f"Failed to contact orchestrator: {str(e)}")
-    else:
-        return []
+    logs = []
+    try:
+        # Get logs of offline-backend systemd unit
+        out = subprocess.check_output(
+            ["journalctl", "-u", "offline-backend", "-n", "500", "--no-hostname", "--output=short-iso"],
+            text=True
+        )
+        for i, line in enumerate(out.splitlines()):
+            line = line.strip()
+            if not line:
+                continue
+            # Split by whitespace
+            parts = line.split(maxsplit=2)
+            # Short-iso format: '2026-06-17T13:08:29+0000 python3[1404]: MESSAGE'
+            
+            created_at = None
+            if len(parts) >= 1:
+                # Validate if it looks like a ISO timestamp
+                if 'T' in parts[0] and ('+' in parts[0] or '-' in parts[0] or 'Z' in parts[0]):
+                    created_at = parts[0]
+            
+            if not created_at:
+                import datetime
+                created_at = datetime.datetime.utcnow().isoformat() + "Z"
+                message = line
+            else:
+                if len(parts) >= 3:
+                    message = parts[2]
+                elif len(parts) == 2:
+                    message = parts[1]
+                else:
+                    message = ""
+                    
+            # Determine log level from message content
+            msg_upper = message.upper()
+            if "ERROR" in msg_upper or "EXCEPTION" in msg_upper or "CRITICAL" in msg_upper:
+                level = "ERROR"
+            elif "WARNING" in msg_upper or "WARN" in msg_upper:
+                level = "WARNING"
+            elif "DEBUG" in msg_upper:
+                level = "DEBUG"
+            else:
+                level = "INFO"
+                
+            logs.append({
+                "id": i + 1,
+                "level": level,
+                "message": message,
+                "created_at": created_at
+            })
+    except Exception as e:
+        logging.error(f"Failed to read local journal logs: {e}")
+        import datetime
+        logs = [{
+            "id": 1,
+            "level": "ERROR",
+            "message": f"Failed to retrieve local system logs: {str(e)}",
+            "created_at": datetime.datetime.utcnow().isoformat() + "Z"
+        }]
+    
+    logs.reverse()
+    return logs
 
 @app.get("/api/tasks/{task_id}")
 def get_task_status(task_id: str):

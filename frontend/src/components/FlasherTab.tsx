@@ -134,10 +134,15 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     setScanning(true);
     try {
       const res = await fetch('/api/scanner/devices');
-      const data = await res.json();
-      setDevices(data);
+      if (res.ok) {
+        const data = await res.json();
+        setDevices(Array.isArray(data) ? data : []);
+      } else {
+        setDevices([]);
+      }
     } catch (e) {
       console.error(e);
+      setDevices([]);
     } finally {
       setScanning(false);
     }
@@ -146,10 +151,15 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   const fetchNodes = async () => {
     try {
       const res = await fetch('/api/nodes');
-      const data = await res.json();
-      setNodes(data);
+      if (res.ok) {
+        const data = await res.json();
+        setNodes(Array.isArray(data) ? data : []);
+      } else {
+        setNodes([]);
+      }
     } catch (e) {
       console.error(e);
+      setNodes([]);
     } finally {
       setLoadingNodes(false);
     }
@@ -172,10 +182,19 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     setLoadingSnapshots(true);
     try {
       const res = await fetch(`/api/nodes/${nodeId}/history`);
-      const data = await res.json();
-      setSnapshots(data.filter((h: any) => h.status === 'SUCCESS'));
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setSnapshots(data.filter((h: any) => h.status === 'SUCCESS'));
+        } else {
+          setSnapshots([]);
+        }
+      } else {
+        setSnapshots([]);
+      }
     } catch (e) {
       console.error(e);
+      setSnapshots([]);
     } finally {
       setLoadingSnapshots(false);
     }

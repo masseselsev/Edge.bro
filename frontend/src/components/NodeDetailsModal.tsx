@@ -85,30 +85,41 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
       ]);
 
       if (nRes.ok) {
-        const allNodes: Node[] = await nRes.json();
-        const found = allNodes.find(n => n.id === nodeId);
-        if (found) {
-          setNode(found);
-          setNotes(found.notes || '');
-          setGroupId(found.group_id || 0);
+        const allNodes = await nRes.json();
+        if (Array.isArray(allNodes)) {
+          const found = allNodes.find((n: Node) => n.id === nodeId);
+          if (found) {
+            setNode(found);
+            setNotes(found.notes || '');
+            setGroupId(found.group_id || 0);
+          }
         }
       }
       
       if (hRes.ok) {
         const histData = await hRes.json();
-        histData.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        setHistory(histData);
+        if (Array.isArray(histData)) {
+          histData.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setHistory(histData);
+        } else {
+          setHistory([]);
+        }
       }
       
       if (gRes.ok) {
-        setGroups(await gRes.json());
+        const gData = await gRes.json();
+        setGroups(Array.isArray(gData) ? gData : []);
       }
 
       if (tlRes.ok) {
-        const logsData: TaskLog[] = await tlRes.json();
-        setTaskLogs(logsData);
-        if (logsData.length > 0) {
-          setSelectedLogId(logsData[0].id);
+        const logsData = await tlRes.json();
+        if (Array.isArray(logsData)) {
+          setTaskLogs(logsData);
+          if (logsData.length > 0) {
+            setSelectedLogId(logsData[0].id);
+          }
+        } else {
+          setTaskLogs([]);
         }
       }
     } catch (err) {
