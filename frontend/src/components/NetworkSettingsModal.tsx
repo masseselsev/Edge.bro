@@ -44,6 +44,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
   const [scanning, setScanning] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [hasInitialized, setHasInitialized] = useState(false);
   
   // Wired Form States
   const [wiredMode, setWiredMode] = useState<'auto' | 'manual'>('auto');
@@ -74,7 +75,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
       if (!res.ok) return;
       const data: NetworkStatus = await res.json();
       setStatus(data);
-      if (data.wired) {
+      if (data.wired && !hasInitialized) {
         setWiredMode(data.wired.mode || 'auto');
         setIpAddress(data.wired.ip || '');
         setNetmask(data.wired.netmask || '255.255.255.0');
@@ -84,6 +85,7 @@ export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalPr
           setDns1(data.wired.dns_servers[0] || '');
           setDns2(data.wired.dns_servers[1] || '');
         }
+        setHasInitialized(true);
       }
     } catch (err) {
       console.error('Failed to fetch network status:', err);
