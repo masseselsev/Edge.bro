@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Cpu, RefreshCw, CheckCircle, ShieldAlert } from 'lucide-react';
-import TaskLogsModal from './TaskLogsModal';
 import { DropdownTextInput } from './SearchableSelect';
 import { useTranslation } from '../context/TranslationContext';
 import KioskManagementSection from './KioskManagementSection';
@@ -19,7 +18,11 @@ const generateRandomToken = (): string => {
   return `${block1}-${block2}`;
 };
 
-export default function ClientIsoTab() {
+interface ClientIsoTabProps {
+  onViewLogs: (taskId: string, title: string) => void;
+}
+
+export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
   const { t } = useTranslation();
   const [status, setStatus] = useState<IsoStatus | null>(null);
   const [orchestratorIp, setOrchestratorIp] = useState(window.location.hostname);
@@ -29,7 +32,6 @@ export default function ClientIsoTab() {
   const [isDownloadingBase, setIsDownloadingBase] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [subTab, setSubTab] = useState<'generator' | 'kiosks'>('generator');
 
   // Custom ISO Source States
@@ -99,7 +101,7 @@ export default function ClientIsoTab() {
       if (!res.ok) throw new Error(data.detail || 'Failed to start generation');
       
       if (data.task_id) {
-        setActiveTaskId(data.task_id);
+        onViewLogs(data.task_id, t('taskLogsModalTitle') || 'Live-USB Generation Progress');
       } else {
         setSuccessMsg('ISO Generation task started in background.');
       }
@@ -474,13 +476,6 @@ export default function ClientIsoTab() {
       </div>
       )}
 
-      {activeTaskId && (
-        <TaskLogsModal
-          taskId={activeTaskId}
-          title={t('taskLogsModalTitle')}
-          onClose={() => setActiveTaskId(null)}
-        />
-      )}
     </div>
   );
 }

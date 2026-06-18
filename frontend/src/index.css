@@ -38,9 +38,9 @@ html, body, #root {
   --body-text: 15 23 42;    /* #0f172a */
 }
 
-/* Disable scrollbar-gutter to ensure header and page stretch fully to the screen edges */
+/* Use overflow-y: scroll to prevent layout shift while keeping header stretching consistent */
 html {
-  scrollbar-gutter: auto;
+  overflow-y: scroll;
 }
 
 /* Kiosk Adaptive Scaling for HD-Ready, Full-HD, 2K, and 4K displays */

@@ -419,7 +419,7 @@ function AppContent() {
       case 'flasher':
         return <FlasherTab onViewLogs={handleViewLogs} timezone={tz} restoreMode={restoreMode} isKiosk={isKiosk} />;
       case 'clientiso':
-        return <ClientIsoTab />;
+        return <ClientIsoTab onViewLogs={handleViewLogs} />;
       case 'history':
         return <HistoryTab onViewLogs={handleViewLogs} timezone={tz} />;
       case 'logs':
