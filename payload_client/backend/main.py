@@ -81,6 +81,13 @@ try:
 except ImportError:
     pass
 
+# Register Kiosk Watchdog router
+try:
+    from routers.watchdog import router as watchdog_router
+    app.include_router(watchdog_router, prefix="/api")
+except ImportError:
+    pass
+
 # Local state to track task progress
 task_logs: Dict[str, str] = {}
 task_status: Dict[str, str] = {}
