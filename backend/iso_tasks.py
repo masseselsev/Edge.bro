@@ -289,7 +289,8 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         packages_to_copy = [
             "fastapi", "pydantic", "pydantic_core", "uvicorn", "starlette",
             "anyio", "h11", "click", "annotated_types", "idna",
-            "annotated_doc", "typing_inspection", "watchfiles", "python_multipart", "multipart"
+            "annotated_doc", "typing_inspection", "watchfiles", "python_multipart", "multipart",
+            "serial"
         ]
         for pkg in packages_to_copy:
             pkg_src = f"/usr/local/lib/{py_ver}/site-packages/{pkg}"
