@@ -405,7 +405,13 @@ export const translations: Record<Language, Record<string, string>> = {
     thisKioskUuid: 'This Kiosk UUID',
     copied: 'Copied!',
     pairKeyLabel: 'Security Key (Format: ABCD-1234)',
-    connectButton: 'Connect'
+    connectButton: 'Connect',
+    watchdogTitle: 'Watchdog Controller Detected',
+    watchdogAlertText: 'A hardware watchdog timer has been detected. We recommend freezing the watchdog to prevent unexpected system reboots during backups or restores.',
+    watchdogFreezeButton: 'Freeze Watchdog',
+    watchdogUnfreezeButton: 'Unfreeze Watchdog',
+    watchdogActiveBadge: 'Watchdog Active',
+    watchdogFrozenBadge: 'Watchdog Frozen'
   },
   ru: {
     // Navigation / Tabs
@@ -810,7 +816,13 @@ export const translations: Record<Language, Record<string, string>> = {
     thisKioskUuid: 'UUID этого киоска',
     copied: 'Скопировано!',
     pairKeyLabel: 'Ключ безопасности (Формат: ABCD-1234)',
-    connectButton: 'Подключиться'
+    connectButton: 'Подключиться',
+    watchdogTitle: 'Обнаружен контроллер Watchdog',
+    watchdogAlertText: 'Обнаружен аппаратный сторожевой таймер. Рекомендуется заморозить вочдог, чтобы предотвратить случайную перезагрузку материнской платы во время резервного копирования или восстановления.',
+    watchdogFreezeButton: 'Заморозить вочдог',
+    watchdogUnfreezeButton: 'Разморозить вочдог',
+    watchdogActiveBadge: 'Вочдог активен',
+    watchdogFrozenBadge: 'Вочдог заморожен'
   },
   uk: {
     // Navigation / Tabs
@@ -1215,6 +1227,12 @@ export const translations: Record<Language, Record<string, string>> = {
     thisKioskUuid: 'UUID цього кіоску',
     copied: 'Скопійовано!',
     pairKeyLabel: 'Ключ безпеки (Формат: ABCD-1234)',
-    connectButton: 'Підключитися'
+    connectButton: 'Підключитися',
+    watchdogTitle: 'Виявлено контролер Watchdog',
+    watchdogAlertText: 'Виявлено апаратний сторожовий таймер. Рекомендується заморозити вочдог, щоб запобігти раптовому перезавантаженню плати під час резервного копіювання або відновлення.',
+    watchdogFreezeButton: 'Заморозити вочдог',
+    watchdogUnfreezeButton: 'Розморозити вочдог',
+    watchdogActiveBadge: 'Вочдог активний',
+    watchdogFrozenBadge: 'Вочдог заморожений'
   }
 };
