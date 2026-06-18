@@ -1,9 +1,13 @@
 import serial
+import threading
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any
 
 router = APIRouter(prefix="/kiosk/watchdog", tags=["Watchdog"])
+
+watchdog_lock = threading.Lock()
+last_detected_port = None
 
 class WatchdogStatus(BaseModel):
     detected: bool
@@ -23,12 +27,20 @@ def calculate_crc(data: bytes) -> bytes:
     return bytes([crc & 0xFF, (crc >> 8) & 0xFF])
 
 def scan_watchdog() -> Dict[str, Any]:
-    ports_to_scan = ["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2"]
+    global last_detected_port
+    base_ports = ["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2"]
+    
+    ports_to_scan = base_ports.copy()
+    if last_detected_port and last_detected_port in ports_to_scan:
+        ports_to_scan.remove(last_detected_port)
+        ports_to_scan.insert(0, last_detected_port)
+        
     # pc_wdt read command: 30 03 00 00 00 01 + CRC (80 2B)
     read_cmd = bytes.fromhex("300300000001802B")
     
     # read coils starting at 0x0000 to get REG_VSM_FROZEN_REQ state
-    read_coils_cmd = bytes.fromhex("3001000000083E0C")
+    # Corrected CRC to 39ED (calculated from 300100000008)
+    read_coils_cmd = bytes.fromhex("30010000000839ED")
 
     for port in ports_to_scan:
         try:
@@ -52,6 +64,7 @@ def scan_watchdog() -> Dict[str, Any]:
                             frozen = bool((c_res[3] >> 7) & 1)
 
                     ser.close()
+                    last_detected_port = port
                     return {
                         "detected": True,
                         "port": port,
@@ -65,57 +78,60 @@ def scan_watchdog() -> Dict[str, Any]:
 
 @router.get("/status", response_model=WatchdogStatus)
 def get_watchdog_status():
-    try:
-        status = scan_watchdog()
-        return WatchdogStatus(**status)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    with watchdog_lock:
+        try:
+            status = scan_watchdog()
+            return WatchdogStatus(**status)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/freeze")
 def freeze_watchdog():
-    status = scan_watchdog()
-    if not status["detected"]:
-        raise HTTPException(status_code=404, detail="Watchdog controller not found")
-    
-    port = status["port"]
-    # Commands
-    freeze_cmd = bytes.fromhex("30050007FF0039DA")
-    reset_cmd = bytes.fromhex("3006000000008DEB")
-    
-    try:
-        ser = serial.Serial(port, 19200, timeout=0.5)
+    with watchdog_lock:
+        status = scan_watchdog()
+        if not status["detected"]:
+            raise HTTPException(status_code=404, detail="Watchdog controller not found")
         
-        # Send freeze command
-        ser.write(freeze_cmd)
-        f_res = ser.read(8)
-        if f_res != freeze_cmd:
-            ser.close()
-            raise Exception("Watchdog failed to confirm freeze request")
+        port = status["port"]
+        # Commands
+        freeze_cmd = bytes.fromhex("30050007FF0039DA")
+        reset_cmd = bytes.fromhex("3006000000008DEB")
+        
+        try:
+            ser = serial.Serial(port, 19200, timeout=0.5)
             
-        # Send reset command
-        ser.write(reset_cmd)
-        r_res = ser.read(8)
-        ser.close()
-        return {"status": "SUCCESS", "message": "Watchdog frozen successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+            # Send freeze command
+            ser.write(freeze_cmd)
+            f_res = ser.read(8)
+            if f_res != freeze_cmd:
+                ser.close()
+                raise Exception("Watchdog failed to confirm freeze request")
+                
+            # Send reset command
+            ser.write(reset_cmd)
+            r_res = ser.read(8)
+            ser.close()
+            return {"status": "SUCCESS", "message": "Watchdog frozen successfully"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/unfreeze")
 def unfreeze_watchdog():
-    status = scan_watchdog()
-    if not status["detected"]:
-        raise HTTPException(status_code=404, detail="Watchdog controller not found")
-    
-    port = status["port"]
-    unfreeze_cmd = bytes.fromhex("300500070000782A")
-    
-    try:
-        ser = serial.Serial(port, 19200, timeout=0.5)
-        ser.write(unfreeze_cmd)
-        res = ser.read(8)
-        ser.close()
-        if res != unfreeze_cmd:
-            raise Exception("Watchdog failed to confirm unfreeze request")
-        return {"status": "SUCCESS", "message": "Watchdog unfrozen successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    with watchdog_lock:
+        status = scan_watchdog()
+        if not status["detected"]:
+            raise HTTPException(status_code=404, detail="Watchdog controller not found")
+        
+        port = status["port"]
+        unfreeze_cmd = bytes.fromhex("300500070000782A")
+        
+        try:
+            ser = serial.Serial(port, 19200, timeout=0.5)
+            ser.write(unfreeze_cmd)
+            res = ser.read(8)
+            ser.close()
+            if res != unfreeze_cmd:
+                raise Exception("Watchdog failed to confirm unfreeze request")
+            return {"status": "SUCCESS", "message": "Watchdog unfrozen successfully"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
