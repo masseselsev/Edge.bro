@@ -40,6 +40,13 @@ if [ -f /root/etc/NetworkManager/NetworkManager.conf ]; then
     sed -i 's/managed=false/managed=true/g' /root/etc/NetworkManager/NetworkManager.conf
 fi
 
+# Clean /etc/network/interfaces to prevent conflicts with NetworkManager
+if [ -f /root/etc/network/interfaces ]; then
+    echo "auto lo" > /root/etc/network/interfaces
+    echo "iface lo inet loopback" >> /root/etc/network/interfaces
+fi
+
+
 # Copy XDG autostart kiosk file
 if [ -d /etc/xdg/autostart ]; then
     mkdir -p /root/etc/xdg/autostart

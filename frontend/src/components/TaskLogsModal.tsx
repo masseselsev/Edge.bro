@@ -15,6 +15,7 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose }: Task
   const [status, setStatus] = useState('PENDING');
   const [logs, setLogs] = useState('');
   const terminalEndRef = useRef<HTMLDivElement>(null);
+  const terminalContainerRef = useRef<HTMLDivElement>(null);
   const notFoundCountRef = useRef(0);
 
   const fetchLogs = async () => {
@@ -61,7 +62,12 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose }: Task
 
   // Autoscroll
   useEffect(() => {
-    terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (terminalContainerRef.current) {
+      terminalContainerRef.current.scrollTo({
+        top: terminalContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
   }, [logs]);
 
   const getStatusIndicator = () => {
@@ -135,7 +141,7 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose }: Task
         )}
 
         {/* Console logs */}
-        <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-zinc-300 bg-black/95 select-text space-y-1">
+        <div ref={terminalContainerRef} className="flex-1 p-4 overflow-y-auto font-mono text-xs text-zinc-300 bg-black/95 select-text space-y-1">
           {cleanLogs ? (
             cleanLogs.split('\n').map((line, idx) => {
               const match = line.match(/^\[(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\](.*)/);

@@ -99,7 +99,10 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
       
       if (isNearBottom || isInitialLoad.current) {
         const timer = setTimeout(() => {
-          terminalEndRef.current?.scrollIntoView({ behavior: isInitialLoad.current ? 'auto' : 'smooth' });
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: isInitialLoad.current ? 'auto' : 'smooth'
+          });
           if (debugLogs.length > 0) {
             isInitialLoad.current = false;
           }
