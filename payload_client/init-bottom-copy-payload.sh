@@ -35,6 +35,11 @@ if [ -d /etc/systemd/system ]; then
     fi
 fi
 
+# Set NetworkManager to manage all interfaces
+if [ -f /root/etc/NetworkManager/NetworkManager.conf ]; then
+    sed -i 's/managed=false/managed=true/g' /root/etc/NetworkManager/NetworkManager.conf
+fi
+
 # Copy XDG autostart kiosk file
 if [ -d /etc/xdg/autostart ]; then
     mkdir -p /root/etc/xdg/autostart

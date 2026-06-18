@@ -15,6 +15,15 @@ if command -v xset &>/dev/null; then
   xset -dpms      # disable DPMS (Energy Star) features
 fi
 
+if command -v xfconf-query &>/dev/null; then
+  xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/blank-on-ac -s 0 --create -t int || true
+  xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-on-ac-sleep -s 0 --create -t int || true
+  xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-on-ac-off -s 0 --create -t int || true
+  xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-enabled -s false --create -t bool || true
+  xfconf-query -c xfce4-screensaver -p /saver/enabled -s false --create -t bool || true
+  xfconf-query -c xfce4-screensaver -p /lock/enabled -s false --create -t bool || true
+fi
+
 # Wait for backend to be ready
 logger -t offline-kiosk "Waiting for offline backend on port 8000..."
 for i in {1..30}; do
