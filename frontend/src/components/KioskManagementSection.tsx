@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, ShieldAlert, CheckCircle, RefreshCw, Clipboard, Copy, Server, Globe } from 'lucide-react';
+import { Plus, Trash2, ShieldAlert, CheckCircle, RefreshCw, Clipboard, Copy, Server, Globe, Search } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 
 interface Kiosk {
@@ -20,6 +20,19 @@ export default function KioskManagementSection() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredKiosks = kiosks.filter(k => {
+    const query = searchQuery.toLowerCase();
+    const nameMatch = (k.name || '').toLowerCase().includes(query);
+    const uuidMatch = (k.uuid || '').toLowerCase().includes(query);
+    const ipMatch = (k.ip_address || '').toLowerCase().includes(query);
+    
+    // Check both raw status and translated status names if possible
+    const statusMatch = (k.status || '').toLowerCase().includes(query);
+    
+    return nameMatch || uuidMatch || ipMatch || statusMatch;
+  });
   
   // Form fields
   const [name, setName] = useState('');
@@ -119,16 +132,28 @@ export default function KioskManagementSection() {
           <h3 className="text-base font-bold text-zinc-50">{t('kioskControlPanel') || 'Kiosk Control Panel'}</h3>
           <p className="text-xs text-zinc-400 mt-1">{t('kioskControlSub') || 'Manage connection keys and authorization status for Live-CD technician kiosk clients.'}</p>
         </div>
-        <button
-          onClick={() => {
-            setError('');
-            setShowAddModal(true);
-          }}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs shadow-lg transition-colors cursor-pointer"
-        >
-          <Plus size={14} />
-          {t('registerKioskButton') || 'Register Kiosk'}
-        </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+          <div className="relative w-full sm:w-64">
+            <input
+              type="text"
+              placeholder={t('searchKiosksPlaceholder') || 'Search kiosks by name, UUID, IP...'}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 focus:border-indigo-500 focus:outline-none rounded-lg text-xs text-zinc-100 placeholder-zinc-500 transition-colors"
+            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={14} />
+          </div>
+          <button
+            onClick={() => {
+              setError('');
+              setShowAddModal(true);
+            }}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs shadow-lg transition-colors cursor-pointer shrink-0"
+          >
+            <Plus size={14} />
+            {t('registerKioskButton') || 'Register Kiosk'}
+          </button>
+        </div>
       </div>
 
       {/* Table grid */}
@@ -144,6 +169,12 @@ export default function KioskManagementSection() {
             <p className="text-xs font-semibold">{t('noKiosksFound') || 'No registered kiosks found'}</p>
             <p className="text-[10px] text-zinc-500 mt-1">{t('registerKioskHint') || 'Click "Register Kiosk" to generate a pairing key.'}</p>
           </div>
+        ) : filteredKiosks.length === 0 ? (
+          <div className="py-12 text-center text-zinc-500">
+            <Search className="mx-auto text-zinc-600 mb-3" size={36} />
+            <p className="text-xs font-semibold">{t('noMatchingKiosks') || 'No matching kiosks found'}</p>
+            <p className="text-[10px] text-zinc-500 mt-1">Try adjusting your search criteria</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-xs">
@@ -158,7 +189,7 @@ export default function KioskManagementSection() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
-                {kiosks.map((kiosk) => (
+                {filteredKiosks.map((kiosk) => (
                   <tr key={kiosk.id} className="hover:bg-zinc-950/20 transition-colors">
                     <td className="py-3.5 px-4 font-bold text-zinc-200">
                       {kiosk.name || <span className="text-zinc-500 italic">{t('unnamedKiosk') || 'Unnamed Kiosk'}</span>}
