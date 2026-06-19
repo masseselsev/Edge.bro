@@ -205,9 +205,29 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         # 1. Unpack Base ISO
         log_to_task(task_id, "[PROGRESS] 10:Unpacking base ISO...")
         os.makedirs(work_dir, exist_ok=True)
-        run_command_with_logging(task_id, ["xorriso", "-osirrox", "on", "-indev", base_iso_to_use, "-extract", "/", iso_unpacked])
+        base_size_mb = 3800.0
+        try:
+            if os.path.exists(base_iso_to_use):
+                base_size_mb = os.path.getsize(base_iso_to_use) / (1024.0 * 1024.0)
+        except Exception:
+            pass
+
+        def on_unpack_line(line: str) -> None:
+            import re
+            m = re.search(r"files restored \(([0-9.]+)([mg])\)", line)
+            if m:
+                try:
+                    val, unit = float(m.group(1)), m.group(2).lower()
+                    mb = val * 1024.0 if unit == 'g' else val
+                    pct = min(100.0, max(0.0, (mb / base_size_mb) * 100.0))
+                    log_to_task(task_id, f"[PROGRESS] {int(10 + (pct * 0.10))}:Unpacking base ISO...")
+                except Exception:
+                    pass
+
+        run_command_with_logging(task_id, ["xorriso", "-osirrox", "on", "-indev", base_iso_to_use, "-extract", "/", iso_unpacked], on_log_line=on_unpack_line)
 
         # Make iso_unpacked writable
+        log_to_task(task_id, "[PROGRESS] 20:Preparing directory write permissions...")
         run_command_with_logging(task_id, ["chmod", "-v", "-R", "+w", iso_unpacked])
 
         # 2. Prepare Secondary Initrd Payload
@@ -225,8 +245,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
         # Inject Shared Network settings router
         os.makedirs(os.path.join(opt_offline, "backend", "routers"), exist_ok=True)
-        with open(os.path.join(opt_offline, "backend", "routers", "__init__.py"), "w") as f:
-            pass
+        open(os.path.join(opt_offline, "backend", "routers", "__init__.py"), "w").close()
         shutil.copy2("/app/routers/network.py", os.path.join(opt_offline, "backend", "routers", "network.py"))
 
         # Inject Unified version configuration
@@ -290,6 +309,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         shutil.copy2(conf_src, conf_dst)
 
         # Inject Python site-packages dependencies
+        log_to_task(task_id, "[PROGRESS] 35:Injecting python environment dependencies...")
         import sys
         py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
         site_packages_dst = os.path.join(opt_offline, "backend", "site-packages")
@@ -307,10 +327,10 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             elif os.path.isfile(pkg_src + ".py"):
                 shutil.copy2(pkg_src + ".py", os.path.join(site_packages_dst, pkg + ".py"))
         
-        # Also copy typing_extensions.py
         shutil.copy2(f"/usr/local/lib/{py_ver}/site-packages/typing_extensions.py", os.path.join(site_packages_dst, "typing_extensions.py"))
 
         # Write Config JSON
+        log_to_task(task_id, "[PROGRESS] 42:Generating kiosk configuration...")
         import models
         settings = db.query(models.Settings).first()
         lang = settings.language if settings else "en"
@@ -326,8 +346,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
 
         # Save token for validation in routers/iso.py
-        token_file = os.path.join(CACHE_DIR, "auth_token.txt")
-        with open(token_file, "w") as f:
+        with open(os.path.join(CACHE_DIR, "auth_token.txt"), "w") as f:
             f.write(auth_token.strip())
 
         # Ensure orchestrator SSH key exists and get public key content
@@ -441,6 +460,17 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         if os.path.exists(output_iso):
             os.remove(output_iso)
 
+        def on_repack_line(line: str) -> None:
+            import re
+            m = re.search(r"UPDATE\s*:\s*([0-9.]+)%\s*done", line)
+            if m:
+                try:
+                    pct = float(m.group(1))
+                    overall_pct = int(85 + (pct * 0.14)) # map 0-100% to 85-99%
+                    log_to_task(task_id, f"[PROGRESS] {overall_pct}:Repacking Live-USB ISO...")
+                except Exception:
+                    pass
+
         run_command_with_logging(task_id, [
             "xorriso",
             "-as", "mkisofs",
@@ -457,7 +487,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             "-no-emul-boot", "-isohybrid-gpt-basdat", "-isohybrid-apm-hfsplus",
             "-o", output_iso,
             iso_unpacked
-        ])
+        ], on_log_line=on_repack_line)
 
         log_to_task(task_id, "[PROGRESS] 100:Client ISO generated successfully!", status="SUCCESS")
         return {"status": "SUCCESS"}

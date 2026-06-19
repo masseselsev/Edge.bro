@@ -2,7 +2,7 @@ import os
 import subprocess
 import json
 import logging
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Union, Callable
 from datetime import datetime
 from sqlalchemy.orm import Session
 from database import SessionLocal
@@ -85,7 +85,12 @@ def log_to_task(task_id: str, message: str, status: Optional[str] = None) -> Non
     finally:
         db.close()
 
-def run_command_with_logging(task_id: str, cmd: Union[str, List[str]], shell: bool = False) -> None:
+def run_command_with_logging(
+    task_id: str,
+    cmd: Union[str, List[str]],
+    shell: bool = False,
+    on_log_line: Optional[Callable[[str], None]] = None
+) -> None:
     """
     Runs a subprocess command and streams its stdout/stderr line-by-line
     to the TaskLog record via log_to_task.
@@ -104,7 +109,13 @@ def run_command_with_logging(task_id: str, cmd: Union[str, List[str]], shell: bo
 
     if process.stdout:
         for line in iter(process.stdout.readline, ""):
-            log_to_task(task_id, line.rstrip("\r\n"))
+            log_line = line.rstrip("\r\n")
+            log_to_task(task_id, log_line)
+            if on_log_line:
+                try:
+                    on_log_line(log_line)
+                except Exception as ex:
+                    logger.error(f"Error in on_log_line callback: {str(ex)}")
         process.stdout.close()
 
     return_code = process.wait()
