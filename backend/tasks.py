@@ -2,7 +2,7 @@ import os
 import subprocess
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 from sqlalchemy.orm import Session
 from database import SessionLocal
@@ -84,6 +84,32 @@ def log_to_task(task_id: str, message: str, status: Optional[str] = None) -> Non
         logger.error(f"Error logging to task {task_id}: {str(e)}")
     finally:
         db.close()
+
+def run_command_with_logging(task_id: str, cmd: Union[str, List[str]], shell: bool = False) -> None:
+    """
+    Runs a subprocess command and streams its stdout/stderr line-by-line
+    to the TaskLog record via log_to_task.
+    """
+    cmd_str = cmd if isinstance(cmd, str) else " ".join(cmd)
+    log_to_task(task_id, f"[EXEC] {cmd_str}")
+
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        shell=shell,
+        bufsize=1
+    )
+
+    if process.stdout:
+        for line in iter(process.stdout.readline, ""):
+            log_to_task(task_id, line.rstrip("\r\n"))
+        process.stdout.close()
+
+    return_code = process.wait()
+    if return_code != 0:
+        raise subprocess.CalledProcessError(return_code, cmd)
 
 def fix_ssh_permissions() -> None:
     """

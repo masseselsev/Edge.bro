@@ -138,9 +138,17 @@ def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
             except Exception as le:
                 logger.error(f"Failed to remove download lock file: {le}")
 
+def generate_kiosk_id() -> str:
+    """Generates a memorable kiosk identifier in XX1234 pattern (2 letters + 4 digits)."""
+    import random
+    import string
+    letters = "".join(random.choices(string.ascii_uppercase, k=2))
+    digits = "".join(random.choices(string.digits, k=4))
+    return f"{letters}{digits}"
+
 @celery_app.task(bind=True)
 def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str, Any]:
-    from tasks import log_to_task
+    from tasks import log_to_task, run_command_with_logging
     from database import SessionLocal
     from models import TaskLog
     
@@ -184,7 +192,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
                 download_url = DEFAULT_MIRROR_URLS[0]
                 logger.warning(f"All mirror checks failed. Falling back to primary URL: {download_url}")
 
-            subprocess.check_call([
+            run_command_with_logging(task_id, [
                 "curl", "-4", "--connect-timeout", "15", "--retry", "3", "--retry-delay", "2",
                 "-f", "-L", "-o", BASE_ISO_PATH, download_url
             ])
@@ -197,10 +205,10 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         # 1. Unpack Base ISO
         log_to_task(task_id, "[PROGRESS] 10:Unpacking base ISO...")
         os.makedirs(work_dir, exist_ok=True)
-        subprocess.check_call(["xorriso", "-osirrox", "on", "-indev", base_iso_to_use, "-extract", "/", iso_unpacked])
+        run_command_with_logging(task_id, ["xorriso", "-osirrox", "on", "-indev", base_iso_to_use, "-extract", "/", iso_unpacked])
 
         # Make iso_unpacked writable
-        subprocess.check_call(["chmod", "-R", "+w", iso_unpacked])
+        run_command_with_logging(task_id, ["chmod", "-v", "-R", "+w", iso_unpacked])
 
         # 2. Prepare Secondary Initrd Payload
         log_to_task(task_id, "[PROGRESS] 30:Injecting payload and configurations...")
@@ -210,7 +218,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         os.makedirs(os.path.join(payload_dir, "etc", "xdg", "autostart"), exist_ok=True)
 
         # Copy Payload Backend
-        subprocess.check_call(f"cp -r /payload_client/backend/* {os.path.join(opt_offline, 'backend')}/", shell=True)
+        run_command_with_logging(task_id, f"cp -v -r /payload_client/backend/* {os.path.join(opt_offline, 'backend')}/", shell=True)
         
         # Inject Shared Disk Ops Module
         shutil.copy2("/app/core/disk_ops.py", os.path.join(opt_offline, "backend", "core", "disk_ops.py"))
@@ -306,8 +314,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         import models
         settings = db.query(models.Settings).first()
         lang = settings.language if settings else "en"
-        import uuid
-        kiosk_uuid = str(uuid.uuid4())
+        kiosk_uuid = generate_kiosk_id()
         config_data = {
             "orchestrator_ip": target_ip,
             "auth_token": auth_token,
@@ -356,7 +363,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         # 3. Create payload.img
         log_to_task(task_id, "[PROGRESS] 45:Packaging secondary initrd...")
         payload_img = os.path.join(iso_unpacked, "live", "payload.img")
-        subprocess.check_call(f"cd {payload_dir} && find . -print0 | cpio --null --create --format=newc | gzip > {payload_img}", shell=True)
+        run_command_with_logging(task_id, f"cd {payload_dir} && find . -print0 | cpio -v --null --create --format=newc | gzip > {payload_img}", shell=True)
 
         # 4. Modify Bootloaders (GRUB & Syslinux) to load payload.img
         log_to_task(task_id, "[PROGRESS] 60:Updating bootloader configurations...")
@@ -426,7 +433,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         log_to_task(task_id, "[PROGRESS] 75:Updating ISO checksums...")
         md5_txt = os.path.join(iso_unpacked, "md5sum.txt")
         if os.path.exists(md5_txt):
-            subprocess.check_call(f"cd {iso_unpacked} && find . -type f -not -name md5sum.txt -not -path './isolinux/*' -exec md5sum {{}} \\; > md5sum.txt", shell=True)
+            run_command_with_logging(task_id, f"cd {iso_unpacked} && find . -type f -not -name md5sum.txt -not -path './isolinux/*' -exec md5sum {{}} \\; > md5sum.txt", shell=True)
 
         # 6. Repack ISO
         log_to_task(task_id, "[PROGRESS] 85:Repacking Live-USB ISO...")
@@ -434,7 +441,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         if os.path.exists(output_iso):
             os.remove(output_iso)
 
-        subprocess.check_call([
+        run_command_with_logging(task_id, [
             "xorriso",
             "-as", "mkisofs",
             "-r", "-J", "-joliet-long",

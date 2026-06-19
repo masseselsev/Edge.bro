@@ -61,7 +61,7 @@ def test_kiosks_crud_and_handshake(mock_revoke, mock_authorize, db_session):
     """
     Test CRUD actions and handshake by calling route handler functions directly.
     """
-    kiosk_uuid = "e1c0800b-33de-40fb-88fc-ef7e06a38b1f"
+    kiosk_uuid = "TK1234"
     kiosk_name = "Room A Test Kiosk"
     
     # 1. Register Kiosk

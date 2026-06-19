@@ -49,10 +49,17 @@ if os.path.exists(CONFIG_PATH):
     except Exception as e:
         logging.error(f"Failed to load config.json: {e}")
 
+def generate_kiosk_id() -> str:
+    """Generates a memorable kiosk identifier in XX1234 pattern (2 letters + 4 digits)."""
+    import random
+    import string
+    letters = "".join(random.choices(string.ascii_uppercase, k=2))
+    digits = "".join(random.choices(string.digits, k=4))
+    return f"{letters}{digits}"
+
 # Generate persistent UUID if not present
 if not kiosk_uuid:
-    import uuid
-    kiosk_uuid = str(uuid.uuid4())
+    kiosk_uuid = generate_kiosk_id()
     try:
         cfg_data = {}
         if os.path.exists(CONFIG_PATH):
