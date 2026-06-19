@@ -14,6 +14,7 @@ export const translations: Record<Language, Record<string, string>> = {
     connectionKeyphrase: 'Connection Token (Keyphrase)',
     exitKiosk: 'Exit Kiosk',
     exitKioskConfirm: 'Are you sure you want to exit kiosk mode back to the desktop?',
+    loadingInitializing: 'Initializing system...',
 
     // Setup / Welcome IP Prompt Modal
     welcomeSetup: 'Welcome & Setup',
@@ -433,6 +434,7 @@ export const translations: Record<Language, Record<string, string>> = {
     connectionKeyphrase: 'Ключевая фраза (Токен)',
     exitKiosk: 'Выйти из киоска',
     exitKioskConfirm: 'Вы действительно хотите выйти из режима киоска на рабочий стол?',
+    loadingInitializing: 'Инициализация системы...',
 
     // Setup / Welcome IP Prompt Modal
     welcomeSetup: 'Приветствие и настройка',
@@ -851,6 +853,7 @@ export const translations: Record<Language, Record<string, string>> = {
     connectionKeyphrase: 'Ключова фраза (Токен)',
     exitKiosk: 'Вийти з кіоску',
     exitKioskConfirm: 'Ви дійсно хочете вийти з режиму кіоску на робочий стіл?',
+    loadingInitializing: 'Ініціалізація системи...',
 
     // Setup / Welcome IP Prompt Modal
     welcomeSetup: 'Вітання та налаштування',

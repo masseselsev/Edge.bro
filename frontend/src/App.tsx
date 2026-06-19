@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar, Sun, Moon, Link2, Copy, ShieldAlert, RefreshCw } from 'lucide-react';
+import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar, Sun, Moon, Link2, Copy, ShieldAlert, RefreshCw, Loader2 } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
 import HistoryTab from './components/HistoryTab';
@@ -151,6 +151,9 @@ function AppContent() {
   const [savingIp, setSavingIp] = useState(false);
   const [appVersion, setAppVersion] = useState('');
   const [isKiosk, setIsKiosk] = useState(false);
+  const [appReady, setAppReady] = useState(false);
+  const [versionLoaded, setVersionLoaded] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [restoreMode, setRestoreMode] = useState<'offline' | 'online'>('offline');
   const [kioskOrchestratorIp, setKioskOrchestratorIp] = useState('');
   const [connectionKeyphrase, setConnectionKeyphrase] = useState('');
@@ -326,12 +329,15 @@ function AppContent() {
             setConnectionKeyphrase(data.auth_token || '');
             setKioskUuid(data.kiosk_uuid || '');
           }
+          setVersionLoaded(true);
         })
         .catch(err => {
           console.error('Error fetching version:', err);
           if (retryCount < 5) {
             retryCount++;
             setTimeout(fetchVersion, 3000);
+          } else {
+            setVersionLoaded(true); // unblock UI after max retries
           }
         });
     };
@@ -353,10 +359,23 @@ function AppContent() {
               setShowIpPromptModal(true);
             }
           })
-          .catch(err => console.error(err));
+          .catch(err => console.error(err))
+          .finally(() => setSettingsLoaded(true));
       })
-      .catch(err => console.error(err));
+      .catch(err => {
+        console.error(err);
+        setSettingsLoaded(true); // unblock UI even on error
+      });
   }, []);
+
+  // Mark app as ready once critical data is loaded
+  useEffect(() => {
+    if (versionLoaded && settingsLoaded) {
+      // Small delay to let the UI render before removing the overlay
+      const timer = setTimeout(() => setAppReady(true), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [versionLoaded, settingsLoaded]);
 
   const handleExitKiosk = async () => {
     if (window.confirm(t('exitKioskConfirm'))) {
@@ -436,6 +455,29 @@ function AppContent() {
 
   return (
     <div className="min-h-full flex flex-col font-sans select-none">
+      {/* Boot Loading Overlay */}
+      {!appReady && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/95 backdrop-blur-xl transition-opacity duration-500">
+          <div className="flex flex-col items-center gap-5 animate-fade-in">
+            <div className="relative p-4 bg-indigo-600/15 border border-indigo-500/30 rounded-2xl shadow-2xl">
+              <svg className="w-10 h-10 text-indigo-400 filter drop-shadow-[0_0_8px_rgba(99,102,241,0.6)] animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span>
+              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-emerald-500 rounded-full"></span>
+            </div>
+            <div className="text-center space-y-2">
+              <h2 className="text-lg font-bold text-zinc-100 tracking-tight">
+                <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2.5 py-1 rounded font-mono font-bold text-sm uppercase tracking-wider">Edge B.R.O.</span>
+              </h2>
+              <div className="flex items-center justify-center gap-2 text-zinc-400 text-xs font-semibold">
+                <Loader2 size={14} className="animate-spin text-indigo-400" />
+                <span>{t('loadingInitializing')}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Global Header */}
       <header className="bg-zinc-900/80 backdrop-blur-md border-b border-zinc-800/80 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 py-3 space-y-3">
