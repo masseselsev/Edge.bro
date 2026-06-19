@@ -141,7 +141,7 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose }: Task
         )}
 
         {/* Console logs */}
-        <div ref={terminalContainerRef} className="flex-1 p-4 overflow-y-auto font-mono text-xs text-zinc-300 bg-black/95 select-text space-y-1">
+        <div ref={terminalContainerRef} className="flex-1 p-4 overflow-y-auto font-mono text-xs text-zinc-300 bg-zinc-950 select-text space-y-1">
           {cleanLogs ? (
             cleanLogs.split('\n').map((line, idx) => {
               const match = line.match(/^\[(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\](.*)/);
@@ -162,16 +162,16 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose }: Task
               );
             })
           ) : (
-            <div className="text-zinc-600 italic">{t('noOutputLogs')}</div>
+            <div className="text-zinc-500 italic">{t('noOutputLogs')}</div>
           )}
 
           {status === 'SUCCESS' && (
-            <div className="text-emerald-400 font-bold mt-2 border-t border-emerald-500/20 pt-2 flex items-center gap-1.5">
+            <div className="text-emerald-600 dark:text-emerald-400 font-bold mt-2 border-t border-emerald-500/20 pt-2 flex items-center gap-1.5">
               <CheckCircle size={14} /> {t('taskSuccessMessage')}
             </div>
           )}
           {status === 'FAILED' && (
-            <div className="text-rose-400 font-bold mt-2 border-t border-rose-500/20 pt-2 flex items-center gap-1.5">
+            <div className="text-rose-600 dark:text-rose-400 font-bold mt-2 border-t border-rose-500/20 pt-2 flex items-center gap-1.5">
               <AlertCircle size={14} /> {t('taskFailedMessage')}
             </div>
           )}

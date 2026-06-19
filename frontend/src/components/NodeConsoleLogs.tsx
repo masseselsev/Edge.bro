@@ -61,8 +61,8 @@ export default function NodeConsoleLogs({
         )}
       </div>
 
-      <div className="bg-zinc-950 border border-zinc-850 rounded-xl p-4 font-mono text-xs overflow-hidden">
-        <pre className="text-emerald-400 bg-black p-4 rounded-lg overflow-y-auto max-h-[350px] whitespace-pre-wrap leading-relaxed">
+      <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 font-mono text-xs overflow-hidden">
+        <pre className="text-emerald-600 dark:text-emerald-400 bg-zinc-950 p-4 rounded-lg overflow-y-auto max-h-[350px] whitespace-pre-wrap leading-relaxed">
           {selectedLog?.log_output || t('selectSessionPlaceholder')}
         </pre>
       </div>

@@ -264,7 +264,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
           </div>
           <div onClick={(e) => { e.stopPropagation(); setPurgeTarget(node); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition-colors">
             {purging[node.id] ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-            {purging[node.id] ? t('saving') : t('clearLogs')}
+            {purging[node.id] ? t('saving') : t('purgeArchives')}
           </div>
         </button>
         {isExpanded && renderArchiveTable(groupedByNode[node.id] || [])}
@@ -382,13 +382,13 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
     <div className="space-y-6">
       {/* Confirmation Modal */}
       {purgeTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-md shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-xl animate-modal-in">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2.5 bg-rose-500/10 rounded-xl border border-rose-500/20">
                 <AlertTriangle className="text-rose-400" size={22} />
               </div>
-              <h3 className="text-lg font-bold text-zinc-50">{t('flashWarningTitle')}</h3>
+              <h3 className="text-lg font-bold text-zinc-50">{t('purgeWarningTitle')}</h3>
             </div>
             <p className="text-sm text-zinc-300 mb-1">
               You are about to delete <strong className="text-zinc-50">all backup archives</strong> for:
@@ -408,7 +408,7 @@ export default function HistoryTab({ onViewLogs, timezone }: HistoryTabProps) {
                 onClick={() => handlePurge(purgeTarget)}
                 className="px-4 py-2 text-sm rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold transition-colors"
               >
-                {t('clearLogs')}
+                {t('purgeArchives')}
               </button>
             </div>
           </div>

@@ -228,7 +228,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
   if (!node) {
     return createPortal(
-      <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 flex items-center gap-3">
           <RefreshCw className="h-6 w-6 text-indigo-400 animate-spin" />
           <span className="text-zinc-200">Loading node details...</span>
@@ -239,7 +239,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   }
 
   return createPortal(
-    <div className="fixed inset-0 bg-zinc-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-zinc-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-modal-in">
         {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-zinc-800">

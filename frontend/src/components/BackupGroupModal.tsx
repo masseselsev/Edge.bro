@@ -246,7 +246,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-modal-in">
         <div className="flex justify-between items-center p-5 border-b border-zinc-800">
           <h3 className="text-lg font-bold text-zinc-100 flex items-center gap-2">

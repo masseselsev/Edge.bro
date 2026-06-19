@@ -251,8 +251,8 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
             ) : (
               debugLogs.map((log) => {
                 let colorClass = "text-zinc-300";
-                if (log.level === "ERROR") colorClass = "text-rose-400 font-bold";
-                else if (log.level === "WARNING") colorClass = "text-yellow-400 font-medium";
+                if (log.level === "ERROR") colorClass = "text-rose-600 dark:text-rose-400 font-bold";
+                else if (log.level === "WARNING") colorClass = "text-amber-600 dark:text-yellow-400 font-medium";
                 else if (log.level === "DEBUG") colorClass = "text-zinc-500";
                 const timeStr = formatDate(log.created_at, timezone);
                 const cleanMsg = log.message.replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s*/, '');

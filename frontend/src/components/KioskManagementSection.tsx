@@ -268,12 +268,12 @@ export default function KioskManagementSection() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. e1c0800b-33de-40fb-88fc-ef7e06a38b1f"
+                  placeholder="e.g. KB4821"
                   value={uuid}
                   onChange={(e) => setUuid(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors font-mono"
                 />
-                <p className="text-[10px] text-zinc-500 mt-1">{t('kioskUuidHint') || 'Read this code from the footer of the Kiosk client screen.'}</p>
+                <p className="text-[10px] text-zinc-500 mt-1">{t('kioskIdHint') || 'Read this ID from the footer of the Kiosk client screen.'}</p>
               </div>
 
               {error && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{error}</div>}

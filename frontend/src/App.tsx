@@ -742,7 +742,7 @@ function AppContent() {
 
             <div className="bg-zinc-950 border border-zinc-800/80 p-3 rounded-xl flex items-center justify-between">
               <div>
-                <span className="text-[9px] text-zinc-500 font-bold uppercase block mb-0.5">{t('thisKioskUuid') || 'This Kiosk UUID'}</span>
+                <span className="text-[9px] text-zinc-500 font-bold uppercase block mb-0.5">{t('thisKioskId') || 'This Kiosk ID'}</span>
                 <span className="font-mono text-xs text-zinc-300 font-semibold select-all">{kioskUuid || 'Generating...'}</span>
               </div>
               <button
