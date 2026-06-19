@@ -75,10 +75,40 @@ if not kiosk_uuid:
 SSH_KEY_PATH = os.path.join(os.path.dirname(__file__), "id_ed25519")
 
 def ensure_ssh_keypair() -> None:
-    """Generates the local SSH keypair if it does not yet exist.
-    Called lazily so that openssh-client has time to be installed on Live-CD boot."""
+    """Ensures the SSH keypair (private + public) exists at SSH_KEY_PATH.
+    
+    Handles three scenarios on Live-CD boot:
+    1. Both id_ed25519 and id_ed25519.pub exist (baked by ISO generator) → no-op.
+    2. id_ed25519 exists but .pub is missing → derive .pub from private key.
+    3. Neither exists → generate a fresh keypair (requires openssh-client).
+    
+    Called lazily so that openssh-client has time to be installed by
+    offline-ssh-install.service before first use."""
+    pub_key_path = SSH_KEY_PATH + ".pub"
+    
     if os.path.exists(SSH_KEY_PATH):
+        # Private key exists (likely baked into ISO) — ensure .pub also exists
+        if not os.path.exists(pub_key_path):
+            try:
+                result = subprocess.run(
+                    ["ssh-keygen", "-y", "-f", SSH_KEY_PATH],
+                    check=True, capture_output=True, text=True
+                )
+                with open(pub_key_path, "w") as f:
+                    f.write(result.stdout.strip() + "\n")
+            except FileNotFoundError:
+                raise HTTPException(
+                    status_code=503,
+                    detail="ssh-keygen is not yet available. SSH packages may still be installing — please try again in a few seconds."
+                )
+            except subprocess.CalledProcessError as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to derive public key: {e.stderr if e.stderr else str(e)}"
+                )
         return
+    
+    # No private key at all — generate a fresh keypair
     try:
         subprocess.run(
             ["ssh-keygen", "-t", "ed25519", "-N", "", "-f", SSH_KEY_PATH],

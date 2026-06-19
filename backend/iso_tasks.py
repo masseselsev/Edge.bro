@@ -375,9 +375,11 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         except Exception as ke:
             logger.error(f"Failed to setup SSH authorized_keys for kiosk: {ke}")
 
-        # Copy orchestrator private key to kiosk backend
+        # Copy orchestrator SSH keypair to kiosk backend (both private + public)
         shutil.copy2("/root/.ssh/id_ed25519", os.path.join(opt_offline, "backend", "id_ed25519"))
         os.chmod(os.path.join(opt_offline, "backend", "id_ed25519"), 0o600)
+        if os.path.exists("/root/.ssh/id_ed25519.pub"):
+            shutil.copy2("/root/.ssh/id_ed25519.pub", os.path.join(opt_offline, "backend", "id_ed25519.pub"))
 
         # 3. Create payload.img
         log_to_task(task_id, "[PROGRESS] 45:Packaging secondary initrd...")
