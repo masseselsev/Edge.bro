@@ -71,15 +71,29 @@ if not kiosk_uuid:
     except Exception as e:
         logging.error(f"Failed to save kiosk_uuid to config.json: {e}")
 
-# Generate local SSH keypair if missing
+# SSH keypair path (generated lazily to avoid race with offline-ssh-install.service)
 SSH_KEY_PATH = os.path.join(os.path.dirname(__file__), "id_ed25519")
-if not os.path.exists(SSH_KEY_PATH):
+
+def ensure_ssh_keypair() -> None:
+    """Generates the local SSH keypair if it does not yet exist.
+    Called lazily so that openssh-client has time to be installed on Live-CD boot."""
+    if os.path.exists(SSH_KEY_PATH):
+        return
     try:
-        subprocess.run([
-            "ssh-keygen", "-t", "ed25519", "-N", "", "-f", SSH_KEY_PATH
-        ], check=True)
-    except Exception as e:
-        logging.error(f"Failed to generate kiosk SSH keypair: {e}")
+        subprocess.run(
+            ["ssh-keygen", "-t", "ed25519", "-N", "", "-f", SSH_KEY_PATH],
+            check=True, capture_output=True
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=503,
+            detail="ssh-keygen is not yet available. SSH packages may still be installing — please try again in a few seconds."
+        )
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate SSH keypair: {e.stderr.decode() if e.stderr else str(e)}"
+        )
 
 # Try to register the shared network configurations router if available
 try:
@@ -215,6 +229,9 @@ def get_version():
 
 @app.post("/api/kiosk/connect")
 def connect_to_orchestrator(req: ConnectRequest):
+    # Ensure SSH keypair exists (lazy generation)
+    ensure_ssh_keypair()
+    
     # Read local SSH public key
     pub_key_path = SSH_KEY_PATH + ".pub"
     if not os.path.exists(pub_key_path):
