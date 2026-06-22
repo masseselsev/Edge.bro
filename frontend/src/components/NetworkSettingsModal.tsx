@@ -4,6 +4,7 @@ import { useTranslation } from '../context/TranslationContext';
 
 interface NetworkSettingsModalProps {
   onClose: () => void;
+  initialStatus?: NetworkStatus | null;
 }
 
 interface WiredStatus {
@@ -36,24 +37,24 @@ interface WifiNetwork {
   active: boolean;
 }
 
-export default function NetworkSettingsModal({ onClose }: NetworkSettingsModalProps) {
+export default function NetworkSettingsModal({ onClose, initialStatus = null }: NetworkSettingsModalProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'wired' | 'wifi'>('wired');
-  const [status, setStatus] = useState<NetworkStatus | null>(null);
+  const [status, setStatus] = useState<NetworkStatus | null>(initialStatus);
   const [wifiNetworks, setWifiNetworks] = useState<WifiNetwork[]>([]);
   const [scanning, setScanning] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
-  const [hasInitialized, setHasInitialized] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(!!initialStatus);
   
   // Wired Form States
-  const [wiredMode, setWiredMode] = useState<'auto' | 'manual'>('auto');
-  const [ipAddress, setIpAddress] = useState('');
-  const [netmask, setNetmask] = useState('255.255.255.0');
-  const [gateway, setGateway] = useState('');
-  const [dnsMode, setDnsMode] = useState<'auto' | 'manual'>('auto');
-  const [dns1, setDns1] = useState('');
-  const [dns2, setDns2] = useState('');
+  const [wiredMode, setWiredMode] = useState<'auto' | 'manual'>(initialStatus?.wired?.mode || 'auto');
+  const [ipAddress, setIpAddress] = useState(initialStatus?.wired?.ip || '');
+  const [netmask, setNetmask] = useState(initialStatus?.wired?.netmask || '255.255.255.0');
+  const [gateway, setGateway] = useState(initialStatus?.wired?.gateway || '');
+  const [dnsMode, setDnsMode] = useState<'auto' | 'manual'>(initialStatus?.wired?.dns_mode || 'auto');
+  const [dns1, setDns1] = useState(initialStatus?.wired?.dns_servers?.[0] || '');
+  const [dns2, setDns2] = useState(initialStatus?.wired?.dns_servers?.[1] || '');
 
   // Wi-Fi States
   const [selectedSsid, setSelectedSsid] = useState<string | null>(null);

@@ -141,6 +141,7 @@ function AppContent() {
 
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [networkStatus, setNetworkStatus] = useState<any>(null);
+  const [networkLoaded, setNetworkLoaded] = useState(false);
   const [logTaskId, setLogTaskId] = useState<string | null>(null);
   const [logTaskTitle, setLogTaskTitle] = useState<string>('');
   
@@ -244,7 +245,7 @@ function AppContent() {
         console.error('Failed to fetch network status:', err);
       }
     };
-    fetchNetStatus();
+    // Initial status was already fetched during the boot loading phase
     const interval = setInterval(fetchNetStatus, 7000);
     return () => clearInterval(interval);
   }, [isKiosk]);
@@ -328,8 +329,25 @@ function AppContent() {
             setKioskOrchestratorIp(data.orchestrator_ip || '');
             setConnectionKeyphrase(data.auth_token || '');
             setKioskUuid(data.kiosk_uuid || '');
+            
+            // Kiosk mode: pre-fetch network status before hiding loading screen
+            fetch('/api/network/status')
+              .then(res => {
+                if (res.ok) return res.json();
+                throw new Error('Failed to fetch network status');
+              })
+              .then(netData => {
+                setNetworkStatus(netData);
+              })
+              .catch(err => console.error('Failed to pre-fetch network status:', err))
+              .finally(() => {
+                setNetworkLoaded(true);
+                setVersionLoaded(true);
+              });
+          } else {
+            setNetworkLoaded(true);
+            setVersionLoaded(true);
           }
-          setVersionLoaded(true);
         })
         .catch(err => {
           console.error('Error fetching version:', err);
@@ -337,6 +355,7 @@ function AppContent() {
             retryCount++;
             setTimeout(fetchVersion, 3000);
           } else {
+            setNetworkLoaded(true);
             setVersionLoaded(true); // unblock UI after max retries
           }
         });
@@ -370,12 +389,12 @@ function AppContent() {
 
   // Mark app as ready once critical data is loaded
   useEffect(() => {
-    if (versionLoaded && settingsLoaded) {
+    if (versionLoaded && settingsLoaded && networkLoaded) {
       // Small delay to let the UI render before removing the overlay
       const timer = setTimeout(() => setAppReady(true), 300);
       return () => clearTimeout(timer);
     }
-  }, [versionLoaded, settingsLoaded]);
+  }, [versionLoaded, settingsLoaded, networkLoaded]);
 
   const handleExitKiosk = async () => {
     if (window.confirm(t('exitKioskConfirm'))) {
@@ -765,7 +784,7 @@ function AppContent() {
 
       {/* Network Settings Modal */}
       {showNetworkModal && (
-        <NetworkSettingsModal onClose={() => setShowNetworkModal(false)} />
+        <NetworkSettingsModal onClose={() => setShowNetworkModal(false)} initialStatus={networkStatus} />
       )}
 
       {/* Pairing Modal */}
