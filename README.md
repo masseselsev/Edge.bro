@@ -148,3 +148,200 @@ To guarantee host platform stability during bulk bare-metal flashing:
    ```bash
    sudo usbreset 152d:0581
    ```
+
+---
+
+## 🔍 Changes Made on Target Edge Nodes
+
+This section provides a **complete, exhaustive list** of every modification the orchestrator performs on managed target edge nodes. No changes beyond those listed here are made. All actions are executed via SSH from the orchestrator; no persistent agents or daemons are installed on target nodes.
+
+### Phase 1: Bootstrap (Initial Provisioning)
+
+> Executed by: `playbooks/bootstrap.yml` via Ansible over SSH.
+> Triggered by: Adding a new node through the web UI (Fleet → Add Nodes).
+> Authentication: Password-based SSH (one-time, with the user-supplied credentials).
+
+#### 1.1. OS Compatibility Check *(read-only)*
+
+| Action | Details |
+|--------|---------|
+| File read | `/etc/os-release` or `/etc/debian_version` |
+| Effect | **None** — read-only validation. Rejects OS versions below Debian 10 or Ubuntu 18. |
+
+#### 1.2. Package Installation
+
+| Action | Details |
+|--------|---------|
+| APT update | `apt-get update` is executed to refresh the package index |
+| Packages installed | `python3`, `python3-pip`, `borgbackup`, `parted`, `udev`, `dosfstools`, `e2fsprogs`, `util-linux` |
+| Proxy handling | If an unreachable APT proxy is detected, its config files under `/etc/apt/apt.conf` and `/etc/apt/apt.conf.d/` are **temporarily** renamed to `*.disabled`, and **restored** at the end of the playbook |
+
+#### 1.3. System User Creation
+
+| Action | Details |
+|--------|---------|
+| User created | `borg` — a system user with `/bin/bash` shell and a home directory at `/home/borg` |
+| SSH keypair generated | Ed25519 keypair at `/home/borg/.ssh/id_ed25519` and `/home/borg/.ssh/id_ed25519.pub` |
+| Purpose | The `borg` user's private key is used by the node to authenticate outgoing backup connections to the orchestrator's Borg SSH server |
+
+#### 1.4. SSH Configuration
+
+| File Modified | Change |
+|---------------|--------|
+| `/root/.ssh/authorized_keys` | The orchestrator's public SSH key is appended (created if absent, mode `0600`) |
+| `/root/.ssh/` directory | Created if absent, mode `0700` |
+| `/etc/ssh/sshd_config` | Line `PermitRootLogin` is set to `prohibit-password` (allows key-only root login) |
+| SSH service | Restarted **only if** `sshd_config` was actually changed |
+
+#### 1.5. System Information Gathering *(read-only)*
+
+The following information is **read** from the node and stored in the orchestrator's database. No files are modified during this step:
+
+| Data collected | Source |
+|----------------|--------|
+| Disk type (SATA/NVMe) | `/sys/block/*/queue/rotational`, `lsblk` |
+| EFI partition UUID | `blkid -s UUID` on the EFI partition |
+| Active network interface | `ip route get 8.8.8.8` |
+| Hostname | `hostname` command |
+| OS version | `/etc/os-release` or `/etc/debian_version` |
+| Partition layout (JSON) | `lsblk -J -b -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT,LABEL,UUID,PARTUUID` |
+| Filesystem labels | `e2label` on root, boot, log, and storage partitions |
+| fstab label compliance | Content check of `/etc/fstab` for `LABEL=edge*` entries |
+
+---
+
+### Phase 2: Auto-Prepare (Disk Label Standardization)
+
+> Executed by: `playbooks/prepare.yml` via Ansible over SSH.
+> Triggered by: Clicking "Auto-Prepare" on a node with status `NEEDS_FIX`.
+> Authentication: Key-based SSH (using the orchestrator's key authorized during bootstrap).
+> Rollback: If any step fails, the original `/etc/fstab` is automatically restored from backup.
+
+#### 2.1. Fstab Backup
+
+| Action | Details |
+|--------|---------|
+| File created | `/etc/fstab.bak` — a copy of the current `/etc/fstab` (used for automatic rollback on failure) |
+
+#### 2.2. Filesystem Label Assignment
+
+The following partition labels are **written directly** to the on-disk filesystem metadata using `e2label` / `fatlabel`:
+
+| Partition Mount | Label Set | Command |
+|-----------------|-----------|---------|
+| `/` (root) | `edgeroot` | `e2label <device> edgeroot` |
+| `/boot` | `edgeboot` | `e2label <device> edgeboot` |
+| `/var/log/edge` | `edgelog` | `e2label <device> edgelog` |
+| `/var/opt/edge` | `edgestor` | `e2label <device> edgestor` |
+| `/boot/efi` | `EFI` | `fatlabel <device> EFI` (strips any incorrect label) |
+
+#### 2.3. Fstab Rewrite
+
+| File Modified | Change |
+|---------------|--------|
+| `/etc/fstab` | **Completely replaced** with a 5-line standardized template using `LABEL=` entries instead of `/dev/` paths or UUIDs. The EFI partition uses `UUID=<captured_uuid>` |
+
+New `/etc/fstab` content:
+```
+# Standardized fstab via Borg Orchestrator Auto-Prepare
+LABEL=edgeroot   /               ext4    defaults,noatime                  0       1
+UUID=<EFI_UUID>  /boot/efi       vfat    umask=0077,defaults,noatime       0       1
+LABEL=edgeboot   /boot           ext2    defaults,noatime                  0       2
+LABEL=edgelog    /var/log/edge   ext4    defaults,noatime                  0       2
+LABEL=edgestor   /var/opt/edge   ext4    defaults,noatime                  0       2
+```
+
+#### 2.4. Bootloader & Initramfs Update
+
+| Action | Command | Purpose |
+|--------|---------|---------|
+| Reload systemd | `systemctl daemon-reload` | Picks up the new fstab |
+| Verify mounts | `mount -a` | Validates all entries in the new fstab resolve correctly |
+| Update GRUB | `update-grub` | Regenerates GRUB config to reflect new root-by-label |
+| Update initramfs | `update-initramfs -u` | Embeds updated fstab references into the boot initrd |
+
+#### 2.5. Additional System Info Gathered *(read-only)*
+
+Same as Phase 1 (section 1.5), plus:
+
+| Data collected | Source |
+|----------------|--------|
+| CPU model | `lscpu` or `/proc/cpuinfo` |
+| Total RAM | `free -h` |
+| Edge software version | `/etc/motd` (parsed from EDGE banner) |
+
+---
+
+### Phase 3: Backup Execution
+
+> Executed by: `backup_tasks.py` — remote SSH command to the node.
+> Triggered by: Manual backup button in the web UI, or by the automatic scheduler.
+> Authentication: Key-based SSH from orchestrator root (`/root/.ssh/id_ed25519`) to node root.
+> Direction: The orchestrator **SSHes into the node** and runs `borg create` on the node. Borg then pushes data **from the node to the orchestrator** over a reverse SSH tunnel using the node's `borg` user key.
+
+#### 3.1. Borg Repository Initialization *(on orchestrator, not on node)*
+
+| Action | Details |
+|--------|---------|
+| Command | `borg init --encryption=repokey ssh://borg@<orchestrator_ip>:12345/data/borg/fleet` |
+| Runs on | **The target node** (via SSH from orchestrator), but the repository is created on the **orchestrator** filesystem |
+| Idempotent | Returns code 2 if already initialized — safely ignored |
+| Effect on node | **None** — only the outgoing SSH connection is made |
+
+#### 3.2. Borg Create *(runs on the target node)*
+
+The orchestrator SSHes to the node as `root` and executes:
+
+```bash
+borg create --json --stats \
+  --compression <algorithm> \
+  --checkpoint-interval <seconds> \
+  --remote-ratelimit <kib/s> \
+  ssh://borg@<orchestrator_ip>:12345/data/borg/fleet::<archive_name> \
+  / <exclusions>
+```
+
+| Aspect | Details |
+|--------|---------|
+| Process on node | A `borg create` process runs temporarily, reading the filesystem and streaming data to the orchestrator |
+| Optional CPU limiting | If a CPU quota is configured, the command is wrapped in `systemd-run --scope -p CPUQuota=<N>% -p IOSchedulingClass=idle` |
+| Files modified on node | **None** — `borg create` is a read-only operation on the source filesystem |
+| Files created on node | **None** — no lock files, cache, or state is written on the node itself |
+| Network | Outgoing SSH connection from node to orchestrator on port 12345, using `/home/borg/.ssh/id_ed25519` |
+| Default exclusions | `/dev/*`, `/proc/*`, `/sys/*`, `/run/*`, `/mnt/*`, `/media/*`, `/lost+found`, `/var/log/edge/*`, `/var/opt/edge/*` |
+
+#### 3.3. Summary of Node Footprint During Backup
+
+| Resource | Impact |
+|----------|--------|
+| Disk writes | **Zero** — backup is a read-only scan |
+| CPU | Controlled by optional `CPUQuota` (via `systemd-run --scope`) |
+| Network | Controlled by `--remote-ratelimit` (KiB/s) |
+| I/O priority | Optional `IOSchedulingClass=idle` when CPU quota is active |
+| Temporary processes | One `borg create` process + one `ssh` tunnel — both terminate when backup completes |
+
+---
+
+### Complete File Change Summary
+
+The table below lists **every file and system object** modified on the target node across all phases:
+
+| File / Object | Phase | Action | Reversible? |
+|----------------|-------|--------|-------------|
+| APT package index | Bootstrap | `apt-get update` | Auto-refreshed |
+| `python3`, `python3-pip` | Bootstrap | Installed via APT | `apt-get remove` |
+| `borgbackup` | Bootstrap | Installed via APT | `apt-get remove` |
+| `parted`, `udev`, `dosfstools`, `e2fsprogs`, `util-linux` | Bootstrap | Installed via APT | `apt-get remove` |
+| `/home/borg/` (user + home) | Bootstrap | Created system user `borg` | `userdel -r borg` |
+| `/home/borg/.ssh/id_ed25519{,.pub}` | Bootstrap | Ed25519 keypair generated | Delete files |
+| `/root/.ssh/authorized_keys` | Bootstrap | Orchestrator public key appended | Remove the line |
+| `/etc/ssh/sshd_config` | Bootstrap | `PermitRootLogin prohibit-password` | Edit line back |
+| SSH service | Bootstrap | Restarted (if config changed) | N/A |
+| `/etc/apt/apt.conf{,.d/*}` | Bootstrap | Temporarily renamed `*.disabled` → restored | Auto-restored |
+| Partition labels (on-disk metadata) | Prepare | `edgeroot`, `edgeboot`, `edgelog`, `edgestor`, `EFI` | `e2label <dev> ""` |
+| `/etc/fstab` | Prepare | Replaced with label-based template | Restore `/etc/fstab.bak` |
+| `/etc/fstab.bak` | Prepare | Created (backup copy) | Delete file |
+| GRUB config | Prepare | Regenerated via `update-grub` | `update-grub` |
+| Initramfs | Prepare | Rebuilt via `update-initramfs -u` | `update-initramfs -u` |
+| systemd state | Prepare | `daemon-reload` | N/A |
+| *Backup execution* | Backup | **No files modified on node** | N/A |
