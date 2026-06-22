@@ -58,25 +58,20 @@ A compact PC like an Intel NUC is perfectly suited to serve as the central manag
    > 
    > *Note: The orchestrator automatically executes `borg compact` after pruning or purging archives to reclaim disk space immediately, but utilizing a dedicated storage partition is still critical.*
 
-   To mount an external folder (e.g., `/mnt/hdd/borg_data`), open the `docker-compose.yml` file, find the `volumes:` block at the very bottom of the file, and override `borg-data` as follows:
-   ```yaml
-   volumes:
-     pg-data:
-     ssh-keys:
-     borg-data:
-       driver: local
-       driver_opts:
-         type: none
-         o: bind
-         device: /mnt/hdd/borg_data
-     iso-cache:
-       driver: local
-       driver_opts:
-         type: none
-         o: bind
-         device: /mnt/hdd/iso_cache
+   To mount an external folder (e.g., `/mnt/hdd/borg_data`), open the `.env` file and set the `BORG_HOST_DATA_PATH` variable:
+   ```env
+   BORG_HOST_DATA_PATH=/mnt/hdd/borg_data
    ```
-   *(Ensure the `/mnt/hdd/borg_data` folder exists on the host machine).*
+
+   > [!IMPORTANT]
+   > If you set a custom host directory, make sure the folder exists on the host machine and has the correct ownership permissions (`chown -R 1000:1000`) to prevent write permission failures inside the containers:
+   > ```bash
+   > mkdir -p /mnt/hdd/borg_data
+   > chown -R 1000:1000 /mnt/hdd/borg_data
+   > ```
+   > If `BORG_HOST_DATA_PATH` is left as `borg-data` (default), Docker will use a standard named volume.
+
+   The path configured here will also be dynamically displayed under the **Settings** tab in the management interface.
 
 4. Start the containers:
    ```bash

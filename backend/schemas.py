@@ -30,6 +30,7 @@ class SettingsBase(BaseModel):
 class SettingsResponse(SettingsBase):
     id: int
     available_ips: Optional[List[str]] = None
+    borg_host_data_path: Optional[str] = None
 
     class Config:
         from_attributes = True

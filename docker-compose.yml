@@ -30,10 +30,11 @@ services:
       REDIS_URL: ${REDIS_URL}
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
       ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
+      BORG_HOST_DATA_PATH: ${BORG_HOST_DATA_PATH}
       PYTHONPATH: /app
     volumes:
       - ./backend:/app
-      - borg-data:/data/borg
+      - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/root/.ssh
       - iso-cache:/opt/data/iso_cache
     ports:
@@ -58,7 +59,7 @@ services:
     volumes:
       - ./backend:/app
       - /dev:/dev
-      - borg-data:/data/borg
+      - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/root/.ssh
       - iso-cache:/opt/data/iso_cache
       - frontend-build:/opt/frontend_build
@@ -81,7 +82,7 @@ services:
       PYTHONPATH: /app
     volumes:
       - ./backend:/app
-      - borg-data:/data/borg
+      - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/root/.ssh
     depends_on:
       - db
@@ -95,7 +96,7 @@ services:
     ports:
       - "12345:22"
     volumes:
-      - borg-data:/data/borg
+      - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/home/borg/.ssh
     depends_on:
       - db

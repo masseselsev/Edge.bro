@@ -45,6 +45,8 @@ def get_settings(db: Session = Depends(get_db)):
         db.add(settings)
         db.commit()
     settings.available_ips = get_local_ips()
+    import os
+    settings.borg_host_data_path = os.getenv("BORG_HOST_DATA_PATH", "borg-data")
     return settings
 
 
@@ -72,4 +74,6 @@ def update_settings(payload: schemas.SettingsBase, db: Session = Depends(get_db)
     settings.default_cpu_quota = payload.default_cpu_quota
     db.commit()
     settings.available_ips = get_local_ips()
+    import os
+    settings.borg_host_data_path = os.getenv("BORG_HOST_DATA_PATH", "borg-data")
     return settings

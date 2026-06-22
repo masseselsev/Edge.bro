@@ -26,6 +26,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
   const [language, setLanguageState] = useState<Language>('en');
   const [defaultCompression, setDefaultCompression] = useState('zstd:3');
   const [defaultCpuQuota, setDefaultCpuQuota] = useState<number | ''>('');
+  const [hostDataPath, setHostDataPath] = useState<string | null>(null);
   
   const [useLocalTime, setUseLocalTime] = useState(true);
   const [timezone, setTimezone] = useState(() => {
@@ -109,6 +110,9 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
         setLanguageState(data.language || 'en');
         setDefaultCompression(data.default_compression || 'zstd:3');
         setDefaultCpuQuota(data.default_cpu_quota ?? '');
+        if (data.borg_host_data_path) {
+          setHostDataPath(data.borg_host_data_path);
+        }
         
         const dbTz = data.timezone || 'Browser Local';
         let resolvedTz = 'Europe/Moscow';
@@ -224,6 +228,15 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                   onChange={(e) => setRepoPath(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                 />
+                {hostDataPath && (
+                  <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
+                    {language === 'ru' 
+                      ? `Физический путь на хосте (настраивается в .env): ${hostDataPath}`
+                      : language === 'uk'
+                      ? `Фізичний шлях на хості (налаштовується в .env): ${hostDataPath}`
+                      : `Physical host path (configured in .env): ${hostDataPath}`}
+                  </p>
+                )}
               </div>
             </div>
 
