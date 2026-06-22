@@ -49,8 +49,9 @@
 
     - name: Ensure python3/pip are installed (with dynamic proxy test and temporary fallback)
       raw: |
+        FORCE_ORCHESTRATOR="{% if force_orchestrator_proxy | default(false) | bool %}true{% else %}false{% endif %}"
         PROXY_RAW=$(apt-config dump | grep -i 'Acquire::http::Proxy ' | head -n1 | sed -E 's/.*http:\/\/([^"/]+).*/\1/')
-        if [ -n "$PROXY_RAW" ]; then
+        if [ "$FORCE_ORCHESTRATOR" != "true" ] && [ -n "$PROXY_RAW" ]; then
           PROXY_URL=$(echo "$PROXY_RAW" | sed -E 's/.*@//')
           PROXY_HOST=$(echo "$PROXY_URL" | cut -d: -f1)
           PROXY_PORT=$(echo "$PROXY_URL" | cut -d: -f2)
@@ -65,20 +66,22 @@
         fi
 
         # Tier 2: Check direct internet access
-        if timeout 2 bash -c "cat < /dev/null > /dev/tcp/deb.debian.org/80" 2>/dev/null || \
-           timeout 2 bash -c "cat < /dev/null > /dev/tcp/archive.ubuntu.com/80" 2>/dev/null; then
-          echo "Direct internet connection is available. Disabling native proxy and running directly."
-          if [ -n "$PROXY_RAW" ]; then
-            for path in /etc/apt/apt.conf /etc/apt/apt.conf.d; do
-              if [ -e "$path" ]; then
-                find "$path" -type f -exec grep -q "$PROXY_HOST" {} \; -print 2>/dev/null | while read -r f; do
-                  mv "$f" "${f}.disabled"
-                done
-              fi
-            done
+        if [ "$FORCE_ORCHESTRATOR" != "true" ]; then
+          if timeout 2 bash -c "cat < /dev/null > /dev/tcp/deb.debian.org/80" 2>/dev/null || \
+             timeout 2 bash -c "cat < /dev/null > /dev/tcp/archive.ubuntu.com/80" 2>/dev/null; then
+            echo "Direct internet connection is available. Disabling native proxy and running directly."
+            if [ -n "$PROXY_RAW" ]; then
+              for path in /etc/apt/apt.conf /etc/apt/apt.conf.d; do
+                if [ -e "$path" ]; then
+                  find "$path" -type f -exec grep -q "$PROXY_HOST" {} \; -print 2>/dev/null | while read -r f; do
+                    mv "$f" "${f}.disabled"
+                  done
+                fi
+              done
+            fi
+            apt-get update && apt-get install -y python3 python3-pip
+            exit 0
           fi
-          apt-get update && apt-get install -y python3 python3-pip
-          exit 0
         fi
 
         # Tier 3: Check orchestrator proxy

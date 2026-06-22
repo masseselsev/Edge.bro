@@ -68,6 +68,7 @@ class NodeCreate(BaseModel):
     bootstrap_user: str = "root"
     bootstrap_password: str
     auto_detect_hostname: Optional[bool] = False
+    force_orchestrator_proxy: Optional[bool] = False
 
 class NodeResponse(BaseModel):
     id: int
@@ -154,6 +155,7 @@ class NodeNotesUpdate(BaseModel):
 class NodeProvisionRequest(BaseModel):
     bootstrap_user: str = "root"
     bootstrap_password: str
+    force_orchestrator_proxy: Optional[bool] = False
 
 
 class DeviceResponse(BaseModel):

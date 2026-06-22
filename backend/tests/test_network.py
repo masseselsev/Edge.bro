@@ -193,6 +193,56 @@ def test_bootstrap_node_task_passes_orchestrator_ip(monkeypatch):
     assert passed_vars.get("orchestrator_ip") == "192.168.100.100"
 
 
+def test_bootstrap_node_task_passes_force_orchestrator_proxy(monkeypatch):
+    import os
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from database import Base
+    import models
+    import tasks
+
+    TEST_DATABASE_URL = "sqlite:///./test_network_force_proxy.db"
+    if os.path.exists("./test_network_force_proxy.db"):
+        os.remove("./test_network_force_proxy.db")
+    engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    
+    # Initialize DB data using a temporary session
+    db = TestingSessionLocal()
+    node = models.Node(hostname="test-node-force", ip_address="192.168.100.2", status="NEEDS_BOOTSTRAP")
+    db.add(node)
+    db.commit()
+    node_id = node.id
+    db.close()
+
+    monkeypatch.setattr("tasks.SessionLocal", TestingSessionLocal)
+
+    passed_vars = {}
+
+    def mock_run_playbook(task_id, playbook_name, host_ip, ssh_port, extra_vars, ssh_password=None):
+        nonlocal passed_vars
+        passed_vars = extra_vars
+        return {"status": "SUCCESS", "parsed_data": {}}
+
+    monkeypatch.setattr("tasks.run_ansible_playbook", mock_run_playbook)
+    monkeypatch.setattr("tasks.ensure_orchestrator_ssh_key", lambda: "ssh-ed25519 AAA...")
+    
+    class MockRequest:
+        id = "test-task-id-force"
+    monkeypatch.setattr("celery.app.task.Task.request", MockRequest())
+
+    # Run task with force_orchestrator_proxy=True
+    tasks.run_bootstrap_task(node_id=node_id, bootstrap_user="root", ssh_password="pwd", force_orchestrator_proxy=True)
+    
+    Base.metadata.drop_all(bind=engine)
+    if os.path.exists("./test_network_force_proxy.db"):
+        os.remove("./test_network_force_proxy.db")
+
+    assert passed_vars.get("force_orchestrator_proxy") is True
+
+
+
 @patch("subprocess.check_call")
 @patch("subprocess.check_output")
 def test_configure_wired_dhcp(mock_output, mock_call):

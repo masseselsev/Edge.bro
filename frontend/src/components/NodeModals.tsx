@@ -24,6 +24,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
   const [username, setUsername] = useState('root');
   const [password, setPassword] = useState('admin');
   const [autoDetectHostname, setAutoDetectHostname] = useState(false);
+  const [forceOrchestratorProxy, setForceOrchestratorProxy] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +34,8 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
       ssh_port: sshPort,
       bootstrap_user: username,
       bootstrap_password: password,
-      auto_detect_hostname: autoDetectHostname
+      auto_detect_hostname: autoDetectHostname,
+      force_orchestrator_proxy: forceOrchestratorProxy
     });
   };
 
@@ -42,17 +44,31 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
       <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
         <h3 className="text-lg font-bold text-zinc-50">{t('addNodeAutoProvision')}</h3>
         <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="flex items-center gap-2 mb-2 bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
-            <input
-              type="checkbox"
-              id="autoDetectHostname"
-              checked={autoDetectHostname}
-              onChange={(e) => setAutoDetectHostname(e.target.checked)}
-              className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-            />
-            <label htmlFor="autoDetectHostname" className="text-xs font-semibold text-zinc-300 cursor-pointer select-none">
-              {t('autoDetectHostLabel')}
-            </label>
+          <div className="grid grid-cols-2 gap-3 mb-2">
+            <div className="flex items-center gap-2 bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
+              <input
+                type="checkbox"
+                id="autoDetectHostname"
+                checked={autoDetectHostname}
+                onChange={(e) => setAutoDetectHostname(e.target.checked)}
+                className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+              />
+              <label htmlFor="autoDetectHostname" className="text-xs font-semibold text-zinc-300 cursor-pointer select-none">
+                {t('autoDetectHostLabel')}
+              </label>
+            </div>
+            <div className="flex items-center gap-2 bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
+              <input
+                type="checkbox"
+                id="forceOrchestratorProxy"
+                checked={forceOrchestratorProxy}
+                onChange={(e) => setForceOrchestratorProxy(e.target.checked)}
+                className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+              />
+              <label htmlFor="forceOrchestratorProxy" className="text-xs font-semibold text-zinc-300 cursor-pointer select-none">
+                {t('forceOrchestratorProxyLabel')}
+              </label>
+            </div>
           </div>
 
           {!autoDetectHostname && (
@@ -147,12 +163,14 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
   const { t } = useTranslation();
   const [username, setUsername] = useState('root');
   const [password, setPassword] = useState('');
+  const [forceOrchestratorProxy, setForceOrchestratorProxy] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
       bootstrap_user: username,
-      bootstrap_password: password
+      bootstrap_password: password,
+      force_orchestrator_proxy: forceOrchestratorProxy
     });
   };
 
@@ -164,6 +182,19 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
           <p className="text-xs text-zinc-400">{t('triggerBootstrapForNode').replace('{name}', node.hostname).replace('{ip}', node.ip_address)}</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="flex items-center gap-2 mb-2 bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
+            <input
+              type="checkbox"
+              id="forceOrchestratorProxyProv"
+              checked={forceOrchestratorProxy}
+              onChange={(e) => setForceOrchestratorProxy(e.target.checked)}
+              className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+            />
+            <label htmlFor="forceOrchestratorProxyProv" className="text-xs font-semibold text-zinc-300 cursor-pointer select-none">
+              {t('forceOrchestratorProxyLabel')}
+            </label>
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-zinc-400 mb-1">{t('bootstrapUser')}</label>
             <input

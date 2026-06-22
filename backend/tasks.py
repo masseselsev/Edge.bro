@@ -184,7 +184,7 @@ def fix_repo_permissions(repo_path: str) -> None:
 
 
 @celery_app.task(bind=True)
-def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: str) -> Dict[str, Any]:
+def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: str, force_orchestrator_proxy: bool = False) -> Dict[str, Any]:
     """
     Celery task to run the Node bootstrapping process using Ansible.
     """
@@ -224,7 +224,8 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
         extra_vars={
             "bootstrap_user": bootstrap_user,
             "orchestrator_ssh_pub_key": orchestrator_pub_key,
-            "orchestrator_ip": orchestrator_ip
+            "orchestrator_ip": orchestrator_ip,
+            "force_orchestrator_proxy": force_orchestrator_proxy
         },
         ssh_password=ssh_password
     )
@@ -339,7 +340,12 @@ def auto_retry_bootstrap_task() -> Dict[str, Any]:
                     redis_client.delete(f"node_next_retry:{node.id}")
                 except Exception:
                     pass
-                run_bootstrap_task.delay(node.id, creds["bootstrap_password"], creds["bootstrap_user"])
+                run_bootstrap_task.delay(
+                    node.id,
+                    creds["bootstrap_password"],
+                    creds["bootstrap_user"],
+                    creds.get("force_orchestrator_proxy", False)
+                )
                 triggered.append(node.id)
         return {"status": "SUCCESS", "triggered_node_ids": triggered}
     except Exception as e:

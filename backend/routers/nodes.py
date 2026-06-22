@@ -169,12 +169,13 @@ def add_node(payload: schemas.NodeCreate, db: Session = Depends(get_db)):
         # Store credentials in Redis for 24 hours for periodic auto-retry provisioning if offline
         creds = {
             "bootstrap_user": payload.bootstrap_user,
-            "bootstrap_password": payload.bootstrap_password
+            "bootstrap_password": payload.bootstrap_password,
+            "force_orchestrator_proxy": payload.force_orchestrator_proxy
         }
         redis_client.setex(f"bootstrap_creds:{node.id}", 86400, json.dumps(creds))
 
         # Spawn bootstrap task
-        task = run_bootstrap_task.delay(node.id, payload.bootstrap_password, payload.bootstrap_user)
+        task = run_bootstrap_task.delay(node.id, payload.bootstrap_password, payload.bootstrap_user, payload.force_orchestrator_proxy)
         
         created_nodes.append(node)
         task_ids.append(task.id)
@@ -322,11 +323,12 @@ def trigger_provision(node_id: int, payload: schemas.NodeProvisionRequest, db: S
     # Store credentials in Redis
     creds = {
         "bootstrap_user": payload.bootstrap_user,
-        "bootstrap_password": payload.bootstrap_password
+        "bootstrap_password": payload.bootstrap_password,
+        "force_orchestrator_proxy": payload.force_orchestrator_proxy
     }
     redis_client.setex(f"bootstrap_creds:{node.id}", 86400, json.dumps(creds))
 
-    task = run_bootstrap_task.delay(node.id, payload.bootstrap_password, payload.bootstrap_user)
+    task = run_bootstrap_task.delay(node.id, payload.bootstrap_password, payload.bootstrap_user, payload.force_orchestrator_proxy)
     return {"message": "Provisioning triggered.", "task_id": task.id}
 
 
