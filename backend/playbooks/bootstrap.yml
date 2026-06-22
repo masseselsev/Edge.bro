@@ -60,8 +60,15 @@
           if timeout 2 bash -c "cat < /dev/null > /dev/tcp/$PROXY_HOST/$PROXY_PORT" 2>/dev/null; then
             echo "Proxy $PROXY_HOST:$PROXY_PORT is reachable. Using proxy."
             apt-get update && apt-get install -y python3 python3-pip
-          else
-            echo "Proxy $PROXY_HOST:$PROXY_PORT is unreachable. Temporarily disabling proxy configurations..."
+            exit 0
+          fi
+        fi
+
+        # Tier 2: Check direct internet access
+        if timeout 2 bash -c "cat < /dev/null > /dev/tcp/deb.debian.org/80" 2>/dev/null || \
+           timeout 2 bash -c "cat < /dev/null > /dev/tcp/archive.ubuntu.com/80" 2>/dev/null; then
+          echo "Direct internet connection is available. Disabling native proxy and running directly."
+          if [ -n "$PROXY_RAW" ]; then
             for path in /etc/apt/apt.conf /etc/apt/apt.conf.d; do
               if [ -e "$path" ]; then
                 find "$path" -type f -exec grep -q "$PROXY_HOST" {} \; -print 2>/dev/null | while read -r f; do
@@ -69,12 +76,56 @@
                 done
               fi
             done
-            apt-get update && apt-get install -y python3 python3-pip
           fi
-        else
-          echo "No proxy configured. Running normal update..."
           apt-get update && apt-get install -y python3 python3-pip
+          exit 0
         fi
+
+        # Tier 3: Check orchestrator proxy
+        # Detect incoming SSH connection IP
+        DETECTED_SSH_IP=$(echo "$SSH_CONNECTION" | awk '{print $1}')
+        if [ -z "$DETECTED_SSH_IP" ]; then
+          DETECTED_SSH_IP=$(echo "$SSH_CLIENT" | awk '{print $1}')
+        fi
+        if [ -z "$DETECTED_SSH_IP" ]; then
+          DETECTED_SSH_IP=$(who -m 2>/dev/null | awk '{print $NF}' | tr -d '()')
+        fi
+
+        IP_LIST=""
+        if [ -n "{{ orchestrator_ip }}" ]; then
+          IP_LIST="{{ orchestrator_ip }}"
+        fi
+        if [ -n "$DETECTED_SSH_IP" ] && [ "$DETECTED_SSH_IP" != "{{ orchestrator_ip }}" ]; then
+          IP_LIST="$IP_LIST $DETECTED_SSH_IP"
+        fi
+
+        PROXY_SUCCESS=false
+        for test_ip in $IP_LIST; do
+          if timeout 2 bash -c "cat < /dev/null > /dev/tcp/$test_ip/3142" 2>/dev/null; then
+            echo "Direct connection and native proxy failed. Using orchestrator APT proxy at $test_ip:3142."
+            # Disable native proxy configurations temporarily
+            if [ -n "$PROXY_RAW" ]; then
+              for path in /etc/apt/apt.conf /etc/apt/apt.conf.d; do
+                if [ -e "$path" ]; then
+                  find "$path" -type f -exec grep -q "$PROXY_HOST" {} \; -print 2>/dev/null | while read -r f; do
+                    mv "$f" "${f}.disabled"
+                  done
+                fi
+              done
+            fi
+            echo "Acquire::http::Proxy \"http://$test_ip:3142\";" > /etc/apt/apt.conf.d/99orchestrator-proxy
+            apt-get update && apt-get install -y python3 python3-pip
+            PROXY_SUCCESS=true
+            break
+          fi
+        done
+
+        if [ "$PROXY_SUCCESS" = "true" ]; then
+          exit 0
+        fi
+
+        echo "All access methods failed (native proxy, direct internet, and orchestrator proxy)."
+        exit 3
       changed_when: false
 
     - name: Install dependencies
@@ -209,8 +260,9 @@
       debug:
         msg: "{{ sys_info.stdout_lines }}"
 
-    - name: Restore temporarily disabled proxy configurations
+    - name: Restore proxy configurations and clean up orchestrator proxy
       shell: |
+        rm -f /etc/apt/apt.conf.d/99orchestrator-proxy
         for path in /etc/apt/apt.conf /etc/apt/apt.conf.d; do
           if [ -e "$path" ]; then
             find "$path" -type f -name "*.disabled" 2>/dev/null | while read -r f; do
