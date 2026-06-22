@@ -112,6 +112,16 @@ services:
     depends_on:
       - backend
 
+  apt-proxy:
+    build:
+      context: .
+      dockerfile: docker/apt-proxy/Dockerfile
+    restart: always
+    ports:
+      - "3142:3142"
+    volumes:
+      - apt-cache:/var/cache/apt-cacher-ng
+
 volumes:
   pg-data:
   borg-data:
@@ -119,3 +129,4 @@ volumes:
   redis-data:
   iso-cache:
   frontend-build:
+  apt-cache:
