@@ -132,6 +132,67 @@ def test_configure_wired_manual(mock_output, mock_call):
     assert ["nmcli", "connection", "up", "Wired connection 1"] in calls
 
 
+def test_bootstrap_node_task_passes_orchestrator_ip(monkeypatch):
+    import os
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from database import Base
+    import models
+    import tasks
+    import ansible_utils
+
+    TEST_DATABASE_URL = "sqlite:///./test_network_orchestrator.db"
+    if os.path.exists("./test_network_orchestrator.db"):
+        os.remove("./test_network_orchestrator.db")
+    engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    
+    # Initialize DB data using a temporary session
+    db = TestingSessionLocal()
+    settings = db.query(models.Settings).first()
+    if not settings:
+        settings = models.Settings(orchestrator_ip="192.168.100.100")
+        db.add(settings)
+    else:
+        settings.orchestrator_ip = "192.168.100.100"
+    
+    node = models.Node(hostname="test-node", ip_address="192.168.100.1", status="NEEDS_BOOTSTRAP")
+    db.add(node)
+    db.commit()
+    node_id = node.id
+    db.close()
+
+    # Mock SessionLocal with TestingSessionLocal (not the db instance)
+    monkeypatch.setattr("tasks.SessionLocal", TestingSessionLocal)
+
+    passed_vars = {}
+
+    def mock_run_playbook(task_id, playbook_name, host_ip, ssh_port, extra_vars, ssh_password=None):
+        nonlocal passed_vars
+        passed_vars = extra_vars
+        return {"status": "SUCCESS", "parsed_data": {}}
+
+    monkeypatch.setattr("tasks.run_ansible_playbook", mock_run_playbook)
+    # mock ensure_orchestrator_ssh_key too to avoid file access
+    monkeypatch.setattr("tasks.ensure_orchestrator_ssh_key", lambda: "ssh-ed25519 AAA...")
+    
+    # Mock celery task request to provide a task ID
+    class MockRequest:
+        id = "test-task-id"
+    monkeypatch.setattr("celery.app.task.Task.request", MockRequest())
+
+    # Run task
+    tasks.run_bootstrap_task(node_id=node_id, bootstrap_user="root", ssh_password="pwd")
+    
+    # Cleanup DB
+    Base.metadata.drop_all(bind=engine)
+    if os.path.exists("./test_network_orchestrator.db"):
+        os.remove("./test_network_orchestrator.db")
+
+    assert passed_vars.get("orchestrator_ip") == "192.168.100.100"
+
+
 @patch("subprocess.check_call")
 @patch("subprocess.check_output")
 def test_configure_wired_dhcp(mock_output, mock_call):

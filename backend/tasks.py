@@ -204,6 +204,18 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
     except Exception as e:
         log_to_task(task_id, f"WARNING: Failed to ensure orchestrator SSH key: {str(e)}")
         orchestrator_pub_key = ""
+    settings = db.query(Settings).first()
+    orchestrator_ip = settings.orchestrator_ip if settings else None
+    if not orchestrator_ip:
+        orchestrator_ip = os.getenv("ORCHESTRATOR_IP")
+    if not orchestrator_ip:
+        try:
+            route_cmd = f"ip route get {node.ip_address}"
+            route_out = subprocess.check_output(route_cmd, shell=True, text=True)
+            orchestrator_ip = route_out.split("src")[1].split()[0]
+        except Exception:
+            orchestrator_ip = "127.0.0.1"
+
     res = run_ansible_playbook(
         task_id=task_id,
         playbook_name="bootstrap.yml",
@@ -211,7 +223,8 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
         ssh_port=node.ssh_port,
         extra_vars={
             "bootstrap_user": bootstrap_user,
-            "orchestrator_ssh_pub_key": orchestrator_pub_key
+            "orchestrator_ssh_pub_key": orchestrator_pub_key,
+            "orchestrator_ip": orchestrator_ip
         },
         ssh_password=ssh_password
     )
