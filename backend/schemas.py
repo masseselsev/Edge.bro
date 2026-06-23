@@ -203,3 +203,44 @@ class HandshakeRequest(BaseModel):
     ssh_pub_key: str
 
 
+class UserBase(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    name: str = Field(..., min_length=1, max_length=100)
+    phone: Optional[str] = None
+    telegram_id: Optional[str] = None
+
+
+class UserCreate(UserBase):
+    password: str = Field(..., min_length=6)
+    comment: Optional[str] = None
+
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    telegram_id: Optional[str] = None
+    password: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class UserSelfUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    telegram_id: Optional[str] = None
+    password: Optional[str] = None
+
+
+class UserResponse(UserBase):
+    id: int
+    is_superadmin: bool
+    comment: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LoginPayload(BaseModel):
+    username: str
+    password: str
+
+

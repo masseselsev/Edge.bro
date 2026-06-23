@@ -143,3 +143,19 @@ class Kiosk(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
+
+class User(Base):
+    """
+    Model for administrator and superadmin user accounts.
+    """
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    phone = Column(String, nullable=True)
+    telegram_id = Column(String, nullable=True)
+    comment = Column(Text, nullable=True)
+    is_superadmin = Column(Boolean, default=False, nullable=False)
+

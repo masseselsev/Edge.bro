@@ -67,7 +67,32 @@ def startup_db_init():
 
     db = next(get_db())
     upgrade_settings(db)
+    seed_superadmin(db)
     db.close()
+
+
+def seed_superadmin(db: Session):
+    """
+    Seeds the initial super administrator account if none exists.
+    """
+    import bcrypt
+    superadmin = db.query(models.User).filter(models.User.is_superadmin == True).first()
+    if not superadmin:
+        username = os.getenv("SUPERADMIN_USERNAME", "admin")
+        password = os.getenv("ADMIN_PASSWORD", "q1w2e3r4")
+        pwd_bytes = password.encode('utf-8')
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+        db_user = models.User(
+            username=username,
+            hashed_password=hashed,
+            name="Super Administrator",
+            is_superadmin=True,
+            comment="System-seeded superadmin"
+        )
+        db.add(db_user)
+        db.commit()
+        print(f"Superadmin user '{username}' seeded successfully.")
 
 
 def upgrade_settings(db: Session):
