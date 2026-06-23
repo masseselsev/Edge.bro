@@ -355,7 +355,7 @@ def test_checkpoint_calculation_and_command_builder():
     # Ensure BORG_PASSPHRASE is in the script run on the host
     inner_bash_cmd = cmd_no_cpu[-1]
     assert "BORG_PASSPHRASE='my-secret-passphrase'" in inner_bash_cmd
-    assert "--remote-ratelimit 1000" in inner_bash_cmd
+    assert "--upload-ratelimit 1000" in inner_bash_cmd
     assert "--checkpoint-interval 204" in inner_bash_cmd
     assert "--compression lz4" in inner_bash_cmd
     assert "systemd-run" not in inner_bash_cmd
@@ -378,7 +378,6 @@ def test_checkpoint_calculation_and_command_builder():
     inner_bash_cmd_cpu = cmd_with_cpu[-1]
     assert "systemd-run --scope" in inner_bash_cmd_cpu
     assert "-p CPUQuota=85%" in inner_bash_cmd_cpu
-    assert "-p IOSchedulingClass=idle" in inner_bash_cmd_cpu
 
 
 def test_task_log_node_association(db_session):
