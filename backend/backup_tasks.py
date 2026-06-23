@@ -59,7 +59,7 @@ def build_borg_create_cmd(
         f"borg create --json --stats "
         f"--compression {compression} "
         f"--checkpoint-interval {checkpoint_secs} "
-        f"--remote-ratelimit {rate_limit_kib} "
+        f"--upload-ratelimit {rate_limit_kib} "
         f"{borg_repo_url}::{archive_name} / {exclude_str}"
     )
 
@@ -67,7 +67,6 @@ def build_borg_create_cmd(
         inner_cmd = (
             f"systemd-run --scope "
             f"-p CPUQuota={cpu_quota}% "
-            f"-p IOSchedulingClass=idle "
             f"-- bash -c \"{borg_env} {borg_create}\""
         )
     else:
