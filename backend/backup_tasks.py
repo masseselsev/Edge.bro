@@ -5,7 +5,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
-from celery import shared_task
+from celery_app import celery_app
 
 from database import SessionLocal
 from models import Node, TaskLog, BackupHistory, Settings
@@ -87,7 +87,7 @@ def build_borg_create_cmd(
 
 
 
-@shared_task(bind=True)
+@celery_app.task(bind=True)
 def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
     """
     Celery task to run the Auto-Prepare disk labels playbook on the node.
@@ -146,7 +146,7 @@ def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
     return res
 
 
-@shared_task(bind=True)
+@celery_app.task(bind=True)
 def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[str, Any]:
     """
     Triggers remote backup execution on the node pushing to the central Borg server,
@@ -337,7 +337,7 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         db.close()
 
 
-@shared_task
+@celery_app.task
 def global_daily_prune() -> Dict[str, Any]:
     """
     Celery scheduled cron task running at 3:00 AM daily.
