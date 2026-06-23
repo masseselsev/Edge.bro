@@ -162,7 +162,7 @@ export function NodeRow({
       <td className="px-4 py-2.5 text-zinc-300 font-medium text-xs">{node.os_version || t('unknown')}</td>
       <td className="px-4 py-2.5">
         <div className="flex flex-col">
-          <span className="text-zinc-300 font-medium text-xs">{t('diskLabel')}: {node.disk_type}</span>
+          <span className="text-zinc-300 font-medium text-xs">{t('diskLabel')}: {node.disk_type ? node.disk_type.split(' ')[0] : 'UNKNOWN'}</span>
           <span className="text-zinc-500 text-xs">{t('netLabel')}: {node.network_iface || t('unknown').toUpperCase()}</span>
         </div>
       </td>
