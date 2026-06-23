@@ -27,15 +27,32 @@
             fi
 
             # Detect root parent disk
-            root_disk=$(lsblk -no PKNAME "$part_root")
+            root_disk=$(lsblk -no PKNAME "$part_root" 2>/dev/null || echo "")
             if [ -z "$root_disk" ]; then
               root_disk=$(echo "$part_root" | sed -E 's/p[0-9]+$//')
             fi
             disk_base=$(basename "$root_disk")
-            rotational=$(cat /sys/block/"$disk_base"/queue/rotational)
-            disk_type="SATA"
+            
+            disk_size=""
+            disk_model=""
+            if [ -n "$root_disk" ]; then
+              disk_size=$(lsblk -d -no SIZE "/dev/$disk_base" 2>/dev/null | xargs || echo "")
+              disk_model=$(lsblk -d -no MODEL "/dev/$disk_base" 2>/dev/null | xargs || echo "")
+            fi
+
+            disk_type_str="SATA"
             if echo "$disk_base" | grep -q "nvme"; then
-              disk_type="NVME"
+              disk_type_str="NVME"
+            fi
+
+            if [ -n "$disk_size" ]; then
+              if [ -n "$disk_model" ]; then
+                disk_type="$disk_type_str $disk_size ($disk_model)"
+              else
+                disk_type="$disk_type_str $disk_size"
+              fi
+            else
+              disk_type="$disk_type_str"
             fi
 
             # Find active network interface
@@ -49,7 +66,7 @@
             fi
 
             # Read CPU details
-            cpu_info=$(lscpu | grep 'Model name' | cut -d: -f2- | xargs || true)
+            cpu_info=$(lscpu | grep -m1 'Model name' | cut -d: -f2- | xargs || true)
             if [ -z "$cpu_info" ]; then
               cpu_info=$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | xargs || echo "Generic CPU")
             fi
@@ -57,10 +74,67 @@
             # Read Memory details (RAM)
             mem_info=$(free -h | awk '/^Mem:/ {print $2}' || echo "Unknown RAM")
 
-            # Read EDGE Version from MOTD
+            # Get detailed RAM info using dmidecode
+            ram_details=""
+            if command -v dmidecode >/dev/null 2>&1; then
+              ram_sizes=$(dmidecode -t 17 2>/dev/null | grep "Size:" | grep -iv "No Board" | grep -v "No Device" | grep -E "Size: [0-9]" || echo "")
+              ram_count=$(echo "$ram_sizes" | wc -l)
+              if [ "$ram_count" -gt 0 ] && [ -n "$ram_sizes" ]; then
+                ram_type=$(dmidecode -t 17 2>/dev/null | grep -A10 "Memory Device" | grep -m1 "Type:" | cut -d: -f2 | xargs || echo "")
+                ram_speed=$(dmidecode -t 17 2>/dev/null | grep -A15 "Memory Device" | grep -m1 "Speed:" | cut -d: -f2 | xargs || echo "")
+                ram_size_first=$(echo "$ram_sizes" | head -n1 | cut -d: -f2 | xargs || echo "")
+                if [ -z "$ram_speed" ] || [ "$ram_speed" = "Unknown" ]; then
+                  ram_speed=$(dmidecode -t 17 2>/dev/null | grep -A15 "Memory Device" | grep -m1 "Configured Clock Speed:" | cut -d: -f2 | xargs || echo "")
+                fi
+                ram_details="${ram_count}x ${ram_size_first}"
+                if [ -n "$ram_type" ] && [ "$ram_type" != "Unknown" ]; then
+                  ram_details="${ram_details} ${ram_type}"
+                fi
+                if [ -n "$ram_speed" ] && [ "$ram_speed" != "Unknown" ] && [ "$ram_speed" != "Configured Clock Speed" ]; then
+                  ram_details="${ram_details} @ ${ram_speed}"
+                fi
+              fi
+            fi
+
+            if [ -n "$ram_details" ]; then
+              mem_info="$mem_info ($ram_details)"
+            fi
+
+            # Read EDGE Version from MOTD / dynamic scripts / config files
             edge_ver="UNKNOWN"
-            if [ -f /etc/motd ]; then
-              edge_ver=$(awk '/EDGE:/ {getline; print; exit}' /etc/motd | xargs || echo "UNKNOWN")
+            # 1. Try static MOTD files
+            for f in /etc/motd /run/motd.dynamic /var/run/motd /etc/motd.d/*; do
+              if [ -r "$f" ]; then
+                val=$(grep -A1 -i "^EDGE:" "$f" 2>/dev/null | tail -n1 | xargs || echo "")
+                if [ -n "$val" ] && [ "$val" != "EDGE:" ] && [ "$val" != "edge:" ] && [ "$val" != "EDGE" ]; then
+                  edge_ver="$val"
+                  break
+                fi
+              fi
+            done
+            # 2. Try dynamic MOTD scripts
+            if [ "$edge_ver" = "UNKNOWN" ]; then
+              for f in /etc/update-motd.d/*; do
+                if [ -x "$f" ]; then
+                  val=$("$f" 2>/dev/null | grep -A1 -i "^EDGE:" | tail -n1 | xargs || echo "")
+                  if [ -n "$val" ] && [ "$val" != "EDGE:" ] && [ "$val" != "edge:" ]; then
+                    edge_ver="$val"
+                    break
+                  fi
+                fi
+              done
+            fi
+            # 3. Try version file path fallbacks
+            if [ "$edge_ver" = "UNKNOWN" ]; then
+              for f in /etc/edge-version /etc/edge_version /etc/edge/version; do
+                if [ -r "$f" ]; then
+                  val=$(cat "$f" | xargs || echo "")
+                  if [ -n "$val" ]; then
+                    edge_ver="$val"
+                    break
+                  fi
+                fi
+              done
             fi
 
             # Read OS Version

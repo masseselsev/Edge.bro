@@ -281,7 +281,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               <Cpu className="h-8 w-8 text-cyan-400/90" />
               <div>
                 <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('cpu')}</span>
-                <span className="text-sm font-semibold text-zinc-200 truncate max-w-[150px] block" title={node.cpu_info || 'UNKNOWN'}>
+                <span className="text-xs font-semibold text-zinc-200 block mt-0.5" title={node.cpu_info || 'UNKNOWN'}>
                   {node.cpu_info || 'Generic CPU'}
                 </span>
               </div>
@@ -291,7 +291,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               <MemIcon className="h-8 w-8 text-purple-400/90" />
               <div>
                 <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('memory')}</span>
-                <span className="text-sm font-semibold text-zinc-200 block">
+                <span className="text-xs font-semibold text-zinc-200 block mt-0.5">
                   {node.memory_info || 'Unknown RAM'}
                 </span>
               </div>
@@ -301,7 +301,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               <HardDrive className="h-8 w-8 text-amber-400/90" />
               <div>
                 <span className="text-[10px] uppercase font-bold text-zinc-500 block">Disk Drive</span>
-                <span className="text-sm font-semibold text-zinc-200 block">
+                <span className="text-xs font-semibold text-zinc-200 block mt-0.5">
                   {node.disk_type}
                 </span>
               </div>
@@ -311,7 +311,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               <Info className="h-8 w-8 text-emerald-400/90" />
               <div>
                 <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('edgeVersion')}</span>
-                <span className="text-sm font-semibold text-zinc-200 block">
+                <span className="text-xs font-semibold text-zinc-200 block mt-0.5">
                   {node.edge_version || 'UNKNOWN'}
                 </span>
               </div>

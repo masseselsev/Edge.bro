@@ -5,6 +5,49 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import TaskLog, Settings
+import re
+
+def clean_cpu_info(cpu: str) -> str:
+    if not cpu:
+        return "Generic CPU"
+    # Remove trademarks and brackets
+    cpu = cpu.replace("(R)", "").replace("(TM)", "").replace("®", "").replace("™", "")
+    cpu = cpu.replace("IntelR", "Intel").replace("CoreTM", "Core")
+    # Remove redundant fillers
+    cpu = cpu.replace("NONE CPU", "").replace("NONE", "")
+    # Strip redundant spaces
+    cpu = " ".join(cpu.split())
+    return cpu
+
+def clean_memory_info(mem: str) -> str:
+    if not mem:
+        return "Unknown RAM"
+    match = re.match(r"^([0-9.]+)([a-zA-Z]+)(.*)", mem.strip())
+    if not match:
+        return mem
+    try:
+        val = float(match.group(1))
+        unit = match.group(2)
+        rest = match.group(3).strip()
+        
+        std_unit = "Gi"
+        if "M" in unit.upper():
+            std_unit = "Mi"
+            
+        if std_unit == "Gi":
+            standards = [1, 2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 256, 512, 1024]
+            closest = min(standards, key=lambda x: abs(x - val))
+            rounded_str = f"{closest}Gi"
+        else:
+            standards = [256, 512, 768]
+            closest = min(standards, key=lambda x: abs(x - val))
+            rounded_str = f"{closest}Mi"
+            
+        if rest:
+            return f"{rounded_str} {rest}"
+        return rounded_str
+    except Exception:
+        return mem
 
 def run_ansible_playbook(
     task_id: str,
@@ -241,9 +284,11 @@ def run_ansible_playbook(
                 if "OS_VERSION:" in line:
                     parsed_data["os_version"] = line.split("OS_VERSION:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
                 if "CPU_INFO:" in line:
-                    parsed_data["cpu_info"] = line.split("CPU_INFO:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                    cpu_raw = line.split("CPU_INFO:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                    parsed_data["cpu_info"] = clean_cpu_info(cpu_raw)
                 if "MEM_INFO:" in line:
-                    parsed_data["memory_info"] = line.split("MEM_INFO:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                    mem_raw = line.split("MEM_INFO:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                    parsed_data["memory_info"] = clean_memory_info(mem_raw)
                 if "EDGE_VERSION:" in line:
                     parsed_data["edge_version"] = line.split("EDGE_VERSION:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
                 if "PARTITION_LAYOUT_JSON:" in line:
