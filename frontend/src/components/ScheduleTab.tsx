@@ -166,7 +166,7 @@ export default function ScheduleTab() {
             {t('tabSchedule')}
           </h2>
           <p className="text-zinc-400 mt-1">
-            Manage automated backup groups, scheduling policies, and execution windows.
+            {t('tabScheduleSub')}
           </p>
         </div>
         <button
@@ -219,7 +219,7 @@ export default function ScheduleTab() {
               </div>
             </div>
             <div className="flex justify-between items-center text-xs text-zinc-500 font-mono h-5">
-              <span>0 = Green</span>
+              <span>0 = {t('greenColor')}</span>
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
@@ -228,7 +228,7 @@ export default function ScheduleTab() {
                   onChange={(e) => handleDayThresholdChange(Number(e.target.value))}
                   className="w-12 px-1 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
                 />
-                <span>= Red</span>
+                <span>= {t('redColor')}</span>
               </div>
             </div>
           </div>
@@ -260,7 +260,7 @@ export default function ScheduleTab() {
               </div>
             </div>
             <div className="flex justify-between items-center text-xs text-zinc-500 font-mono h-5">
-              <span>0 = Green</span>
+              <span>0 = {t('greenColor')}</span>
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
@@ -269,7 +269,7 @@ export default function ScheduleTab() {
                   onChange={(e) => handleWeekThresholdChange(Number(e.target.value))}
                   className="w-12 px-1 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
                 />
-                <span>= Red</span>
+                <span>= {t('redColor')}</span>
               </div>
             </div>
           </div>
@@ -293,7 +293,7 @@ export default function ScheduleTab() {
                         {count}
                       </div>
                       <div className="absolute bottom-full mb-1.5 hidden group-hover:block bg-zinc-900 text-zinc-100 text-xs py-1 px-2.5 rounded shadow-lg whitespace-nowrap border border-zinc-800 z-10 font-mono">
-                        Week {idx + 1}: {count} {t('backups')}
+                        {t('weekUnit')} {idx + 1}: {count} {t('backups')}
                       </div>
                     </div>
                   );
@@ -301,7 +301,7 @@ export default function ScheduleTab() {
               </div>
             </div>
             <div className="flex justify-between items-center text-xs text-zinc-500 font-mono h-5">
-              <span>0 = Green</span>
+              <span>0 = {t('greenColor')}</span>
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
@@ -310,7 +310,7 @@ export default function ScheduleTab() {
                   onChange={(e) => handleMonthThresholdChange(Number(e.target.value))}
                   className="w-12 px-1 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
                 />
-                <span>= Red</span>
+                <span>= {t('redColor')}</span>
               </div>
             </div>
           </div>
@@ -355,11 +355,11 @@ export default function ScheduleTab() {
                   {group.interval !== 'weekly' && (
                     <div className="flex justify-between">
                       <span className="text-zinc-400">{t('targetWeek')}:</span>
-                      <span className="font-semibold text-zinc-200">Week {group.target_week}</span>
+                      <span className="font-semibold text-zinc-200">{t('weekUnit')} {group.target_week}</span>
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-zinc-400">Execution Window:</span>
+                    <span className="text-zinc-400">{t('executionWindow')}:</span>
                     <span className="font-semibold text-zinc-200 font-mono">
                       {group.start_time} - {group.end_time}{' '}
                       <span className="text-xs text-zinc-400 font-sans">
@@ -369,12 +369,12 @@ export default function ScheduleTab() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-zinc-400">{t('concurrencyLimit')}:</span>
-                    <span className="font-semibold text-zinc-200">{group.concurrency_limit} nodes</span>
+                    <span className="font-semibold text-zinc-200">{group.concurrency_limit} {t('nodesUnit')}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-zinc-400">Distribution:</span>
+                    <span className="text-zinc-400">{t('distribution')}:</span>
                     <span className="font-semibold text-zinc-200">
-                      {group.randomize_days ? 'Staggered over Week' : 'Single Day Launch'}
+                      {group.randomize_days ? t('staggeredOverWeek') : t('singleDayLaunch')}
                     </span>
                   </div>
                   <div className="flex flex-col gap-1 pt-1.5 border-t border-zinc-800/50 mt-1.5">
@@ -383,7 +383,7 @@ export default function ScheduleTab() {
                       {group.override_retention ? (
                         group.retention_policy ? (
                           group.retention_policy.type === 'interval' ? (
-                            `Daily: ${group.retention_policy.keep_daily}, Weekly: ${group.retention_policy.keep_weekly}, Monthly: ${group.retention_policy.keep_monthly}`
+                            `${t('keepDaily')}: ${group.retention_policy.keep_daily}, ${t('keepWeekly')}: ${group.retention_policy.keep_weekly}, ${t('keepMonthly')}: ${group.retention_policy.keep_monthly}`
                           ) : group.retention_policy.type === 'count' ? (
                             t('retentionSummaryLast').replace('{count}', String(group.retention_policy.keep_last))
                           ) : (
@@ -409,11 +409,11 @@ export default function ScheduleTab() {
               <div className="mt-6 pt-4 border-t border-zinc-800/80 flex items-center justify-between">
                 <div className="flex gap-4">
                   <div className="text-xs">
-                    <span className="text-zinc-500 block uppercase font-semibold">Active Nodes</span>
+                    <span className="text-zinc-500 block uppercase font-semibold">{t('activeNodes')}</span>
                     <span className="text-emerald-400 font-bold text-sm">{stats.active}</span>
                   </div>
                   <div className="text-xs">
-                    <span className="text-zinc-500 block uppercase font-semibold">Paused Nodes</span>
+                    <span className="text-zinc-500 block uppercase font-semibold">{t('pausedNodes')}</span>
                     <span className="text-amber-400 font-bold text-sm">{stats.paused}</span>
                   </div>
                 </div>
@@ -437,7 +437,7 @@ export default function ScheduleTab() {
 
         {groups.length === 0 && (
           <div className="col-span-full border-2 border-dashed border-zinc-850 bg-zinc-900/30 rounded-xl p-8 text-center text-zinc-400">
-            No backup groups created yet. Click "{t('createGroup')}" in the top right to start scheduling.
+            {t('noGroupsCreated')}
           </div>
         )}
       </div>

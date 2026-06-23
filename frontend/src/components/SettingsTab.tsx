@@ -247,7 +247,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                   options={compressionOptions}
                   value={defaultCompression}
                   onChange={setDefaultCompression}
-                  placeholder="-- Select Compression --"
+                  placeholder={t('selectCompressionPlaceholder')}
                 />
               </div>
               <div>
@@ -341,7 +341,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                   options={policyTypeOptions}
                   value={policyType}
                   onChange={setPolicyType}
-                  placeholder="-- Select Policy Type --"
+                  placeholder={t('selectPolicyTypePlaceholder')}
                 />
               </div>
 
@@ -416,7 +416,7 @@ export default function SettingsTab({ onSettingsUpdated }: SettingsTabProps) {
                       options={unitOptions}
                       value={policyWithinUnit}
                       onChange={setPolicyWithinUnit}
-                      placeholder="-- Select Unit --"
+                      placeholder={t('selectUnitPlaceholder')}
                     />
                   </div>
                 </div>

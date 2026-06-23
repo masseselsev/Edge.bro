@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from '../context/TranslationContext';
 
 interface Node {
@@ -39,7 +40,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
     });
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
         <h3 className="text-lg font-bold text-zinc-50">{t('addNodeAutoProvision')}</h3>
@@ -147,7 +148,8 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -174,7 +176,7 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
     });
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
         <div>
@@ -210,7 +212,7 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
             <input
               type="password"
               required
-              placeholder="Password"
+              placeholder={t('passwordLabel')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
@@ -237,7 +239,8 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -259,7 +262,7 @@ export function BackupCommentModal({ node, onClose, onSubmit }: BackupCommentMod
     setSubmitting(false);
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
         <div>
@@ -297,6 +300,7 @@ export function BackupCommentModal({ node, onClose, onSubmit }: BackupCommentMod
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -256,7 +256,7 @@ export default function KioskManagementSection() {
                 <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskNameLabel') || 'Friendly Name'}</label>
                 <input
                   type="text"
-                  placeholder="e.g. Server Room A"
+                  placeholder={t('kioskNamePlaceholder')}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
@@ -268,7 +268,7 @@ export default function KioskManagementSection() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. KB4821"
+                  placeholder={t('kioskUuidPlaceholder')}
                   value={uuid}
                   onChange={(e) => setUuid(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors font-mono"

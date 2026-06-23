@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from '../context/TranslationContext';
 
 export interface Option {
   value: string | number;
@@ -16,6 +17,7 @@ interface SearchableSelectProps {
 }
 
 export function SearchableSelect({ options, value, onChange, placeholder, disabled }: SearchableSelectProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -78,7 +80,7 @@ export function SearchableSelect({ options, value, onChange, placeholder, disabl
             <input
               ref={inputRef}
               type="text"
-              placeholder="Search..."
+              placeholder={t('search')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 text-xs focus:outline-none focus:border-indigo-600"
@@ -86,7 +88,7 @@ export function SearchableSelect({ options, value, onChange, placeholder, disabl
           </div>
           <div className="py-1">
             {filteredOptions.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-zinc-500">No results found</div>
+              <div className="px-3 py-2 text-xs text-zinc-500">{t('noResultsFound')}</div>
             ) : (
               filteredOptions.map(opt => (
                 <button

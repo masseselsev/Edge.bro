@@ -290,7 +290,7 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
                       type="text"
                       value={gateway}
                       onChange={e => setGateway(e.target.value)}
-                      placeholder="e.g. 192.168.1.1 (Optional)"
+                      placeholder={t('gatewayPlaceholder')}
                       className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
@@ -385,7 +385,7 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">{t('hiddenWirelessConfig')}</span>
                     <button type="button" onClick={() => setShowHiddenForm(false)} className="text-indigo-400 hover:text-indigo-300 text-xs font-bold transition-colors">
-                      Back to List
+                      {t('backToList')}
                     </button>
                   </div>
 
@@ -418,13 +418,13 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
 
               {((selectedSsid && wifiNetworks.find(n => n.ssid === selectedSsid)?.security !== 'Open') || (showHiddenForm && hiddenSecurity !== 'Open')) && (
                 <div className="space-y-1">
-                  <label className="text-[10px] text-zinc-400 font-bold mb-1 block">Password</label>
+                  <label className="text-[10px] text-zinc-400 font-bold mb-1 block">{t('passwordLabel')}</label>
                   <input
                     type="password"
                     required
                     value={wifiPassword}
                     onChange={e => setWifiPassword(e.target.value)}
-                    placeholder="Enter network password..."
+                    placeholder={t('wifiPasswordPlaceholder')}
                     className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
