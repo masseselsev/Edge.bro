@@ -42,8 +42,7 @@ def setup_celery_task_logging(logger, **kwargs):
 
 
 # Initialize Celery
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-celery_app = Celery("tasks", broker=REDIS_URL, backend=REDIS_URL)
+from celery_app import celery_app, REDIS_URL
 
 import redis
 redis_client = redis.Redis.from_url(REDIS_URL)
