@@ -84,6 +84,78 @@ def build_borg_create_cmd(
     ]
 
 
+def cleanup_stale_borg_locks(
+    task_id: str,
+    node_ip: str,
+    node_ssh_port: int,
+    repo_path: str,
+    borg_passphrase: str,
+) -> None:
+    """
+    Best-effort cleanup of stale Borg locks before starting a backup.
+
+    Runs three steps (all non-fatal on failure):
+    1. Kill any lingering `borg create` processes on the remote node.
+    2. Remove Borg cache locks on the remote node.
+    3. Break the exclusive repo lock on the server-side repository.
+
+    This is safe to call unconditionally because run_backup_task already
+    guards concurrent execution with a Redis key, so any existing lock
+    must belong to a previously crashed/killed task.
+    """
+    from tasks import log_to_task  # local import to avoid circular deps
+
+    interval = int(os.getenv("SSH_KEEPALIVE_INTERVAL", "30"))
+    count = int(os.getenv("SSH_KEEPALIVE_COUNT", "3"))
+    ssh_base = [
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "ConnectTimeout=10",
+        "-o", f"ServerAliveInterval={interval}",
+        "-o", f"ServerAliveCountMax={count}",
+        "-p", str(node_ssh_port),
+        "-i", "/root/.ssh/id_ed25519",
+        f"root@{node_ip}",
+    ]
+
+    # Step 1 — kill orphaned borg processes on the node
+    try:
+        res = subprocess.run(
+            ssh_base + ["pkill -f 'borg create' || true"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, timeout=15,
+        )
+        log_to_task(task_id, "[Lock cleanup] Killed orphaned borg processes on node (if any).")
+    except Exception as e:
+        log_to_task(task_id, f"[Lock cleanup] WARNING: Could not kill borg processes on node: {e}")
+
+    # Step 2 — remove cache locks on the node
+    try:
+        res = subprocess.run(
+            ssh_base + ["find /root/.cache/borg -name 'lock*' -delete 2>/dev/null; echo OK"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, timeout=15,
+        )
+        log_to_task(task_id, "[Lock cleanup] Cleared Borg cache locks on node.")
+    except Exception as e:
+        log_to_task(task_id, f"[Lock cleanup] WARNING: Could not clear cache locks on node: {e}")
+
+    # Step 3 — break repo lock on the server side
+    try:
+        env = os.environ.copy()
+        env["BORG_PASSPHRASE"] = borg_passphrase
+        res = subprocess.run(
+            ["borg", "break-lock", repo_path],
+            env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, timeout=30,
+        )
+        if res.returncode == 0:
+            log_to_task(task_id, "[Lock cleanup] Repo lock check passed (no stale lock, or lock broken).")
+        else:
+            log_to_task(task_id, f"[Lock cleanup] WARNING: borg break-lock stderr: {res.stderr.strip()}")
+    except Exception as e:
+        log_to_task(task_id, f"[Lock cleanup] WARNING: Could not break repo lock: {e}")
 
 
 @celery_app.task(bind=True)
@@ -274,6 +346,14 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
 
     log_to_task(task_id, f"Running remote command on node: {' '.join(ssh_cmd[:6])} [COMMAND MASKED]")
 
+    # --- Auto-cleanup stale Borg locks before starting ---
+    cleanup_stale_borg_locks(
+        task_id=task_id,
+        node_ip=node.ip_address,
+        node_ssh_port=node.ssh_port,
+        repo_path="/data/borg/fleet",
+        borg_passphrase=os.getenv("BORG_PASSPHRASE", ""),
+    )
 
     try:
         process = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
