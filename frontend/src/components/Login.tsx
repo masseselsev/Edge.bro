@@ -68,13 +68,14 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">{t('loginUsername')}</label>
+            <label htmlFor="username" className="block text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">{t('loginUsername')}</label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-500">
                 <User size={16} />
               </span>
               <input
                 type="text"
+                id="username"
                 name="username"
                 autoComplete="username"
                 required
@@ -88,13 +89,14 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           </div>
 
           <div className="space-y-1">
-            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">{t('loginPassword')}</label>
+            <label htmlFor="password" className="block text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">{t('loginPassword')}</label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-zinc-500">
                 <Lock size={16} />
               </span>
               <input
                 type="password"
+                id="password"
                 name="password"
                 autoComplete="current-password"
                 required
