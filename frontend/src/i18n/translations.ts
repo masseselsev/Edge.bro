@@ -460,7 +460,9 @@ export const translations: Record<Language, Record<string, string>> = {
     adminPhone: 'Phone Number',
     adminTelegram: 'Telegram ID',
     adminPasswordHint: 'Leave blank to keep current password',
-    saveChanges: 'Save Changes'
+    saveChanges: 'Save Changes',
+    adminPlusStatus: 'Grant Admin+ Privileges',
+    adminPlusStatusDesc: 'Allows managing standard admins'
   },
   ru: {
     // Navigation / Tabs
@@ -920,7 +922,9 @@ export const translations: Record<Language, Record<string, string>> = {
     adminPhone: 'Номер телефона',
     adminTelegram: 'Telegram ID',
     adminPasswordHint: 'Оставьте пустым, чтобы сохранить текущий пароль',
-    saveChanges: 'Сохранить изменения'
+    saveChanges: 'Сохранить изменения',
+    adminPlusStatus: 'Назначить статус Admin+',
+    adminPlusStatusDesc: 'Разрешает управление обычными администраторами'
   },
   uk: {
     // Navigation / Tabs
@@ -1377,6 +1381,8 @@ export const translations: Record<Language, Record<string, string>> = {
     adminPhone: 'Номер телефону',
     adminTelegram: 'Telegram ID',
     adminPasswordHint: 'Залиште порожнім, щоб зберегти поточний пароль',
-    saveChanges: 'Зберегти зміни'
+    saveChanges: 'Зберегти зміни',
+    adminPlusStatus: 'Призначити статус Admin+',
+    adminPlusStatusDesc: 'Дозволяє керування звичайними адміністраторами'
   }
 };

@@ -203,7 +203,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         </div>
       </div>
 
-      {currentUser?.is_superadmin && (
+      {(currentUser?.is_superadmin || currentUser?.is_admin_plus) && (
         <div className="flex border-b border-zinc-800 gap-4 text-xs font-bold pb-px mb-2">
           <button
             type="button"
@@ -230,8 +230,8 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         </div>
       )}
 
-      {activeSubTab === 'admins' && currentUser?.is_superadmin ? (
-        <AdminsTab />
+      {activeSubTab === 'admins' && (currentUser?.is_superadmin || currentUser?.is_admin_plus) ? (
+        <AdminsTab currentUser={currentUser} />
       ) : (
         <form onSubmit={handleSave} className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">

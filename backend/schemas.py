@@ -213,6 +213,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(..., min_length=6)
     comment: Optional[str] = None
+    is_admin_plus: Optional[bool] = False
 
 
 class UserUpdate(BaseModel):
@@ -221,6 +222,7 @@ class UserUpdate(BaseModel):
     telegram_id: Optional[str] = None
     password: Optional[str] = None
     comment: Optional[str] = None
+    is_admin_plus: Optional[bool] = None
 
 
 class UserSelfUpdate(BaseModel):
@@ -233,6 +235,7 @@ class UserSelfUpdate(BaseModel):
 class UserResponse(UserBase):
     id: int
     is_superadmin: bool
+    is_admin_plus: bool
     comment: Optional[str] = None
 
     class Config:

@@ -10,9 +10,14 @@ interface User {
   telegram_id: string | null;
   comment: string | null;
   is_superadmin: boolean;
+  is_admin_plus: boolean;
 }
 
-export default function AdminsTab() {
+interface AdminsTabProps {
+  currentUser?: any;
+}
+
+export default function AdminsTab({ currentUser }: AdminsTabProps) {
   const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +30,7 @@ export default function AdminsTab() {
   const [phone, setPhone] = useState('');
   const [telegramId, setTelegramId] = useState('');
   const [password, setPassword] = useState('');
+  const [isAdminPlus, setIsAdminPlus] = useState(false);
   const [comment, setComment] = useState('');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -54,6 +60,7 @@ export default function AdminsTab() {
     setPhone('');
     setTelegramId('');
     setPassword('');
+    setIsAdminPlus(false);
     setComment('');
     setFormError('');
     setModalOpen(true);
@@ -66,6 +73,7 @@ export default function AdminsTab() {
     setPhone(user.phone || '');
     setTelegramId(user.telegram_id || '');
     setPassword(''); // leave empty to not change
+    setIsAdminPlus(user.is_admin_plus);
     setComment(user.comment || '');
     setFormError('');
     setModalOpen(true);
@@ -82,6 +90,10 @@ export default function AdminsTab() {
       telegram_id: telegramId.trim() || null,
       comment: comment.trim() || null,
     };
+
+    if (currentUser?.is_superadmin) {
+      payload.is_admin_plus = isAdminPlus;
+    }
 
     if (password) {
       if (password.length < 6) {
@@ -166,7 +178,7 @@ export default function AdminsTab() {
             <Shield size={22} className="text-indigo-400" />
             {t('tabAdmins')}
           </h2>
-          <p className="text-xs text-zinc-400 mt-1">Manage platform administrators, permissions, and comments.</p>
+          <p className="text-xs text-zinc-400 mt-1">Manage platform administrators, privileges, and comments.</p>
         </div>
         <button
           onClick={openCreateModal}
@@ -200,6 +212,11 @@ export default function AdminsTab() {
                         SUPER
                       </span>
                     )}
+                    {user.is_admin_plus && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-fade-in">
+                        ADMIN+
+                      </span>
+                    )}
                   </td>
                   <td className="p-4 font-semibold">{user.name}</td>
                   <td className="p-4 font-mono text-zinc-400">
@@ -226,14 +243,16 @@ export default function AdminsTab() {
                     {user.comment || <span className="text-zinc-650">—</span>}
                   </td>
                   <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
-                    <button
-                      onClick={() => openEditModal(user)}
-                      className="p-1.5 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg transition-all cursor-pointer"
-                      title={t('editAdmin')}
-                    >
-                      <Edit2 size={13} />
-                    </button>
-                    {!user.is_superadmin && (
+                    {(currentUser?.is_superadmin || (!user.is_superadmin && !user.is_admin_plus)) && (
+                      <button
+                        onClick={() => openEditModal(user)}
+                        className="p-1.5 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-lg transition-all cursor-pointer"
+                        title={t('editAdmin')}
+                      >
+                        <Edit2 size={13} />
+                      </button>
+                    )}
+                    {!user.is_superadmin && (currentUser?.is_superadmin || !user.is_admin_plus) && (
                       <button
                         onClick={() => handleDelete(user)}
                         className="p-1.5 bg-rose-950/20 border border-rose-900/30 hover:border-rose-900/60 text-rose-450 hover:text-rose-400 rounded-lg transition-all cursor-pointer"
@@ -335,6 +354,23 @@ export default function AdminsTab() {
                   placeholder={editingUser ? t('adminPasswordHint') : '••••••••'}
                 />
               </div>
+
+              {currentUser?.is_superadmin && (
+                <div className="flex items-center gap-2 py-1.5 pl-1">
+                  <input
+                    type="checkbox"
+                    id="is_admin_plus"
+                    checked={isAdminPlus}
+                    onChange={(e) => setIsAdminPlus(e.target.checked)}
+                    disabled={editingUser?.is_superadmin}
+                    className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <label htmlFor="is_admin_plus" className="text-xs font-bold text-zinc-300 cursor-pointer select-none flex flex-col pl-1">
+                    <span>{t('adminPlusStatus')}</span>
+                    <span className="text-[10px] text-zinc-500 font-semibold normal-case leading-normal mt-0.5">{t('adminPlusStatusDesc')}</span>
+                  </label>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">

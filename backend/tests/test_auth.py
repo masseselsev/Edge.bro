@@ -285,3 +285,128 @@ def test_admin_crud(client, db_session):
     assert resp.status_code == 400
 
 
+def test_admin_plus_crud(client, db_session):
+    """
+    Test Admin+ role permissions and CRUD capabilities.
+    """
+    from main import seed_superadmin
+    import models
+    from routers.users import get_password_hash
+
+    # Seed superadmin
+    with patch.dict(os.environ, {"SUPERADMIN_USERNAME": "superadmin", "ADMIN_PASSWORD": "superpassword"}):
+        seed_superadmin(db_session)
+
+    # 1. Create two admin+ users and a standard admin user
+    admin_plus_pwd = get_password_hash("adminpluspwd")
+    std_admin_pwd = get_password_hash("stdadminpwd")
+    
+    admin_plus = models.User(
+        username="admin_plus", 
+        hashed_password=admin_plus_pwd, 
+        name="Admin Plus User", 
+        is_superadmin=False,
+        is_admin_plus=True
+    )
+    another_admin_plus = models.User(
+        username="another_admin_plus",
+        hashed_password=admin_plus_pwd,
+        name="Another Admin Plus",
+        is_superadmin=False,
+        is_admin_plus=True
+    )
+    std_admin = models.User(
+        username="std_admin", 
+        hashed_password=std_admin_pwd, 
+        name="Standard Admin User", 
+        is_superadmin=False,
+        is_admin_plus=False
+    )
+    db_session.add_all([admin_plus, another_admin_plus, std_admin])
+    db_session.commit()
+
+    # Login as admin_plus
+    resp = client.post("/api/auth/login", json={"username": "admin_plus", "password": "adminpluspwd"})
+    assert resp.status_code == 200
+    assert resp.json()["is_admin_plus"] is True
+
+    # admin+ can GET /api/users
+    resp = client.get("/api/users")
+    assert resp.status_code == 200
+    users = resp.json()
+    assert len(users) == 4 # superadmin, admin_plus, another_admin_plus, std_admin
+
+    # admin+ can create a standard admin
+    resp = client.post("/api/users", json={
+        "username": "new_std_admin",
+        "name": "New Std Admin",
+        "password": "somepassword",
+        "is_admin_plus": False
+    })
+    assert resp.status_code == 201
+    created_id = resp.json()["id"]
+
+    # admin+ CANNOT create another admin+
+    resp = client.post("/api/users", json={
+        "username": "yet_another_admin_plus",
+        "name": "Yet Another Admin Plus",
+        "password": "somepassword",
+        "is_admin_plus": True
+    })
+    assert resp.status_code == 403
+
+    # admin+ can modify standard admin
+    resp = client.put(f"/api/users/{created_id}", json={"name": "Modified Std Admin"})
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Modified Std Admin"
+
+    # admin+ CANNOT modify superadmin
+    superadmin_id = db_session.query(models.User).filter(models.User.username == "superadmin").first().id
+    resp = client.put(f"/api/users/{superadmin_id}", json={"name": "Malicious Super Name"})
+    assert resp.status_code == 403
+
+    # admin+ CANNOT modify another admin+ (including self through CRUD endpoint)
+    admin_plus_id = admin_plus.id
+    resp = client.put(f"/api/users/{admin_plus_id}", json={"name": "New Self Name"})
+    assert resp.status_code == 403
+
+    resp = client.put(f"/api/users/{another_admin_plus.id}", json={"name": "New Other Name"})
+    assert resp.status_code == 403
+
+    # admin+ CANNOT promote standard admin to admin+
+    resp = client.put(f"/api/users/{created_id}", json={"is_admin_plus": True})
+    assert resp.status_code == 403
+
+    # admin+ CANNOT delete superadmin
+    resp = client.delete(f"/api/users/{superadmin_id}")
+    assert resp.status_code == 403
+
+    # admin+ CANNOT delete other admin+
+    resp = client.delete(f"/api/users/{another_admin_plus.id}")
+    assert resp.status_code == 403
+
+    # admin+ CANNOT delete themselves (returns 400)
+    resp = client.delete(f"/api/users/{admin_plus_id}")
+    assert resp.status_code == 400
+
+    # admin+ can delete standard admin
+    resp = client.delete(f"/api/users/{created_id}")
+    assert resp.status_code == 204
+
+    # Logout admin_plus
+    client.post("/api/auth/logout")
+
+    # Login as superadmin to test promotion and demotion
+    client.post("/api/auth/login", json={"username": "superadmin", "password": "superpassword"})
+
+    # superadmin can promote standard admin to admin+
+    resp = client.put(f"/api/users/{std_admin.id}", json={"is_admin_plus": True})
+    assert resp.status_code == 200
+    assert resp.json()["is_admin_plus"] is True
+
+    # superadmin can demote admin+ to standard admin
+    resp = client.put(f"/api/users/{std_admin.id}", json={"is_admin_plus": False})
+    assert resp.status_code == 200
+    assert resp.json()["is_admin_plus"] is False
+
+

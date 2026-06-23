@@ -158,4 +158,6 @@ class User(Base):
     telegram_id = Column(String, nullable=True)
     comment = Column(Text, nullable=True)
     is_superadmin = Column(Boolean, default=False, nullable=False)
+    is_admin_plus = Column(Boolean, default=False, nullable=False)
+
 

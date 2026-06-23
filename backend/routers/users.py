@@ -107,6 +107,15 @@ def require_superadmin(auth = Depends(get_current_auth)) -> models.User:
     return auth
 
 
+def require_admin_plus_or_superadmin(auth = Depends(get_current_auth)) -> models.User:
+    if not isinstance(auth, models.User) or (not auth.is_superadmin and not auth.is_admin_plus):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin+ or Super-administrator permissions required"
+        )
+    return auth
+
+
 def require_kiosk_or_admin(auth = Depends(get_current_auth)) -> Union[models.User, models.Kiosk]:
     return auth
 
@@ -140,7 +149,8 @@ def login(payload: schemas.LoginPayload, response: Response, db: Session = Depen
         "access_token": token,
         "token_type": "bearer",
         "username": user.username,
-        "is_superadmin": user.is_superadmin
+        "is_superadmin": user.is_superadmin,
+        "is_admin_plus": user.is_admin_plus
     }
 
 
@@ -182,11 +192,11 @@ def update_profile(
 
 @router.get("/api/users", response_model=List[schemas.UserResponse])
 def list_users(
-    current_user: models.User = Depends(require_superadmin),
+    current_user: models.User = Depends(require_admin_plus_or_superadmin),
     db: Session = Depends(get_db)
 ):
     """
-    Lists all administrator users. Restricted to Superadmin.
+    Lists all administrator users. Restricted to Admin+ or Superadmin.
     """
     return db.query(models.User).order_by(models.User.username).all()
 
@@ -194,12 +204,20 @@ def list_users(
 @router.post("/api/users", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
     payload: schemas.UserCreate,
-    current_user: models.User = Depends(require_superadmin),
+    current_user: models.User = Depends(require_admin_plus_or_superadmin),
     db: Session = Depends(get_db)
 ):
     """
-    Creates a new administrator user. Restricted to Superadmin.
+    Creates a new administrator user. Restricted to Admin+ or Superadmin.
     """
+    if not current_user.is_superadmin:
+        # Standard admin+ cannot create superadmins or other admin+ users
+        if payload.is_admin_plus:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Standard admin+ users cannot create admin+ users."
+            )
+
     existing = db.query(models.User).filter(models.User.username == payload.username).first()
     if existing:
         raise HTTPException(
@@ -214,7 +232,8 @@ def create_user(
         phone=payload.phone,
         telegram_id=payload.telegram_id,
         comment=payload.comment,
-        is_superadmin=False
+        is_superadmin=False,
+        is_admin_plus=payload.is_admin_plus if payload.is_admin_plus is not None else False
     )
     db.add(db_user)
     db.commit()
@@ -226,11 +245,11 @@ def create_user(
 def update_user(
     user_id: int,
     payload: schemas.UserUpdate,
-    current_user: models.User = Depends(require_superadmin),
+    current_user: models.User = Depends(require_admin_plus_or_superadmin),
     db: Session = Depends(get_db)
 ):
     """
-    Updates an administrator user. Restricted to Superadmin.
+    Updates an administrator user. Restricted to Admin+ or Superadmin.
     """
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
@@ -238,6 +257,20 @@ def update_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found."
         )
+
+    if not current_user.is_superadmin:
+        # Standard admin+ cannot modify superadmins or admin+ users
+        if user.is_superadmin or user.is_admin_plus:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Standard admin+ users cannot modify superadmin or admin+ accounts."
+            )
+        # Standard admin+ cannot promote a user to admin+
+        if payload.is_admin_plus is True:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Standard admin+ users cannot promote standard administrators to admin+."
+            )
 
     if payload.name is not None:
         user.name = payload.name
@@ -254,6 +287,11 @@ def update_user(
                 detail="Password must be at least 6 characters long."
             )
         user.hashed_password = get_password_hash(payload.password)
+    
+    if payload.is_admin_plus is not None:
+        # Only superadmin can modify admin+ status
+        if current_user.is_superadmin:
+            user.is_admin_plus = payload.is_admin_plus
 
     db.commit()
     db.refresh(user)
@@ -263,11 +301,11 @@ def update_user(
 @router.delete("/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(
     user_id: int,
-    current_user: models.User = Depends(require_superadmin),
+    current_user: models.User = Depends(require_admin_plus_or_superadmin),
     db: Session = Depends(get_db)
 ):
     """
-    Deletes an administrator user. Restricted to Superadmin. Cannot delete oneself or a superadmin.
+    Deletes an administrator user. Restricted to Admin+ or Superadmin. Cannot delete oneself, or delete a superadmin. Standard admin+ cannot delete admin+.
     """
     if user_id == current_user.id:
         raise HTTPException(
@@ -281,6 +319,14 @@ def delete_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found."
         )
+
+    if not current_user.is_superadmin:
+        # Standard admin+ cannot delete other admin+ or superadmin accounts
+        if user.is_admin_plus or user.is_superadmin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Standard admin+ users cannot delete superadmin or admin+ accounts."
+            )
 
     if user.is_superadmin:
         raise HTTPException(
