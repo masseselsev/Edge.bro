@@ -71,6 +71,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     free: number;
     path: string;
     is_mounted: boolean;
+    potential_paths?: string[];
   } | null>(null);
 
   const handleSyncToUsb = async () => {
@@ -175,6 +176,26 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleStoragePathChange = async (newPath: string) => {
+    try {
+      const res = await fetch('/api/kiosk/storage/path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: newPath })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStorageInfo(data);
+        fetchNodes();
+      } else {
+        const err = await res.json();
+        alert(`Failed to set storage path: ${err.detail || 'Unknown error'}`);
+      }
+    } catch (e: any) {
+      alert(`Error updating storage path: ${e.message}`);
     }
   };
 
@@ -467,6 +488,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
         isKiosk={isKiosk}
         storageInfo={storageInfo}
         getFormatSize={getFormatSize}
+        onStoragePathChange={handleStoragePathChange}
       />
     </div>
   );

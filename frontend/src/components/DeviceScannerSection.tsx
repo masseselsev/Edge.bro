@@ -17,6 +17,7 @@ interface StorageInfo {
   free: number;
   path: string;
   is_mounted: boolean;
+  potential_paths?: string[];
 }
 
 interface DeviceScannerSectionProps {
@@ -26,6 +27,7 @@ interface DeviceScannerSectionProps {
   isKiosk: boolean;
   storageInfo: StorageInfo | null;
   getFormatSize: (bytes: number) => string;
+  onStoragePathChange?: (newPath: string) => Promise<void>;
 }
 
 export function DeviceScannerSection({
@@ -35,6 +37,7 @@ export function DeviceScannerSection({
   isKiosk,
   storageInfo,
   getFormatSize,
+  onStoragePathChange,
 }: DeviceScannerSectionProps) {
   const { t } = useTranslation();
 
@@ -102,11 +105,36 @@ export function DeviceScannerSection({
           </div>
 
           <div className="space-y-3">
-            <div className="flex justify-between text-xs text-zinc-400">
+            <div className="flex items-center justify-between text-xs text-zinc-400 gap-2">
               <span>Mount Path</span>
-              <span className="font-mono text-zinc-300 text-right max-w-[150px] truncate" title={storageInfo.path}>
-                {storageInfo.path}
-              </span>
+              {onStoragePathChange ? (
+                <select
+                  value={storageInfo.path}
+                  onChange={async (e) => {
+                    const val = e.target.value;
+                    if (val === '__custom__') {
+                      const custom = prompt("Enter custom absolute storage path:", storageInfo.path);
+                      if (custom && custom.trim().startsWith("/")) {
+                        await onStoragePathChange(custom.trim());
+                      }
+                    } else {
+                      await onStoragePathChange(val);
+                    }
+                  }}
+                  className="bg-zinc-950 text-zinc-300 border border-zinc-800 rounded px-1.5 py-0.5 text-xs focus:ring-0 max-w-[180px] truncate cursor-pointer hover:border-zinc-700 transition-colors font-mono"
+                >
+                  {(storageInfo.potential_paths || [storageInfo.path]).map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                  <option value="__custom__">⚙️ Custom Path...</option>
+                </select>
+              ) : (
+                <span className="font-mono text-zinc-300 text-right max-w-[150px] truncate" title={storageInfo.path}>
+                  {storageInfo.path}
+                </span>
+              )}
             </div>
 
             <div className="space-y-1.5">

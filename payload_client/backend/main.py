@@ -34,6 +34,7 @@ auth_token = ""
 language = "en"
 kiosk_uuid = ""
 restore_mode = "offline"
+local_storage_path = "/media/usb-data"
 
 if os.path.exists(CONFIG_PATH):
     try:
@@ -46,6 +47,7 @@ if os.path.exists(CONFIG_PATH):
             language = cfg.get("language", "en")
             kiosk_uuid = cfg.get("kiosk_uuid", "")
             restore_mode = cfg.get("restore_mode", "online" if auth_token else "offline")
+            local_storage_path = cfg.get("local_storage_path", "/media/usb-data")
     except Exception as e:
         logging.error(f"Failed to load config.json: {e}")
 
@@ -195,7 +197,7 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
                 hostname = n["hostname"].split(" (")[0]
                 break
         if hostname:
-            layout_path = f"/media/usb-data/borg/fleet/{hostname}/partition_layout.json"
+            layout_path = os.path.join(local_storage_path, "borg", "fleet", hostname, "partition_layout.json")
             if os.path.exists(layout_path):
                 try:
                     with open(layout_path, "r") as f:
@@ -223,7 +225,7 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
     if restore_mode == "online":
         repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}/data/borg/fleet/{hostname}"
     else:
-        repo_path = f"/media/usb-data/borg/fleet/{hostname}"
+        repo_path = os.path.join(local_storage_path, "borg", "fleet", hostname)
 
     try:
         format_and_restore(
@@ -399,9 +401,9 @@ def get_kiosk_nodes():
             logging.error(f"Failed to fetch nodes from orchestrator: {e}")
             raise HTTPException(status_code=502, detail=f"Failed to contact orchestrator: {str(e)}")
     else:
-        # Scan /media/usb-data/borg/fleet for cached directories
+        # Scan local cache for cached directories
         nodes = []
-        base_path = "/media/usb-data/borg/fleet"
+        base_path = os.path.join(local_storage_path, "borg", "fleet")
         if os.path.exists(base_path):
             try:
                 for entry in os.listdir(base_path):
@@ -440,7 +442,7 @@ def get_kiosk_nodes():
 
 @app.get("/api/stats")
 def get_mock_stats():
-    repo_path = "/media/usb-data/borg/fleet"
+    repo_path = os.path.join(local_storage_path, "borg", "fleet")
     total_original = 0
     total_dedup = 0
     
@@ -497,7 +499,7 @@ def get_local_history(node_id: int):
     if not hostname or "No local cache" in hostname:
         return []
         
-    repo_path = f"/media/usb-data/borg/fleet/{hostname}"
+    repo_path = os.path.join(local_storage_path, "borg", "fleet", hostname)
     if not os.path.exists(repo_path):
         return []
     
@@ -672,7 +674,7 @@ def run_kiosk_sync(task_id: str, hostname: str):
                 nodes_data = json.loads(response.read().decode())
             for n in nodes_data:
                 if n["hostname"] == hostname:
-                    layout_dir = f"/media/usb-data/borg/fleet/{hostname}"
+                    layout_dir = os.path.join(local_storage_path, "borg", "fleet", hostname)
                     os.makedirs(layout_dir, exist_ok=True)
                     layout_path = os.path.join(layout_dir, "partition_layout.json")
                     with open(layout_path, "w") as lf:
@@ -695,11 +697,14 @@ def run_kiosk_sync(task_id: str, hostname: str):
             total_size = int(total_size_header) if total_size_header else 0
             task_logs[task_id] += f"Total repository size: {total_size} bytes\n"
 
-            target_dir = f"/media/usb-data/borg/fleet/{hostname}"
+            target_dir = os.path.join(local_storage_path, "borg", "fleet", hostname)
             os.makedirs(target_dir, exist_ok=True)
 
+            fleet_dir = os.path.join(local_storage_path, "borg", "fleet")
+            os.makedirs(fleet_dir, exist_ok=True)
+
             tar_proc = subprocess.Popen(
-                ["tar", "-xf", "-", "-C", "/media/usb-data/borg/fleet/"],
+                ["tar", "-xf", "-", "-C", fleet_dir],
                 stdin=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
@@ -747,12 +752,51 @@ def set_kiosk_mode(req: dict):
     restore_mode = mode
     return {"status": "SUCCESS", "mode": restore_mode}
 
+def find_potential_storage_paths() -> List[str]:
+    paths = [local_storage_path, "/media/usb-data"]
+    
+    # Scan /media for directories
+    if os.path.exists("/media"):
+        try:
+            for entry in os.listdir("/media"):
+                full_path = os.path.join("/media", entry)
+                if os.path.isdir(full_path) and not entry.startswith("."):
+                    paths.append(full_path)
+        except Exception:
+            pass
+
+    # Scan /mnt for directories
+    if os.path.exists("/mnt"):
+        try:
+            for entry in os.listdir("/mnt"):
+                full_path = os.path.join("/mnt", entry)
+                if os.path.isdir(full_path) and not entry.startswith("."):
+                    paths.append(full_path)
+        except Exception:
+            pass
+
+    # Add fallback root path
+    paths.append("/")
+    
+    # Deduplicate and keep existing paths
+    unique_paths = []
+    for p in paths:
+        p_abs = os.path.abspath(p)
+        if p_abs not in unique_paths and os.path.exists(p_abs):
+            unique_paths.append(p_abs)
+            
+    return unique_paths
+
 @app.get("/api/kiosk/storage")
 def get_kiosk_storage():
     import shutil
-    path = "/media/usb-data"
+    path = local_storage_path
     if not os.path.exists(path):
-        path = "/"
+        fallbacks = ["/media/usb-data", "/"]
+        for f in fallbacks:
+            if os.path.exists(f):
+                path = f
+                break
     try:
         total, used, free = shutil.disk_usage(path)
         return {
@@ -760,10 +804,48 @@ def get_kiosk_storage():
             "used": used,
             "free": free,
             "path": path,
-            "is_mounted": path == "/media/usb-data" and os.path.ismount(path)
+            "is_mounted": path != "/",
+            "potential_paths": find_potential_storage_paths()
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+class StoragePathRequest(BaseModel):
+    path: str
+
+@app.post("/api/kiosk/storage/path")
+def set_kiosk_storage_path(req: StoragePathRequest):
+    global local_storage_path
+    path = req.path.strip()
+    
+    if not path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Path must be an absolute path starting with '/'")
+        
+    if not os.path.exists(path):
+        try:
+            os.makedirs(path, exist_ok=True)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to create directory '{path}': {str(e)}")
+            
+    local_storage_path = path
+    
+    cfg_data = {}
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                cfg_data = json.load(f)
+        except Exception as e:
+            logging.error(f"Failed to parse config.json for writing: {e}")
+            
+    cfg_data["local_storage_path"] = local_storage_path
+    
+    try:
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(cfg_data, f, indent=4)
+    except Exception as e:
+        logging.error(f"Failed to write config.json during storage path update: {e}")
+        
+    return get_kiosk_storage()
 
 @app.post("/api/kiosk/sync/{hostname}")
 def trigger_kiosk_sync(hostname: str, background_tasks: BackgroundTasks):
