@@ -3,13 +3,13 @@ import json
 import subprocess
 from typing import Dict, Any
 from sqlalchemy.orm import Session
-from celery import shared_task
+from celery_app import celery_app
 
 from database import SessionLocal
 from models import Node, TaskLog, BackupHistory
 from restore_logic import execute_restore
 
-@shared_task(bind=True)
+@celery_app.task(bind=True)
 def flash_restore_device(self, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = False) -> Dict[str, Any]:
     """
     Celery task running locally on the worker in privileged mode.
@@ -19,7 +19,7 @@ def flash_restore_device(self, node_id: int, archive_name: str, target_dev: str,
     """
     return execute_restore(self, node_id, archive_name, target_dev, keep_network_configs, wipe_mac_bindings)
 
-@shared_task(bind=True)
+@celery_app.task(bind=True)
 def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
     """
     Celery task to delete all Borg archives for a specific node.
