@@ -234,10 +234,22 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
         ssh_pub_key = res["parsed_data"].get("ssh_pub_key")
         node.ssh_pub_key = ssh_pub_key
         
-        # Save os_version
+        # Save os_version and hardware details
         os_ver = res["parsed_data"].get("os_version")
         if os_ver:
             node.os_version = os_ver
+        
+        cpu_info = res["parsed_data"].get("cpu_info")
+        if cpu_info:
+            node.cpu_info = cpu_info
+            
+        mem_info = res["parsed_data"].get("memory_info")
+        if mem_info:
+            node.memory_info = mem_info
+            
+        edge_ver = res["parsed_data"].get("edge_version")
+        if edge_ver:
+            node.edge_version = edge_ver
 
         # Update hostname if detected
         detected_hostname = res["parsed_data"].get("hostname")

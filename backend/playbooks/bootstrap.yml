@@ -249,12 +249,30 @@
           os_name="Debian $(cat /etc/debian_version)"
         fi
 
+        # Read CPU details
+        cpu_info=$(lscpu | grep 'Model name' | cut -d: -f2- | xargs || true)
+        if [ -z "$cpu_info" ]; then
+          cpu_info=$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | xargs || echo "Generic CPU")
+        fi
+
+        # Read Memory details (RAM)
+        mem_info=$(free -h | awk '/^Mem:/ {print $2}' || echo "Unknown RAM")
+
+        # Read EDGE Version from MOTD
+        edge_ver="UNKNOWN"
+        if [ -f /etc/motd ]; then
+          edge_ver=$(awk '/EDGE:/ {getline; print; exit}' /etc/motd | xargs || echo "UNKNOWN")
+        fi
+
         echo "DISK_TYPE:$disk_type"
         echo "EFI_UUID:$efi_uuid"
         echo "INTERFACE:$net_iface"
         echo "PREPARED:$prepared"
         echo "HOSTNAME:$(hostname)"
         echo "OS_VERSION:$os_name"
+        echo "CPU_INFO:$cpu_info"
+        echo "MEM_INFO:$mem_info"
+        echo "EDGE_VERSION:$edge_ver"
         echo "PARTITION_LAYOUT_JSON:$(lsblk -J -b -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT,LABEL,UUID,PARTUUID 2>/dev/null | tr -d '\n')"
       register: sys_info
       changed_when: false

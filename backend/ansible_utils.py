@@ -4,7 +4,7 @@ import tempfile
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import TaskLog
+from models import TaskLog, Settings
 
 def run_ansible_playbook(
     task_id: str,
@@ -88,6 +88,108 @@ def run_ansible_playbook(
         parsed_data: Dict[str, str] = {}
         log_accumulator = []
 
+        is_bootstrap = "bootstrap" in playbook_name
+        is_prepare = "prepare" in playbook_name
+        
+        lang = "en"
+        try:
+            settings = db.query(Settings).first()
+            if settings and settings.language in ("en", "ru", "uk"):
+                lang = settings.language
+        except Exception:
+            pass
+
+        BOOTSTRAP_TASKS = {
+            "Verify OS type and version compatibility": (10, "verifying_os"),
+            "Ensure python3/pip are installed": (25, "installing_python"),
+            "Install dependencies": (50, "installing_deps"),
+            "Create borg system user": (65, "creating_user"),
+            "Generate SSH key for borg user": (70, "generating_ssh"),
+            "Authorize orchestrator SSH public key on edge node": (75, "authorizing_keys"),
+            "Configure SSH to allow root login with keys": (80, "configuring_ssh"),
+            "Gather partition and system details": (90, "gathering_system"),
+            "Restore proxy configurations and clean up orchestrator proxy": (95, "cleaning_up")
+        }
+
+        PREPARE_TASKS = {
+            "Backup remote fstab": (10, "backup_fstab"),
+            "Gather partition and system details": (25, "gather_details"),
+            "Label root filesystem": (50, "labeling_fs"),
+            "Rewrite target /etc/fstab": (70, "writing_fstab"),
+            "Verify mount configuration live": (85, "verifying_mount"),
+            "Update GRUB bootloader configuration": (90, "updating_grub")
+        }
+
+        PROGRESS_TRANSLATIONS = {
+            "bootstrap": {
+                "en": {
+                    "verifying_os": "Verifying OS compatibility...",
+                    "installing_python": "Ensuring Python3/Pip are installed...",
+                    "installing_deps": "Installing system dependencies...",
+                    "creating_user": "Creating borg system user...",
+                    "generating_ssh": "Generating SSH keys for borg...",
+                    "authorizing_keys": "Authorizing orchestrator SSH key...",
+                    "configuring_ssh": "Configuring SSH server settings...",
+                    "gathering_system": "Gathering partition and system details...",
+                    "cleaning_up": "Restoring proxy configurations & cleaning up...",
+                    "complete": "Bootstrap completed successfully!"
+                },
+                "ru": {
+                    "verifying_os": "Проверка совместимости ОС...",
+                    "installing_python": "Установка Python3/Pip...",
+                    "installing_deps": "Установка системных зависимостей...",
+                    "creating_user": "Создание системного пользователя borg...",
+                    "generating_ssh": "Генерация SSH-ключей для borg...",
+                    "authorizing_keys": "Авторизация SSH-ключа оркестратора...",
+                    "configuring_ssh": "Настройка SSH-сервера...",
+                    "gathering_system": "Сбор сведений о разделах и системе...",
+                    "cleaning_up": "Восстановление настроек прокси и очистка...",
+                    "complete": "Начальная настройка успешно завершена!"
+                },
+                "uk": {
+                    "verifying_os": "Перевірка сумісності ОС...",
+                    "installing_python": "Встановлення Python3/Pip...",
+                    "installing_deps": "Встановлення системних залежностей...",
+                    "creating_user": "Створення системного користувача borg...",
+                    "generating_ssh": "Генерація SSH-ключів для borg...",
+                    "authorizing_keys": "Авторизація SSH-ключа оркестратора...",
+                    "configuring_ssh": "Налаштування SSH-сервера...",
+                    "gathering_system": "Збір відомостей про розділи та систему...",
+                    "cleaning_up": "Відновлення налаштувань проксі та очищення...",
+                    "complete": "Початкове налаштування успішно завершено!"
+                }
+            },
+            "prepare": {
+                "en": {
+                    "backup_fstab": "Backing up fstab...",
+                    "gather_details": "Gathering partition and system details...",
+                    "labeling_fs": "Labeling filesystems (root, boot, log, storage)...",
+                    "writing_fstab": "Writing standardized fstab configuration...",
+                    "verifying_mount": "Verifying new mount configuration...",
+                    "updating_grub": "Updating GRUB bootloader and initramfs...",
+                    "complete": "Auto-prepare completed successfully!"
+                },
+                "ru": {
+                    "backup_fstab": "Резервное копирование fstab...",
+                    "gather_details": "Сбор сведений о разделах и системе...",
+                    "labeling_fs": "Маркировка файловых систем...",
+                    "writing_fstab": "Запись стандартизированной конфигурации fstab...",
+                    "verifying_mount": "Проверка новой конфигурации монтирования...",
+                    "updating_grub": "Обновление загрузчика GRUB и initramfs...",
+                    "complete": "Автоподготовка успешно завершена!"
+                },
+                "uk": {
+                    "backup_fstab": "Резервне копіювання fstab...",
+                    "gather_details": "Збір відомостей про розділи та систему...",
+                    "labeling_fs": "Маркування файлових систем...",
+                    "writing_fstab": "Запис стандартизованої конфігурації fstab...",
+                    "verifying_mount": "Перевірка нової конфігурації монтування...",
+                    "updating_grub": "Оновлення завантажувача GRUB та initramfs...",
+                    "complete": "Автопідготовка успішно завершена!"
+                }
+            }
+        }
+
         # Read line by line and update DB TaskLog
         while True:
             line = process.stdout.readline()
@@ -95,6 +197,34 @@ def run_ansible_playbook(
                 break
             if line:
                 log_accumulator.append(line)
+                
+                # Check for progress updates
+                percent = None
+                desc = None
+                if "TASK [" in line:
+                    try:
+                        task_title = line.split("TASK [")[1].split("]")[0]
+                        if is_bootstrap:
+                            for key, (pct, trans_key) in BOOTSTRAP_TASKS.items():
+                                if key in task_title:
+                                    percent = pct
+                                    desc = PROGRESS_TRANSLATIONS["bootstrap"][lang].get(trans_key)
+                                    break
+                        elif is_prepare:
+                            for key, (pct, trans_key) in PREPARE_TASKS.items():
+                                if key in task_title:
+                                    percent = pct
+                                    desc = PROGRESS_TRANSLATIONS["prepare"][lang].get(trans_key)
+                                    break
+                    except Exception:
+                        pass
+                elif "PLAY RECAP" in line:
+                    percent = 100
+                    p_type = "bootstrap" if is_bootstrap else "prepare"
+                    desc = PROGRESS_TRANSLATIONS[p_type][lang].get("complete")
+
+                if percent is not None and desc is not None:
+                    log_accumulator.append(f"[PROGRESS] {percent}:{desc}\n")
                 # Parse custom output lines
                 if "SSH_KEY:" in line:
                     parsed_data["ssh_pub_key"] = line.split("SSH_KEY:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
