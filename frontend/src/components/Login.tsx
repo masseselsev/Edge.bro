@@ -75,6 +75,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               </span>
               <input
                 type="text"
+                name="username"
+                autoComplete="username"
                 required
                 disabled={loading}
                 value={username}
@@ -93,6 +95,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               </span>
               <input
                 type="password"
+                name="password"
+                autoComplete="current-password"
                 required
                 disabled={loading}
                 value={password}
