@@ -274,7 +274,7 @@
         # Get detailed RAM info using dmidecode
         ram_details=""
         if command -v dmidecode >/dev/null 2>&1; then
-          ram_sizes=$(dmidecode -t 17 2>/dev/null | grep "Size:" | grep -iv "No Board" | grep -v "No Device" | grep -E "Size: [0-9]" || echo "")
+          ram_sizes=$(dmidecode -t 17 2>/dev/null | grep -E '^[[:space:]]*Size:' | grep -iv "No Board" | grep -v "No Device" | grep -E "[0-9]" || echo "")
           ram_count=$(echo "$ram_sizes" | wc -l)
           if [ "$ram_count" -gt 0 ] && [ -n "$ram_sizes" ]; then
             ram_type=$(dmidecode -t 17 2>/dev/null | grep -A10 "Memory Device" | grep -m1 "Type:" | cut -d: -f2 | xargs || echo "")
