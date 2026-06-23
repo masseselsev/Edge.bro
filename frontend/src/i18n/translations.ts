@@ -443,7 +443,24 @@ export const translations: Record<Language, Record<string, string>> = {
     backToList: 'Back to List',
     wifiPasswordPlaceholder: 'Enter network password...',
     kioskNamePlaceholder: 'e.g. Server Room A',
-    kioskUuidPlaceholder: 'e.g. KB4821'
+    kioskUuidPlaceholder: 'e.g. KB4821',
+    loginTitle: 'Administrator Login',
+    loginUsername: 'Username',
+    loginPassword: 'Password',
+    loginSubmit: 'Sign In',
+    loginError: 'Invalid username or password',
+    tabAdmins: 'Administrators',
+    createAdmin: 'Register Administrator',
+    editAdmin: 'Edit Administrator',
+    deleteAdminConfirm: 'Are you sure you want to delete this administrator?',
+    adminComment: 'Comment',
+    editProfile: 'Edit Profile',
+    logoutButton: 'Logout',
+    adminName: 'Name',
+    adminPhone: 'Phone Number',
+    adminTelegram: 'Telegram ID',
+    adminPasswordHint: 'Leave blank to keep current password',
+    saveChanges: 'Save Changes'
   },
   ru: {
     // Navigation / Tabs
@@ -886,7 +903,24 @@ export const translations: Record<Language, Record<string, string>> = {
     backToList: 'Назад к списку',
     wifiPasswordPlaceholder: 'Введите пароль сети...',
     kioskNamePlaceholder: 'например, Серверная А',
-    kioskUuidPlaceholder: 'например, KB4821'
+    kioskUuidPlaceholder: 'например, KB4821',
+    loginTitle: 'Вход для администраторов',
+    loginUsername: 'Имя пользователя',
+    loginPassword: 'Пароль',
+    loginSubmit: 'Войти',
+    loginError: 'Неверное имя пользователя или пароль',
+    tabAdmins: 'Администраторы',
+    createAdmin: 'Зарегистрировать администратора',
+    editAdmin: 'Редактировать администратора',
+    deleteAdminConfirm: 'Вы уверены, что хотите удалить этого администратора?',
+    adminComment: 'Комментарий',
+    editProfile: 'Редактировать профиль',
+    logoutButton: 'Выйти',
+    adminName: 'Имя',
+    adminPhone: 'Номер телефона',
+    adminTelegram: 'Telegram ID',
+    adminPasswordHint: 'Оставьте пустым, чтобы сохранить текущий пароль',
+    saveChanges: 'Сохранить изменения'
   },
   uk: {
     // Navigation / Tabs
@@ -1326,6 +1360,23 @@ export const translations: Record<Language, Record<string, string>> = {
     backToList: 'Назад до списку',
     wifiPasswordPlaceholder: 'Введіть пароль мережі...',
     kioskNamePlaceholder: 'наприклад, Серверна А',
-    kioskUuidPlaceholder: 'наприклад, KB4821'
+    kioskUuidPlaceholder: 'наприклад, KB4821',
+    loginTitle: 'Вхід для адміністраторів',
+    loginUsername: "Ім'я користувача",
+    loginPassword: 'Пароль',
+    loginSubmit: 'Увійти',
+    loginError: "Невірне ім'я користувача або пароль",
+    tabAdmins: 'Адміністратори',
+    createAdmin: 'Зареєструвати адміністратора',
+    editAdmin: 'Редагувати адміністратора',
+    deleteAdminConfirm: 'Ви впевнені, що хочете видалити цього адміністратора?',
+    adminComment: 'Коментар',
+    editProfile: 'Редагувати профіль',
+    logoutButton: 'Вийти',
+    adminName: "Ім'я",
+    adminPhone: 'Номер телефону',
+    adminTelegram: 'Telegram ID',
+    adminPasswordHint: 'Залиште порожнім, щоб зберегти поточний пароль',
+    saveChanges: 'Зберегти зміни'
   }
 };

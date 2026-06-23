@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar, Sun, Moon, Link2, Copy, ShieldAlert, RefreshCw, Loader2 } from 'lucide-react';
+import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar, Sun, Moon, Link2, Copy, ShieldAlert, RefreshCw, Loader2, User } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
 import HistoryTab from './components/HistoryTab';
@@ -12,6 +12,8 @@ import NetworkSettingsModal from './components/NetworkSettingsModal';
 import { DropdownTextInput } from './components/SearchableSelect';
 import { TranslationProvider, useTranslation } from './context/TranslationContext';
 import type { Language } from './i18n/translations';
+import Login from './components/Login';
+import ProfileModal from './components/ProfileModal';
 
 type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings' | 'clientiso' | 'schedule';
 
@@ -179,6 +181,32 @@ function AppContent() {
   const [pairingError, setPairingError] = useState('');
   const [pairingSuccess, setPairingSuccess] = useState('');
 
+  // Authentication states
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target as Node)) {
+        setProfileDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.reload();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handlePairingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPairingSubmitting(true);
@@ -311,8 +339,35 @@ function AppContent() {
   };
 
   useEffect(() => {
-    // Fetch current app version from API with retries in case of startup delays
     let retryCount = 0;
+    
+    const loadSettingsAndNodes = () => {
+      fetch('/api/settings')
+        .then(res => {
+          if (!res.ok) throw new Error('Failed to fetch settings');
+          return res.json();
+        })
+        .then(sett => {
+          setSettings(sett);
+          setOrchestratorIp(sett.orchestrator_ip || '');
+          setAvailableIps(sett.available_ips || []);
+          
+          fetch('/api/nodes')
+            .then(res => res.json())
+            .then(nodes => {
+              if (nodes.length === 0) {
+                setShowIpPromptModal(true);
+              }
+            })
+            .catch(err => console.error(err))
+            .finally(() => setSettingsLoaded(true));
+        })
+        .catch(err => {
+          console.error(err);
+          setSettingsLoaded(true);
+        });
+    };
+
     const fetchVersion = () => {
       fetch('/api/version')
         .then(res => {
@@ -325,12 +380,13 @@ function AppContent() {
           }
           if (data && data.is_kiosk) {
             setIsKiosk(true);
+            setIsAuthenticated(true);
             setActiveTab('flasher');
             setKioskOrchestratorIp(data.orchestrator_ip || '');
             setConnectionKeyphrase(data.auth_token || '');
             setKioskUuid(data.kiosk_uuid || '');
             
-            // Kiosk mode: pre-fetch network status before hiding loading screen
+            // Kiosk mode: pre-fetch network status
             fetch('/api/network/status')
               .then(res => {
                 if (res.ok) return res.json();
@@ -344,9 +400,27 @@ function AppContent() {
                 setNetworkLoaded(true);
                 setVersionLoaded(true);
               });
+            loadSettingsAndNodes();
           } else {
-            setNetworkLoaded(true);
-            setVersionLoaded(true);
+            // Not kiosk: check auth status
+            fetch('/api/auth/me')
+              .then(res => {
+                if (res.ok) return res.json();
+                throw new Error('Not authenticated');
+              })
+              .then(user => {
+                setCurrentUser(user);
+                setIsAuthenticated(true);
+                setNetworkLoaded(true);
+                setVersionLoaded(true);
+                loadSettingsAndNodes();
+              })
+              .catch(() => {
+                setIsAuthenticated(false);
+                setNetworkLoaded(true);
+                setVersionLoaded(true);
+                setSettingsLoaded(true); // Don't block with loading screen if not authenticated
+              });
           }
         })
         .catch(err => {
@@ -356,13 +430,18 @@ function AppContent() {
             setTimeout(fetchVersion, 3000);
           } else {
             setNetworkLoaded(true);
-            setVersionLoaded(true); // unblock UI after max retries
+            setVersionLoaded(true);
+            setSettingsLoaded(true);
           }
         });
     };
     fetchVersion();
+  }, []);
 
-    // Fetch current settings on mount
+  const handleLoginSuccess = (user: any) => {
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    setSettingsLoaded(false);
     fetch('/api/settings')
       .then(res => res.json())
       .then(sett => {
@@ -370,7 +449,6 @@ function AppContent() {
         setOrchestratorIp(sett.orchestrator_ip || '');
         setAvailableIps(sett.available_ips || []);
         
-        // Check if nodes list is empty on mount
         fetch('/api/nodes')
           .then(res => res.json())
           .then(nodes => {
@@ -383,9 +461,9 @@ function AppContent() {
       })
       .catch(err => {
         console.error(err);
-        setSettingsLoaded(true); // unblock UI even on error
+        setSettingsLoaded(true);
       });
-  }, []);
+  };
 
   // Mark app as ready once critical data is loaded
   useEffect(() => {
@@ -463,7 +541,7 @@ function AppContent() {
       case 'logs':
         return <LogsTab onViewLogs={handleViewLogs} timezone={tz} isKiosk={isKiosk} />;
       case 'settings':
-        return <SettingsTab onSettingsUpdated={setSettings} />;
+        return <SettingsTab onSettingsUpdated={setSettings} currentUser={currentUser} />;
       case 'schedule':
         return <ScheduleTab />;
       case 'fleet':
@@ -471,6 +549,10 @@ function AppContent() {
         return <FleetTab onViewLogs={handleViewLogs} timezone={tz} />;
     }
   };
+
+  if (isAuthenticated === false && !isKiosk) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
     <div className="min-h-full flex flex-col font-sans select-none">
@@ -593,6 +675,39 @@ function AppContent() {
 
               {/* Language Dropdown Selector */}
               <div className="flex items-center gap-2">
+                {!isKiosk && isAuthenticated && currentUser && (
+                  <div className="relative mr-1" ref={profileDropdownRef}>
+                    <button
+                      onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer outline-none"
+                    >
+                      <User size={13} className="text-zinc-400" />
+                      <span>{currentUser.name || currentUser.username}</span>
+                      <svg className={`w-3 h-3 text-zinc-500 transition-transform duration-200 ${profileDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {profileDropdownOpen && (
+                      <div className="absolute right-0 mt-1.5 w-44 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl p-1 z-50 origin-top-right animate-dropdown-in">
+                        <button
+                          onClick={() => {
+                            setProfileDropdownOpen(false);
+                            setShowProfileModal(true);
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs font-semibold rounded-md text-zinc-300 hover:text-zinc-50 hover:bg-zinc-800 transition-colors cursor-pointer"
+                        >
+                          {t('editProfile') || 'Edit Profile'}
+                        </button>
+                        <button
+                          onClick={handleLogout}
+                          className="w-full text-left px-3 py-2 text-xs font-semibold rounded-md text-rose-450 hover:text-rose-400 hover:bg-rose-950/20 transition-colors border-t border-zinc-850 mt-1 pt-2 cursor-pointer"
+                        >
+                          {t('logoutButton') || 'Logout'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <LanguageSelector />
                 <button
                   onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
@@ -785,6 +900,15 @@ function AppContent() {
       {/* Network Settings Modal */}
       {showNetworkModal && (
         <NetworkSettingsModal onClose={() => setShowNetworkModal(false)} initialStatus={networkStatus} />
+      )}
+
+      {/* Profile Modal */}
+      {showProfileModal && currentUser && (
+        <ProfileModal
+          currentUser={currentUser}
+          onClose={() => setShowProfileModal(false)}
+          onUpdateSuccess={(updated) => setCurrentUser(updated)}
+        />
       )}
 
       {/* Pairing Modal */}

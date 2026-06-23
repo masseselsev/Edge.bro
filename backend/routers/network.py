@@ -1,10 +1,11 @@
 import subprocess
 import re
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from routers.users import require_admin
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
-router = APIRouter(prefix="/network", tags=["Network"])
+router = APIRouter(prefix="/network", tags=["Network"], dependencies=[Depends(require_admin)])
 
 # Pydantic models for strict type hinting and serialization
 class WiredStatus(BaseModel):

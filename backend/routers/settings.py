@@ -4,6 +4,7 @@ from database import get_db
 import models
 import schemas
 from version import VERSION
+from routers.users import require_admin
 
 router = APIRouter(prefix="/api")
 
@@ -35,7 +36,7 @@ def get_local_ips():
 
 
 @router.get("/settings", response_model=schemas.SettingsResponse)
-def get_settings(db: Session = Depends(get_db)):
+def get_settings(db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """
     Retrieves global orchestrator settings.
     """
@@ -51,7 +52,7 @@ def get_settings(db: Session = Depends(get_db)):
 
 
 @router.post("/settings", response_model=schemas.SettingsResponse)
-def update_settings(payload: schemas.SettingsBase, db: Session = Depends(get_db)):
+def update_settings(payload: schemas.SettingsBase, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """
     Updates global orchestrator settings.
     """

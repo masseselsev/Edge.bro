@@ -9,7 +9,9 @@ import schemas
 from database import get_db
 from tasks import run_backup_task
 
-router = APIRouter(prefix="/api/groups")
+from routers.users import require_admin
+
+router = APIRouter(prefix="/api/groups", dependencies=[Depends(require_admin)])
 
 def deterministic_hash(value: str) -> int:
     """

@@ -2,7 +2,7 @@ import os
 import json
 import time
 import redis
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional
 from iso_tasks import generate_client_iso_task, download_base_iso_task, CACHE_DIR
 from models import TaskLog
 from database import SessionLocal
+from routers.users import require_admin, require_kiosk_or_admin
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 redis_client = redis.Redis.from_url(REDIS_URL)
@@ -24,7 +25,7 @@ class BaseIsoDownloadRequest(BaseModel):
     url: Optional[str] = None
 
 @router.post("/generate")
-def generate_iso(req: GenerateIsoRequest):
+def generate_iso(req: GenerateIsoRequest, auth = Depends(require_admin)):
     try:
         task = generate_client_iso_task.delay(req.target_ip, req.auth_token)
         return {"task_id": task.id, "message": "ISO generation task started."}
@@ -32,7 +33,7 @@ def generate_iso(req: GenerateIsoRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/download_base")
-def trigger_base_download(req: BaseIsoDownloadRequest = None):
+def trigger_base_download(req: BaseIsoDownloadRequest = None, auth = Depends(require_admin)):
     # Prevent concurrent duplicate download tasks if one is already running
     base_iso_path = os.path.join(CACHE_DIR, "base.iso")
     base_exists = os.path.exists(base_iso_path) and os.path.getsize(base_iso_path) > 1000 * 1024 * 1024
@@ -59,7 +60,7 @@ def trigger_base_download(req: BaseIsoDownloadRequest = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/upload_base")
-def upload_base_iso(file: UploadFile = File(...)):
+def upload_base_iso(file: UploadFile = File(...), auth = Depends(require_admin)):
     if not file.filename.endswith(".iso"):
         raise HTTPException(status_code=400, detail="Only .iso files are allowed")
     
@@ -82,7 +83,7 @@ def upload_base_iso(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
 
 @router.delete("/base")
-def clear_base_iso():
+def clear_base_iso(auth = Depends(require_admin)):
     base_iso_path = os.path.join(CACHE_DIR, "base.iso")
     size_file = os.path.join(CACHE_DIR, "base.iso.size")
     client_iso_path = os.path.join(CACHE_DIR, "technician_client_v1.iso")
@@ -95,7 +96,7 @@ def clear_base_iso():
     return {"status": "SUCCESS", "message": "Base ISO cache cleared."}
 
 @router.get("/download")
-def download_iso():
+def download_iso(auth = Depends(require_admin)):
     iso_path = os.path.join(CACHE_DIR, "technician_client_v1.iso")
     if not os.path.exists(iso_path):
         raise HTTPException(status_code=404, detail="Client ISO not found. Generate it first.")
@@ -107,7 +108,7 @@ def download_iso():
     )
 
 @router.get("/status")
-def get_iso_status():
+def get_iso_status(auth = Depends(require_admin)):
     base_iso_path = os.path.join(CACHE_DIR, "base.iso")
     base_exists = os.path.exists(base_iso_path) and os.path.getsize(base_iso_path) > 1000 * 1024 * 1024
     tmp_path = os.path.join(CACHE_DIR, "base.iso.tmp")
@@ -177,7 +178,7 @@ import subprocess
 from fastapi.responses import StreamingResponse
 
 @router.get("/repos/{hostname}/download")
-def download_repo(hostname: str, token: str):
+def download_repo(hostname: str, token: str, auth = Depends(require_kiosk_or_admin)):
     token_path = os.path.join(CACHE_DIR, "auth_token.txt")
     expected_token = "offline-token-1234"
     if os.path.exists(token_path):

@@ -8,6 +8,7 @@ from typing import List
 from database import get_db
 import models
 import schemas
+from routers.users import require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ def generate_kiosk_key() -> str:
     return f"{block1}-{block2}"
 
 @router.post("", response_model=schemas.KioskResponse)
-def create_kiosk(req: schemas.KioskCreate, db: Session = Depends(get_db)):
+def create_kiosk(req: schemas.KioskCreate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     # Check if uuid already registered
     existing = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid).first()
     if existing:
@@ -39,11 +40,11 @@ def create_kiosk(req: schemas.KioskCreate, db: Session = Depends(get_db)):
     return kiosk
 
 @router.get("", response_model=List[schemas.KioskResponse])
-def list_kiosks(db: Session = Depends(get_db)):
+def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_admin)):
     return db.query(models.Kiosk).all()
 
 @router.delete("/{kiosk_id}")
-def delete_kiosk(kiosk_id: int, db: Session = Depends(get_db)):
+def delete_kiosk(kiosk_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")
@@ -60,7 +61,7 @@ def delete_kiosk(kiosk_id: int, db: Session = Depends(get_db)):
     return {"status": "SUCCESS"}
 
 @router.post("/{kiosk_id}/revoke")
-def revoke_kiosk(kiosk_id: int, db: Session = Depends(get_db)):
+def revoke_kiosk(kiosk_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")

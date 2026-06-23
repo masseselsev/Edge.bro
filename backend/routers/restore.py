@@ -8,7 +8,9 @@ import models
 import schemas
 from tasks import flash_restore_device
 
-router = APIRouter(prefix="/api")
+from routers.users import require_admin
+
+router = APIRouter(prefix="/api", dependencies=[Depends(require_admin)])
 
 @router.get("/scanner/devices", response_model=List[schemas.DeviceResponse])
 def scan_devices():

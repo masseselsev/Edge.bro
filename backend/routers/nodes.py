@@ -11,6 +11,7 @@ from database import get_db
 import models
 import schemas
 from tasks import run_bootstrap_task, run_prepare_task, run_backup_task, purge_node_archives
+from routers.users import require_admin, require_kiosk_or_admin
 
 router = APIRouter(prefix="/api/nodes")
 
@@ -64,7 +65,7 @@ def parse_ip_input(ip_input: str) -> List[str]:
 
 
 @router.get("", response_model=List[schemas.NodeResponse])
-def get_nodes(db: Session = Depends(get_db)):
+def get_nodes(db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
     """
     Retrieves lists of all nodes.
     """
@@ -118,7 +119,7 @@ def get_nodes(db: Session = Depends(get_db)):
 
 
 @router.get("/history", response_model=List[schemas.BackupHistoryResponse])
-def get_all_history(db: Session = Depends(get_db)):
+def get_all_history(db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Retrieves backup snapshot history records for all nodes.
     """
@@ -126,7 +127,7 @@ def get_all_history(db: Session = Depends(get_db)):
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-def add_node(payload: schemas.NodeCreate, db: Session = Depends(get_db)):
+def add_node(payload: schemas.NodeCreate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Registers one or more new nodes and triggers bootstrap.
     """
@@ -197,7 +198,7 @@ def add_node(payload: schemas.NodeCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/{node_id}/prepare")
-def trigger_prepare(node_id: int, db: Session = Depends(get_db)):
+def trigger_prepare(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Triggers the Auto-Prepare disk labels playbook task for a node.
     """
@@ -213,7 +214,7 @@ def trigger_prepare(node_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{node_id}/backup")
-def trigger_backup(node_id: int, payload: schemas.BackupTriggerRequest = None, db: Session = Depends(get_db)):
+def trigger_backup(node_id: int, payload: schemas.BackupTriggerRequest = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Triggers immediate remote backup execution.
     """
@@ -227,7 +228,7 @@ def trigger_backup(node_id: int, payload: schemas.BackupTriggerRequest = None, d
 
 
 @router.get("/{node_id}/history", response_model=List[schemas.BackupHistoryResponse])
-def get_node_history(node_id: int, db: Session = Depends(get_db)):
+def get_node_history(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
     """
     Retrieves the backup snapshot history records for a specific node.
     """
@@ -235,7 +236,7 @@ def get_node_history(node_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{node_id}/archives")
-def purge_node_backups(node_id: int, db: Session = Depends(get_db)):
+def purge_node_backups(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Deletes all Borg backup archives for a specific node.
     """
@@ -248,7 +249,7 @@ def purge_node_backups(node_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_node(node_id: int, db: Session = Depends(get_db)):
+def delete_node(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Deletes a node and its related backup history records from the database,
     cleans up its specific backup archives from the shared repository, and removes its restricted
@@ -303,7 +304,7 @@ def delete_node(node_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{node_id}/provision")
-def trigger_provision(node_id: int, payload: schemas.NodeProvisionRequest, db: Session = Depends(get_db)):
+def trigger_provision(node_id: int, payload: schemas.NodeProvisionRequest, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Triggers bootstrap on an existing node, caching its credentials in Redis.
     """
@@ -333,7 +334,7 @@ def trigger_provision(node_id: int, payload: schemas.NodeProvisionRequest, db: S
 
 
 @router.post("/{node_id}/notes")
-def update_node_notes(node_id: int, payload: schemas.NodeNotesUpdate, db: Session = Depends(get_db)):
+def update_node_notes(node_id: int, payload: schemas.NodeNotesUpdate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Updates the notes field for a specific node.
     """
@@ -347,7 +348,7 @@ def update_node_notes(node_id: int, payload: schemas.NodeNotesUpdate, db: Sessio
 
 
 @router.post("/{node_id}/backup-today")
-def trigger_backup_today(node_id: int, db: Session = Depends(get_db)):
+def trigger_backup_today(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Sets backup_today to True for the node.
     """
@@ -361,7 +362,7 @@ def trigger_backup_today(node_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{node_id}/toggle-pause")
-def toggle_backup_pause(node_id: int, db: Session = Depends(get_db)):
+def toggle_backup_pause(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Toggles backup_paused state for the node.
     """
@@ -375,7 +376,7 @@ def toggle_backup_pause(node_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{node_id}/assign-group/{group_id}")
-def assign_node_group(node_id: int, group_id: int, db: Session = Depends(get_db)):
+def assign_node_group(node_id: int, group_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Assigns the node to a backup group. If group_id is 0 or negative, unassigns the node.
     """
@@ -396,7 +397,7 @@ def assign_node_group(node_id: int, group_id: int, db: Session = Depends(get_db)
 
 
 @router.get("/{node_id}/task-logs", response_model=List[schemas.TaskLogResponse])
-def get_node_task_logs(node_id: int, db: Session = Depends(get_db)):
+def get_node_task_logs(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Retrieves background execution logs associated with a specific node.
     """

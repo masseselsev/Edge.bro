@@ -3,7 +3,9 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models
 
-router = APIRouter(prefix="/api/stats")
+from routers.users import require_admin
+
+router = APIRouter(prefix="/api/stats", dependencies=[Depends(require_admin)])
 
 @router.get("")
 def get_global_stats(db: Session = Depends(get_db)):

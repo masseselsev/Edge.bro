@@ -4,25 +4,26 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models
 import schemas
+from routers.users import require_admin, require_kiosk_or_admin
 
 router = APIRouter(prefix="/api/tasks")
 
 @router.get("", response_model=List[schemas.TaskLogResponse])
-def get_all_tasks(db: Session = Depends(get_db)):
+def get_all_tasks(db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
     """
     Lists all background task execution logs ordered by created_at desc.
     """
     return db.query(models.TaskLog).order_by(models.TaskLog.created_at.desc()).all()
 
 @router.get("/debug-logs", response_model=List[schemas.SystemLogResponse])
-def get_debug_logs(db: Session = Depends(get_db)):
+def get_debug_logs(db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Fetches all system/application execution logs ordered by created_at desc.
     """
     return db.query(models.SystemLog).order_by(models.SystemLog.created_at.desc()).limit(500).all()
 
 @router.get("/{task_id}", response_model=schemas.TaskLogResponse)
-def get_task_logs(task_id: str, db: Session = Depends(get_db)):
+def get_task_logs(task_id: str, db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
     """
     Fetches execution logs and status of a background task.
     """

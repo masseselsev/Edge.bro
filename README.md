@@ -345,3 +345,29 @@ The table below lists **every file and system object** modified on the target no
 | Initramfs | Prepare | Rebuilt via `update-initramfs -u` | `update-initramfs -u` |
 | systemd state | Prepare | `daemon-reload` | N/A |
 | *Backup execution* | Backup | **No files modified on node** | N/A |
+
+---
+
+## 🔐 Security & User Authentication
+
+To protect the Orchestrator dashboard and API, Edge B.R.O. implements a role-based access control (RBAC) system:
+
+1. **Dashboard Authentication**:
+   - Access to the administrative dashboard requires logging in with credentials.
+   - User sessions are managed using secure, HTTP-only `admin_session` JWT cookies, protecting users from Cross-Site Scripting (XSS) attacks.
+
+2. **User Roles**:
+   - **Superadmin**: The master administrative account. Can manage other administrator accounts under the **Settings → Administrators** sub-tab (create, edit details, set/reset passwords, delete, and add comments).
+   - **Administrator**: Standard admin account. Can view nodes, tasks, settings, triggers backups/restores, but cannot manage other users.
+
+3. **Technician Kiosks**:
+   - Paired technician kiosks booted from the Live-USB bypass the username/password login by sending pre-paired tokens in the `Authorization: Bearer <auth_token>` header.
+   - For offline restoration ISOs where network setup is untethered, query parameters (`?token=<auth_token>`) are supported to ensure authorization persists.
+
+4. **Default Seeding & Recovery**:
+   - On the initial startup, the Orchestrator seeds a default Superadmin account using values from the environment variables (`.env`):
+     - Username: `SUPERADMIN_USERNAME` (defaults to `admin` if not set)
+     - Password: `ADMIN_PASSWORD` (defaults to `admin_pass` if not set)
+   - These credentials are created in the database only once. Subsequent changes in the `.env` file will not overwrite changes made via the Web UI.
+   - If you need to reset the master password, change the values in `.env` and restart the container, or clear the `users` table to trigger a re-seed.
+
