@@ -21,7 +21,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
   const [hostname, setHostname] = useState('');
   const [ipAddress, setIpAddress] = useState('');
   const [sshPort, setSshPort] = useState(2222);
-  const [username, setUsername] = useState('root');
+  const [username, setUsername] = useState('user');
   const [password, setPassword] = useState('admin');
   const [autoDetectHostname, setAutoDetectHostname] = useState(false);
   const [forceOrchestratorProxy, setForceOrchestratorProxy] = useState(false);
@@ -161,8 +161,8 @@ interface ProvisionNodeModalProps {
 
 export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error }: ProvisionNodeModalProps) {
   const { t } = useTranslation();
-  const [username, setUsername] = useState('root');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('user');
+  const [password, setPassword] = useState('admin');
   const [forceOrchestratorProxy, setForceOrchestratorProxy] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
