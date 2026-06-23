@@ -4,7 +4,7 @@ import subprocess
 import json
 import logging
 import hashlib
-from tasks import celery_app
+from celery_app import celery_app
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
