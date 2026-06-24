@@ -268,11 +268,13 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                       {kiosk.uuid.startsWith('PENDING-') ? <span className="text-zinc-500 italic">{t('kioskPending') || 'Pending...'}</span> : kiosk.uuid}
                     </td>
                     <td className="py-3.5 px-4 font-mono">
-                      <div className="font-bold text-amber-400">{kiosk.key}</div>
-                      {kiosk.auth_token && (
-                        <div className="text-[10px] text-zinc-550 font-semibold mt-1">
-                          {t('kioskTokenPrefix') || 'Token: '}
-                          <span className="text-indigo-400 font-bold select-all">{kiosk.auth_token}</span>
+                      {kiosk.auth_token ? (
+                        <div className="font-bold text-indigo-400 select-all" title="Kiosk Authentication Token">
+                          {kiosk.auth_token}
+                        </div>
+                      ) : (
+                        <div className="font-bold text-amber-400 select-all" title="Pairing Key">
+                          {kiosk.key}
                         </div>
                       )}
                     </td>
