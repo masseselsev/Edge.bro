@@ -71,9 +71,10 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
       .then(res => res.json())
       .then(data => {
         if (data) {
-          if (data.available_ips) {
-            setAvailableIps(data.available_ips);
-          }
+          const autoIps = data.available_ips || [];
+          const customIps = data.server_ips || [];
+          const combined = Array.from(new Set([...autoIps, ...customIps]));
+          setAvailableIps(combined);
           if (data.orchestrator_ip) {
             setOrchestratorIp(data.orchestrator_ip);
           }
