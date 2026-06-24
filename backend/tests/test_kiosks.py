@@ -14,7 +14,8 @@ from routers.kiosks import (
     list_kiosks,
     delete_kiosk,
     revoke_kiosk,
-    handshake
+    handshake,
+    enroll_kiosk
 )
 
 TEST_DATABASE_URL = "sqlite:///./test_kiosks_db.db"
@@ -44,16 +45,15 @@ def test_generate_kiosk_key():
     Test format of generated security keys.
     """
     key = generate_kiosk_key()
-    assert len(key) == 9 # XXXX-XXXX
-    assert "-" in key
-    parts = key.split("-")
-    assert len(parts) == 2
-    assert len(parts[0]) == 4
-    assert len(parts[1]) == 4
+    assert len(key) == 6 # 1234AB (4 digits + 2 letters)
+    assert key[:4].isdigit()
+    assert key[4:].isalpha()
+    assert key.isupper()
     # No ambiguous characters
     ambiguous = ["O", "0", "I", "1"]
     for char in ambiguous:
         assert char not in key
+
 
 @patch("routers.kiosks.authorize_ssh_key")
 @patch("routers.kiosks.revoke_ssh_key")
@@ -71,7 +71,8 @@ def test_kiosks_crud_and_handshake(mock_revoke, mock_authorize, db_session):
     assert kiosk.name == kiosk_name
     assert kiosk.uuid == kiosk_uuid
     assert kiosk.status == "PENDING"
-    assert len(kiosk.key) == 9
+    assert len(kiosk.key) == 6
+
     
     key = kiosk.key
     kiosk_id = kiosk.id
@@ -92,9 +93,10 @@ def test_kiosks_crud_and_handshake(mock_revoke, mock_authorize, db_session):
     fake_ssh_pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPqgXgGf18V... KioskSSHKey"
     req_handshake = schemas.HandshakeRequest(
         uuid=kiosk_uuid,
-        key=key,
+        key=key.lower(), # Test case insensitivity
         ssh_pub_key=fake_ssh_pub
     )
+
     
     # Perform handshake
     hs_data = handshake(req_handshake, db=db_session)
@@ -134,3 +136,25 @@ def test_kiosks_crud_and_handshake(mock_revoke, mock_authorize, db_session):
     db_session.expire_all()
     deleted_record = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
     assert deleted_record is None
+
+def test_kiosk_enrollment_flow(db_session):
+    # Test first-time enrollment
+    req_enroll = schemas.KioskEnrollRequest(
+        uuid="NEW_KIOSK_123",
+        name="Dynamic Test Kiosk",
+        phone="555-1234",
+        comment="Testing dynamic registration flow",
+        ssh_pub_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPqgXgGf18V... KioskSSHKey"
+    )
+    res = enroll_kiosk(req_enroll, db=db_session)
+    assert res["status"] == "PENDING"
+    assert len(res["key"]) == 6
+    
+    # Verify kiosk is saved in db
+    db_session.expire_all()
+    kiosk = db_session.query(models.Kiosk).filter(models.Kiosk.uuid == "NEW_KIOSK_123").first()
+    assert kiosk is not None
+    assert kiosk.name == "Dynamic Test Kiosk"
+    assert kiosk.phone == "555-1234"
+    assert kiosk.comment == "Testing dynamic registration flow"
+

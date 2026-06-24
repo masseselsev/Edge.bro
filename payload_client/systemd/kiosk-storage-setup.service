@@ -1,0 +1,13 @@
+[Unit]
+Description=Kiosk Persistent USB Storage Setup
+DefaultDependencies=no
+After=local-fs.target
+Before=offline-backend.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/offline-client/kiosk-storage-setup.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

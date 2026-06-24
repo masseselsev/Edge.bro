@@ -281,6 +281,18 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         shutil.copy2(launcher_src, launcher_dst)
         os.chmod(launcher_dst, 0o755)
 
+        # Inject Kiosk Persistent USB Storage Setup Script & Service
+        setup_script_src = "/payload_client/kiosk-storage-setup.sh"
+        setup_script_dst = os.path.join(payload_dir, "opt", "offline-client", "kiosk-storage-setup.sh")
+        shutil.copy2(setup_script_src, setup_script_dst)
+        os.chmod(setup_script_dst, 0o755)
+
+        setup_svc_src = "/payload_client/systemd/kiosk-storage-setup.service"
+        setup_svc_dst = os.path.join(payload_dir, "etc", "systemd", "system", "kiosk-storage-setup.service")
+        shutil.copy2(setup_svc_src, setup_svc_dst)
+        os.symlink("/etc/systemd/system/kiosk-storage-setup.service", os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants", "kiosk-storage-setup.service"))
+
+
         # Inject Kiosk Desktop Entry
         kiosk_src = "/payload_client/systemd/offline-kiosk.desktop"
         kiosk_dst = os.path.join(payload_dir, "etc", "xdg", "autostart", "offline-kiosk.desktop")
@@ -335,14 +347,17 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         settings = db.query(models.Settings).first()
         lang = settings.language if settings else "en"
         kiosk_uuid = generate_kiosk_id()
+        server_ips = settings.server_ips if (settings and settings.server_ips) else []
         config_data = {
             "orchestrator_ip": target_ip,
+            "available_server_ips": server_ips,
             "auth_token": auth_token,
             "language": lang,
             "kiosk_uuid": kiosk_uuid
         }
         with open(os.path.join(opt_offline, "backend", "config.json"), "w") as f:
             json.dump(config_data, f, indent=4)
+
 
 
         # Save token for validation in routers/iso.py

@@ -35,6 +35,7 @@ language = "en"
 kiosk_uuid = ""
 restore_mode = "offline"
 local_storage_path = "/media/usb-data"
+available_server_ips = []
 
 if os.path.exists(CONFIG_PATH):
     try:
@@ -48,8 +49,10 @@ if os.path.exists(CONFIG_PATH):
             kiosk_uuid = cfg.get("kiosk_uuid", "")
             restore_mode = cfg.get("restore_mode", "online" if auth_token else "offline")
             local_storage_path = cfg.get("local_storage_path", "/media/usb-data")
+            available_server_ips = cfg.get("available_server_ips", [])
     except Exception as e:
         logging.error(f"Failed to load config.json: {e}")
+
 
 def generate_kiosk_id() -> str:
     """Generates a memorable kiosk identifier in XX1234 pattern (2 letters + 4 digits)."""
@@ -254,10 +257,63 @@ def get_version():
         "version": VERSION,
         "is_kiosk": True,
         "orchestrator_ip": orchestrator_ip,
+        "available_server_ips": available_server_ips,
         "auth_token": auth_token,
         "language": language,
         "kiosk_uuid": kiosk_uuid
     }
+
+class ClientEnrollRequest(BaseModel):
+    orchestrator_ip: str
+    name: str
+    phone: str
+    comment: str
+
+@app.post("/api/kiosk/enroll")
+def enroll_client_kiosk(req: ClientEnrollRequest):
+    # Ensure SSH keypair exists (lazy generation)
+    ensure_ssh_keypair()
+    
+    pub_key_path = SSH_KEY_PATH + ".pub"
+    if not os.path.exists(pub_key_path):
+        raise HTTPException(status_code=500, detail="Local SSH public key is missing")
+    
+    try:
+        with open(pub_key_path, "r") as f:
+            pub_key_data = f.read().strip()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read local SSH public key: {str(e)}")
+        
+    url = f"http://{req.orchestrator_ip}:8000/api/kiosks/enroll"
+    payload = {
+        "uuid": kiosk_uuid,
+        "name": req.name.strip(),
+        "phone": req.phone.strip(),
+        "comment": req.comment.strip(),
+        "ssh_pub_key": pub_key_data
+    }
+    
+    try:
+        post_data = json.dumps(payload).encode("utf-8")
+        req_obj = urllib.request.Request(
+            url, 
+            data=post_data,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req_obj, timeout=10) as response:
+            res_data = json.loads(response.read().decode())
+        return res_data
+    except urllib.error.HTTPError as he:
+        err_body = he.read().decode()
+        try:
+            err_json = json.loads(err_body)
+            detail = err_json.get("detail", "Enrollment request failed")
+        except:
+            detail = f"Server returned error code {he.code}"
+        raise HTTPException(status_code=400, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to submit enrollment to server: {str(e)}")
+
 
 @app.post("/api/kiosk/connect")
 def connect_to_orchestrator(req: ConnectRequest):

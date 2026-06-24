@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/kiosks", tags=["Kiosks"])
 
 def generate_kiosk_key() -> str:
-    # Generate 2 blocks of 4 alphanumeric characters, excluding ambiguous ones (O, 0, I, 1, L)
-    chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-    block1 = "".join(random.choice(chars) for _ in range(4))
-    block2 = "".join(random.choice(chars) for _ in range(4))
-    return f"{block1}-{block2}"
+    # Generate 4 digits followed by 2 letters, excluding confusing ones (O, 0, I, 1, L, Z, 2)
+    digits = "".join(random.choice("3456789") for _ in range(4))
+    letters = "".join(random.choice("ABCDEFGHJKMNPQRSTUVWXY") for _ in range(2))
+    return f"{digits}{letters}"
+
 
 @router.post("", response_model=schemas.KioskResponse)
 def create_kiosk(req: schemas.KioskCreate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
@@ -78,7 +78,9 @@ def revoke_kiosk(kiosk_id: int, db: Session = Depends(get_db), current_user = De
 
 @router.post("/handshake")
 def handshake(req: schemas.HandshakeRequest, db: Session = Depends(get_db)):
-    kiosk = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid, models.Kiosk.key == req.key).first()
+    normalized_key = req.key.strip().upper()
+    kiosk = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid, models.Kiosk.key == normalized_key).first()
+
     if not kiosk:
         raise HTTPException(status_code=400, detail="Invalid UUID or security key")
     
@@ -156,3 +158,40 @@ def revoke_ssh_key(pub_key: str):
         fix_ssh_permissions()
     except Exception as e:
         logger.error(f"Failed to fix SSH permissions during key revocation: {e}")
+
+@router.post("/enroll")
+def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db)):
+    # Check if UUID already registered
+    existing = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid).first()
+    if existing:
+        if existing.status == "APPROVED":
+            raise HTTPException(status_code=400, detail="Kiosk is already approved")
+        
+        # Update metadata
+        existing.name = req.name
+        existing.phone = req.phone
+        existing.comment = req.comment
+        existing.ssh_pub_key = req.ssh_pub_key
+        existing.status = "PENDING"
+        existing.key = generate_kiosk_key()
+        db.commit()
+        db.refresh(existing)
+        return {"status": "PENDING", "key": existing.key}
+
+    key = generate_kiosk_key()
+    while db.query(models.Kiosk).filter(models.Kiosk.key == key).first():
+        key = generate_kiosk_key()
+
+    kiosk = models.Kiosk(
+        uuid=req.uuid,
+        name=req.name,
+        phone=req.phone,
+        comment=req.comment,
+        ssh_pub_key=req.ssh_pub_key,
+        status="PENDING",
+        key=key
+    )
+    db.add(kiosk)
+    db.commit()
+    return {"status": "PENDING", "key": key}
+

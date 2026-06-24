@@ -73,7 +73,9 @@ def update_settings(payload: schemas.SettingsBase, db: Session = Depends(get_db)
     settings.retention_policy = payload.retention_policy.model_dump() if payload.retention_policy else None
     settings.default_compression = payload.default_compression
     settings.default_cpu_quota = payload.default_cpu_quota
+    settings.server_ips = payload.server_ips
     db.commit()
+
     settings.available_ips = get_local_ips()
     import os
     settings.borg_host_data_path = os.getenv("BORG_HOST_DATA_PATH", "borg-data")

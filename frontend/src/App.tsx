@@ -180,6 +180,14 @@ function AppContent() {
   const [pairingSubmitting, setPairingSubmitting] = useState(false);
   const [pairingError, setPairingError] = useState('');
   const [pairingSuccess, setPairingSuccess] = useState('');
+  const [pendingKiosks, setPendingKiosks] = useState<any[]>([]);
+  const [activeReviewKiosk, setActiveReviewKiosk] = useState<any | null>(null);
+  const [pairingMode, setPairingMode] = useState<'enroll' | 'connect'>('enroll');
+  const [availableServerIps, setAvailableServerIps] = useState<string[]>([]);
+  const [kioskName, setKioskName] = useState('');
+  const [kioskPhone, setKioskPhone] = useState('');
+  const [kioskComment, setKioskComment] = useState('');
+  const [enrollMsg, setEnrollMsg] = useState('');
 
   // Authentication states
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -244,6 +252,57 @@ function AppContent() {
       setPairingError(err.message);
     } finally {
       setPairingSubmitting(false);
+    }
+  };
+
+  const handleEnrollSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPairingSubmitting(true);
+    setPairingError('');
+    setEnrollMsg('');
+    try {
+      const res = await fetch('/api/kiosk/enroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orchestrator_ip: pairingIp.trim(),
+          name: kioskName.trim(),
+          phone: kioskPhone.trim(),
+          comment: kioskComment.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Enrollment request failed');
+      }
+      setEnrollMsg(t('enrollStatusPending') || 'Enrollment request sent. Please enter the pairing key shown on the server dashboard.');
+      setPairingMode('connect');
+    } catch (err: any) {
+      setPairingError(err.message);
+    } finally {
+      setPairingSubmitting(false);
+    }
+  };
+
+  const handleRejectKiosk = async (id: number) => {
+    if (window.confirm(t('kioskRevokeConfirm') || 'Are you sure you want to reject this request?')) {
+      try {
+        const res = await fetch(`/api/kiosks/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          const refreshRes = await fetch('/api/kiosks');
+          if (refreshRes.ok) {
+            const data = await refreshRes.json();
+            const pending = data.filter((k: any) => k.status === 'PENDING');
+            setPendingKiosks(pending);
+          }
+          setActiveReviewKiosk(null);
+        } else {
+          const data = await res.json();
+          alert(data.detail || 'Failed to reject request');
+        }
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
@@ -385,6 +444,7 @@ function AppContent() {
             setKioskOrchestratorIp(data.orchestrator_ip || '');
             setConnectionKeyphrase(data.auth_token || '');
             setKioskUuid(data.kiosk_uuid || '');
+            setAvailableServerIps(data.available_server_ips || []);
             
             // Kiosk mode: pre-fetch network status
             fetch('/api/network/status')
@@ -437,6 +497,27 @@ function AppContent() {
     };
     fetchVersion();
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || isKiosk) return;
+
+    const fetchPendingKiosks = async () => {
+      try {
+        const res = await fetch('/api/kiosks');
+        if (res.ok) {
+          const data = await res.json();
+          const pending = data.filter((k: any) => k.status === 'PENDING');
+          setPendingKiosks(pending);
+        }
+      } catch (err) {
+        console.error('Failed to fetch pending kiosks:', err);
+      }
+    };
+
+    fetchPendingKiosks();
+    const interval = setInterval(fetchPendingKiosks, 10000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, isKiosk]);
 
   const handleLoginSuccess = (user: any) => {
     setCurrentUser(user);
@@ -807,6 +888,32 @@ function AppContent() {
         </div>
       </header>
 
+      {/* Pending Kiosk Connection requests banner */}
+      {!isKiosk && pendingKiosks.length > 0 && (
+        <div className="bg-zinc-950 border-b border-amber-500/20 py-2.5 px-6 shadow-md transition-all duration-300 ease-in-out animate-fade-in">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300">
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+              </span>
+              <span>
+                {t('pendingConnectionBanner')
+                  .replace('{name}', pendingKiosks[0].name || t('unnamedKiosk') || 'Unnamed')
+                  .replace('{phone}', pendingKiosks[0].phone || '')}
+                {pendingKiosks.length > 1 ? ` (+${pendingKiosks.length - 1})` : ''}
+              </span>
+            </div>
+            <button
+              onClick={() => setActiveReviewKiosk(pendingKiosks[0])}
+              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded text-[11px] font-bold transition-all duration-200 cursor-pointer shadow-[0_0_12px_rgba(245,158,11,0.2)] hover:shadow-[0_0_16px_rgba(245,158,11,0.4)]"
+            >
+              {t('reviewRequest') || 'Review Request'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Body */}
       <main className={`flex-1 max-w-7xl w-full mx-auto px-6 py-8 ${isKiosk ? 'pb-20' : ''}`}>
         <div key={activeTab} className="animate-fade-in">
@@ -911,6 +1018,87 @@ function AppContent() {
         />
       )}
 
+      {/* Review Modal */}
+      {activeReviewKiosk && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4 animate-modal-in">
+            <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
+              <div className="p-2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg">
+                <Server size={20} className="animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-zinc-50 leading-tight">
+                  {t('enrollmentModalTitle') || 'Pending Kiosk Connection Request'}
+                </h3>
+                <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">
+                  {activeReviewKiosk.name || t('unnamedKiosk') || 'Unnamed Kiosk'}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs border-b border-zinc-850 pb-3">
+              <div className="grid grid-cols-3 gap-2">
+                <span className="text-zinc-500 font-semibold">{t('kioskPhone') || 'Phone'}:</span>
+                <span className="col-span-2 text-zinc-300 font-medium">{activeReviewKiosk.phone || '—'}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <span className="text-zinc-500 font-semibold">{t('kioskComment') || 'Comment'}:</span>
+                <span className="col-span-2 text-zinc-300 font-medium whitespace-pre-wrap">{activeReviewKiosk.comment || '—'}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <span className="text-zinc-500 font-semibold">UUID:</span>
+                <span className="col-span-2 text-zinc-400 font-mono select-all break-all">{activeReviewKiosk.uuid}</span>
+              </div>
+            </div>
+
+            <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-xl space-y-2 text-center">
+              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">
+                {t('pairKeyLabel') || 'Security Key'}
+              </span>
+              <div className="flex items-center justify-between max-w-[200px] mx-auto">
+                <span className="font-mono text-2xl font-bold tracking-widest text-amber-400 select-all mx-auto">
+                  {activeReviewKiosk.key}
+                </span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeReviewKiosk.key);
+                    alert(t('copied') || 'Copied!');
+                  }}
+                  className="p-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-lg transition-colors cursor-pointer"
+                  title={t('copyToClipboard') || 'Copy to Clipboard'}
+                >
+                  <Copy size={13} />
+                </button>
+              </div>
+              <p className="text-[10px] text-zinc-500 leading-relaxed max-w-[260px] mx-auto mt-2">
+                {language === 'ru'
+                  ? 'Сообщите этот ключ оператору. Он должен ввести его на экране настройки киоска.'
+                  : language === 'uk'
+                  ? 'Повідомте цей ключ оператору. Він повинен ввести його на екрані налаштування кіоску.'
+                  : 'Provide this key to the operator. They must enter it on their kiosk setup screen.'}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => handleRejectKiosk(activeReviewKiosk.id)}
+                className="px-4 py-2 text-xs font-semibold text-rose-450 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/30 rounded-lg transition-colors cursor-pointer"
+              >
+                {t('rejectKiosk') || 'Reject Kiosk'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveReviewKiosk(null)}
+                className="px-4 py-2 text-xs font-semibold text-zinc-300 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+              >
+                {t('closeButton') || 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Pairing Modal */}
       {showPairingModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
@@ -942,51 +1130,167 @@ function AppContent() {
               </button>
             </div>
 
-            <form onSubmit={handlePairingSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('orchestratorIpLabel') || 'Orchestrator IP Address'}</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. 192.168.222.2"
-                  value={pairingIp}
-                  onChange={(e) => setPairingIp(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
-                />
-              </div>
+            <div className="flex bg-zinc-950 rounded-lg p-1 gap-1 border border-zinc-800/40">
+              <button
+                type="button"
+                onClick={() => {
+                  setPairingMode('enroll');
+                  setPairingError('');
+                  setEnrollMsg('');
+                }}
+                className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-all ${
+                  pairingMode === 'enroll'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-900'
+                }`}
+              >
+                {t('submitRequest') || 'Request Key'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPairingMode('connect');
+                  setPairingError('');
+                  setEnrollMsg('');
+                }}
+                className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-all ${
+                  pairingMode === 'connect'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-900'
+                }`}
+              >
+                {t('enterPairingKey') || 'Enter Key'}
+              </button>
+            </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('pairKeyLabel') || 'Security Key (Format: ABCD-1234)'}</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="XXXX-XXXX"
-                  value={pairingKey}
-                  onChange={(e) => setPairingKey(e.target.value.toUpperCase())}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-amber-400 font-bold text-sm tracking-widest focus:border-indigo-500 focus:outline-none transition-colors font-mono text-center placeholder:font-sans placeholder:tracking-normal"
-                />
-              </div>
+            {pairingMode === 'enroll' ? (
+              <form onSubmit={handleEnrollSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
+                    {t('selectServerIp') || 'Select Server IP'}
+                  </label>
+                  <DropdownTextInput
+                    value={pairingIp}
+                    onChange={setPairingIp}
+                    options={availableServerIps}
+                    required
+                  />
+                </div>
 
-              {pairingError && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{pairingError}</div>}
-              {pairingSuccess && <div className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg">{pairingSuccess}</div>}
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
+                    {t('kioskNameLabel') || 'Friendly Name'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={language === 'ru' ? 'например, Киоск первого этажа' : language === 'uk' ? 'наприклад, Кіоск першого поверху' : 'e.g. Front desk kiosk'}
+                    value={kioskName}
+                    onChange={(e) => setKioskName(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                  />
+                </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => setShowPairingModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
-                >
-                  {t('cancel') || 'Cancel'}
-                </button>
-                <button
-                  type="submit"
-                  disabled={pairingSubmitting}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
-                >
-                  {pairingSubmitting ? t('saving') : (t('connectButton') || 'Connect')}
-                </button>
-              </div>
-            </form>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
+                    {t('kioskPhone') || 'Phone'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={t('kioskPhonePlaceholder') || 'e.g. +1 555-0199'}
+                    value={kioskPhone}
+                    onChange={(e) => setKioskPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
+                    {t('kioskComment') || 'Comment'}
+                  </label>
+                  <textarea
+                    rows={2}
+                    required
+                    placeholder={t('kioskCommentPlaceholder') || 'e.g. Backup kiosk for first floor'}
+                    value={kioskComment}
+                    onChange={(e) => setKioskComment(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                  />
+                </div>
+
+                {pairingError && <div className="text-xs text-rose-455 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{pairingError}</div>}
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowPairingModal(false)}
+                    className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                  >
+                    {t('cancel') || 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={pairingSubmitting}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    {pairingSubmitting ? t('saving') : (t('submitRequest') || 'Submit Request')}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handlePairingSubmit} className="space-y-4">
+                {enrollMsg && (
+                  <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg leading-relaxed">
+                    {enrollMsg}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
+                    {t('selectServerIp') || 'Select Server IP'}
+                  </label>
+                  <DropdownTextInput
+                    value={pairingIp}
+                    onChange={setPairingIp}
+                    options={availableServerIps}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('pairKeyLabel') || 'Security Key (Format: 1234AB)'}</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="1234AB"
+                    value={pairingKey}
+                    onChange={(e) => setPairingKey(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-amber-400 font-bold text-sm tracking-widest focus:border-indigo-500 focus:outline-none transition-colors font-mono text-center placeholder:font-sans placeholder:tracking-normal"
+                  />
+                </div>
+
+                {pairingError && <div className="text-xs text-rose-455 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{pairingError}</div>}
+                {pairingSuccess && <div className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg">{pairingSuccess}</div>}
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowPairingModal(false)}
+                    className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                  >
+                    {t('cancel') || 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={pairingSubmitting}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
+                  >
+                    {pairingSubmitting ? t('saving') : (t('connectButton') || 'Connect')}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

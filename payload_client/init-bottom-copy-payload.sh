@@ -33,6 +33,12 @@ if [ -d /etc/systemd/system ]; then
         cp /etc/systemd/system/offline-ssh-install.service /root/etc/systemd/system/
         ln -sf /etc/systemd/system/offline-ssh-install.service /root/etc/systemd/system/multi-user.target.wants/offline-ssh-install.service
     fi
+
+    if [ -f /etc/systemd/system/kiosk-storage-setup.service ]; then
+        cp /etc/systemd/system/kiosk-storage-setup.service /root/etc/systemd/system/
+        ln -sf /etc/systemd/system/kiosk-storage-setup.service /root/etc/systemd/system/multi-user.target.wants/kiosk-storage-setup.service
+    fi
+
 fi
 
 # Set NetworkManager to manage all interfaces

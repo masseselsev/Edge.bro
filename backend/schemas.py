@@ -25,6 +25,8 @@ class SettingsBase(BaseModel):
     retention_policy: Optional[RetentionPolicySchema] = None
     default_compression: str = Field(default='zstd:3')
     default_cpu_quota: Optional[int] = Field(default=None, ge=0, le=400)
+    server_ips: Optional[List[str]] = Field(default=[])
+
 
 
 class SettingsResponse(SettingsBase):
@@ -177,6 +179,9 @@ class SchedulerLoadResponse(BaseModel):
 class KioskBase(BaseModel):
     name: Optional[str] = None
     uuid: str
+    phone: Optional[str] = None
+    comment: Optional[str] = None
+
 
 
 class KioskCreate(KioskBase):
@@ -245,5 +250,14 @@ class UserResponse(UserBase):
 class LoginPayload(BaseModel):
     username: str
     password: str
+
+
+class KioskEnrollRequest(BaseModel):
+    uuid: str
+    name: str
+    phone: str
+    comment: str
+    ssh_pub_key: str
+
 
 

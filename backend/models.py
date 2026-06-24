@@ -22,6 +22,8 @@ class Settings(Base):
     retention_policy = Column(JSON, nullable=True)
     default_compression = Column(String, default='zstd:3', nullable=False)
     default_cpu_quota = Column(Integer, nullable=True)   # % of one core, NULL = no limit
+    server_ips = Column(JSON, nullable=True)
+
 
 
 
@@ -142,6 +144,9 @@ class Kiosk(Base):
     auth_token = Column(String, unique=True, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    phone = Column(String, nullable=True)
+    comment = Column(Text, nullable=True)
+
 
 
 class User(Base):
