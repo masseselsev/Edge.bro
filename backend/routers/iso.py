@@ -241,15 +241,14 @@ def issue_kiosk(req: schemas.KioskIssueRequest, db: Session = Depends(get_db), a
 
     # Generate auth token (pairing key style, e.g. 1234AB)
     auth_token = generate_kiosk_key()
-    while db.query(models.Kiosk).filter(models.Kiosk.auth_token == auth_token).first():
+    while (db.query(models.Kiosk).filter(models.Kiosk.auth_token == auth_token).first() or
+           db.query(models.Kiosk).filter(models.Kiosk.key == auth_token).first()):
         auth_token = generate_kiosk_key()
 
     # Generate a unique pending uuid placeholder
     uuid_val = f"PENDING-{secrets.token_hex(8)}"
-    # Generate another pairing key (redundant but satisfies non-null constraint)
-    pairing_key = generate_kiosk_key()
-    while db.query(models.Kiosk).filter(models.Kiosk.key == pairing_key).first():
-        pairing_key = generate_kiosk_key()
+    # Set pairing key equal to auth token to unify UI table display and file tokens
+    pairing_key = auth_token
 
     # Create kiosk record directly approved
     kiosk = models.Kiosk(
