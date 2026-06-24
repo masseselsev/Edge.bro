@@ -447,11 +447,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                     {t('issueKioskBtn') || 'Issue Kiosk'}
                   </button>
                   <p className="text-center text-[10px] text-zinc-550 mt-2 leading-relaxed">
-                    {language === 'ru' 
-                      ? 'Создает персонализированный киоск с уникальным токеном.' 
-                      : language === 'uk'
-                      ? 'Створює персоналізований кіоск з унікальним токеном.'
-                      : 'Creates a personalized kiosk with a unique dynamic pairing token.'}
+                    {t('issueKioskDesc') || 'Creates a personalized kiosk with a unique dynamic pairing token.'}
                   </p>
                 </div>
               )}
@@ -480,11 +476,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
             <div>
               <h3 className="text-base font-bold text-zinc-50">{t('issueKioskModalTitle') || 'Issue New Kiosk'}</h3>
               <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">
-                {language === 'ru' 
-                  ? 'Сборка Live-CD образа для нового получателя' 
-                  : language === 'uk'
-                  ? 'Збірка Live-CD образу для нового отримувача'
-                  : 'Compile Live-CD ISO image for custom recipient'}
+                {t('issueKioskModalSub') || 'Compile Live-CD ISO image for custom recipient'}
               </p>
             </div>
             

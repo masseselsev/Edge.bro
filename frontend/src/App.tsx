@@ -127,11 +127,13 @@ function LanguageSelector() {
 function BlockedKioskScreen({ 
   status, 
   onActivationRequested, 
+  onPairingSuccess,
   appVersion,
   kioskUuid
 }: { 
   status: string; 
   onActivationRequested: () => void; 
+  onPairingSuccess: () => void;
   appVersion: string;
   kioskUuid: string;
 }) {
@@ -139,6 +141,11 @@ function BlockedKioskScreen({
   const [requesting, setRequesting] = useState(false);
   const [msg, setMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  const [showPairing, setShowPairing] = useState(false);
+  const [pairingIp, setPairingIp] = useState('');
+  const [pairingKey, setPairingKey] = useState('');
+  const [pairingSubmitting, setPairingSubmitting] = useState(false);
 
   const handleRequest = async () => {
     setRequesting(true);
@@ -157,6 +164,35 @@ function BlockedKioskScreen({
       setErrorMsg(err.message || t('kioskBlockedError') || 'Failed to submit request.');
     } finally {
       setRequesting(false);
+    }
+  };
+
+  const handlePairingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPairingSubmitting(true);
+    setMsg('');
+    setErrorMsg('');
+    try {
+      const res = await fetch('/api/kiosk/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orchestrator_ip: pairingIp.trim(),
+          key: pairingKey.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Connection handshake failed');
+      }
+      setMsg(t('kioskPairingSuccess') || 'Connected and paired successfully!');
+      setTimeout(() => {
+        onPairingSuccess();
+      }, 1500);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to connect to orchestrator');
+    } finally {
+      setPairingSubmitting(false);
     }
   };
 
@@ -184,7 +220,7 @@ function BlockedKioskScreen({
               </div>
             ) : (
               <div className="relative p-5 bg-red-500/15 border border-red-500/30 rounded-2xl shadow-lg">
-                <ShieldAlert size={36} className="text-red-400 filter drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
+                <ShieldAlert size={36} className="text-red-400 filter drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" strokeWidth={2} />
               </div>
             )}
           </div>
@@ -200,33 +236,94 @@ function BlockedKioskScreen({
             <p className="text-xs text-zinc-400 leading-relaxed font-medium">
               {status === 'PENDING' 
                 ? t('kioskBlockedPendingDesc') 
-                : (language === 'ru' 
-                  ? 'Пожалуйста, свяжитесь с вашим администратором или отправьте запрос на активацию.' 
-                  : language === 'uk'
-                  ? 'Будь ласка, зв’яжіться з вашим адміністратором або надішліть запит на активацію.'
-                  : 'Please contact the administrator or request activation below.')
+                : (t('kioskBlockedDesc') || 'Please contact the administrator or request activation below.')
               }
             </p>
           </div>
 
           {/* Action button / Status messages */}
           <div className="pt-2">
-            {status !== 'PENDING' ? (
-              <button
-                onClick={handleRequest}
-                disabled={requesting}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-zinc-50 rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/15 border border-indigo-500/30 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
-              >
-                {requesting ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin text-zinc-50" />
-                    <span>{t('saving') || 'Submitting...'}</span>
-                  </>
-                ) : (
-                  <span>{t('kioskBlockedRequest')}</span>
-                )}
-              </button>
-            ) : null}
+            {!showPairing ? (
+              <>
+                {status !== 'PENDING' ? (
+                  <button
+                    onClick={handleRequest}
+                    disabled={requesting}
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-zinc-50 rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/15 border border-indigo-500/30 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+                  >
+                    {requesting ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin text-zinc-50" />
+                        <span>{t('saving') || 'Submitting...'}</span>
+                      </>
+                    ) : (
+                      <span>{t('kioskBlockedRequest')}</span>
+                    )}
+                  </button>
+                ) : null}
+
+                <button
+                  onClick={() => {
+                    setPairingIp(window.location.hostname);
+                    setPairingKey('');
+                    setShowPairing(true);
+                  }}
+                  className="mt-4 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors flex items-center justify-center gap-1.5 w-full cursor-pointer"
+                >
+                  <Link2 size={14} />
+                  {t('kioskPairOtherServer') || 'Pair with another server'}
+                </button>
+              </>
+            ) : (
+              <form onSubmit={handlePairingSubmit} className="space-y-4 text-left border-t border-zinc-800 pt-4 mt-2 animate-fade-in">
+                <div className="text-xs font-bold text-zinc-300 mb-2 uppercase tracking-wide">
+                  {t('kioskPairOtherServer') || 'Pair with another server'}
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-zinc-400 mb-1">
+                    {t('kioskPairingIpLabel') || 'New Orchestrator IP'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 192.168.1.100"
+                    value={pairingIp}
+                    onChange={(e) => setPairingIp(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-150 text-xs focus:border-indigo-500 focus:outline-none transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-zinc-400 mb-1">
+                    {t('kioskPairingKeyLabel') || 'Pairing Key (1234AB)'}
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 1234AB"
+                    value={pairingKey}
+                    onChange={(e) => setPairingKey(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-150 text-xs focus:border-indigo-500 focus:outline-none transition-colors"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPairing(false)}
+                    className="flex-1 py-2 text-xs font-bold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer text-center"
+                  >
+                    {t('cancel') || 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={pairingSubmitting}
+                    className="flex-1 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors cursor-pointer text-center flex items-center justify-center gap-1.5"
+                  >
+                    {pairingSubmitting && <Loader2 size={12} className="animate-spin" />}
+                    {t('kioskPairButton') || 'Connect & Pair'}
+                  </button>
+                </div>
+              </form>
+            )}
 
             {msg && (
               <div className="mt-3 p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs rounded-xl font-bold animate-fade-in">
@@ -797,6 +894,7 @@ function AppContent() {
       <BlockedKioskScreen 
         status={kioskStatus} 
         onActivationRequested={() => setKioskStatus('PENDING')}
+        onPairingSuccess={() => setKioskStatus('APPROVED')}
         appVersion={appVersion}
         kioskUuid={kioskUuid}
       />
@@ -1244,12 +1342,8 @@ function AppContent() {
                   <Copy size={13} />
                 </button>
               </div>
-              <p className="text-[10px] text-zinc-500 leading-relaxed max-w-[260px] mx-auto mt-2">
-                {language === 'ru'
-                  ? 'Сообщите этот ключ оператору. Он должен ввести его на экране настройки киоска.'
-                  : language === 'uk'
-                  ? 'Повідомте цей ключ оператору. Він повинен ввести його на екрані налаштування кіоску.'
-                  : 'Provide this key to the operator. They must enter it on their kiosk setup screen.'}
+              <p className="text-[10px] text-zinc-550 leading-relaxed max-w-[260px] mx-auto mt-2">
+                {t('kioskProvideKeyHint') || 'Provide this key to the operator. They must enter it on their kiosk setup screen.'}
               </p>
             </div>
 
@@ -1358,7 +1452,7 @@ function AppContent() {
                   <input
                     type="text"
                     required
-                    placeholder={language === 'ru' ? 'например, Киоск первого этажа' : language === 'uk' ? 'наприклад, Кіоск першого поверху' : 'e.g. Front desk kiosk'}
+                    placeholder={t('kioskNewNamePlaceholder') || 'e.g. Front desk kiosk'}
                     value={kioskName}
                     onChange={(e) => setKioskName(e.target.value)}
                     className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"

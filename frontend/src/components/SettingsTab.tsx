@@ -271,11 +271,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                   />
                   {hostDataPath && (
                     <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
-                      {language === 'ru' 
-                        ? `Физический путь на хосте (настраивается в .env): ${hostDataPath}`
-                        : language === 'uk'
-                        ? `Фізичний шлях на хості (налаштовується в .env): ${hostDataPath}`
-                        : `Physical host path (configured in .env): ${hostDataPath}`}
+                      {`${t('hostDataPathLabelPrefix') || 'Physical host path (configured in .env): '}${hostDataPath}`}
                     </p>
                   )}
                 </div>
@@ -368,11 +364,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
-                    {language === 'ru' 
-                      ? 'Макс. число Live-ISO в истории' 
-                      : language === 'uk' 
-                      ? 'Макс. число Live-ISO в історії' 
-                      : 'Max Kiosk ISOs in Repository'}
+                    {t('maxKioskIsosLabel') || 'Max Kiosk ISOs in Repository'}
                   </label>
                   <input
                     type="number"
@@ -382,6 +374,9 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                     onChange={(e) => setMaxKioskIsos(parseInt(e.target.value) || 5)}
                     className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                   />
+                  <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
+                    {t('maxKioskIsosSub') || 'Maximum number of issued kiosk ISOs to keep in history before automatic pruning.'}
+                  </p>
                 </div>
               </div>
 
@@ -402,7 +397,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                 {t('globalPruning')}
               </h3>
               <p className="text-xs text-zinc-400 leading-relaxed">
-                {language === 'ru' ? 'Настройка правил автоматического удаления старых бэкапов в архиве.' : language === 'uk' ? 'Налаштування правил автоматичного видалення старих бекапів в архіві.' : 'Configure rules for automatic deletion of older snapshots in the archive.'}
+                {t('globalPruningDesc') || 'Configure rules for automatic deletion of older snapshots in the archive.'}
               </p>
 
               <div className="space-y-4">

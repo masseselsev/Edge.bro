@@ -271,7 +271,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                       <div className="font-bold text-amber-400">{kiosk.key}</div>
                       {kiosk.auth_token && (
                         <div className="text-[10px] text-zinc-550 font-semibold mt-1">
-                          {language === 'ru' ? 'Токен: ' : language === 'uk' ? 'Токен: ' : 'Token: '}
+                          {t('kioskTokenPrefix') || 'Token: '}
                           <span className="text-indigo-400 font-bold select-all">{kiosk.auth_token}</span>
                         </div>
                       )}
@@ -327,7 +327,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                         </a>
                       ) : (
                         <span className="text-[10px] text-zinc-550 italic" title={t('issueKioskPrunedMsg')}>
-                          {language === 'ru' ? 'Удален' : language === 'uk' ? 'Видалений' : 'Pruned'}
+                          {t('kioskStatusPruned') || 'Pruned'}
                         </span>
                       )}
 

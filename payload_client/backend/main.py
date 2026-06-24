@@ -37,6 +37,7 @@ kiosk_status = "PENDING"
 restore_mode = "offline"
 local_storage_path = "/media/usb-data"
 available_server_ips = []
+autocheck_in_thread_started = False
 
 if os.path.exists(CONFIG_PATH):
     try:
@@ -355,10 +356,17 @@ def connect_to_orchestrator(req: ConnectRequest):
         orch_ssh_pub = res_data.get("orchestrator_ssh_pub_key")
         
         # Update current runtime state
-        global orchestrator_ip, auth_token, restore_mode
+        global orchestrator_ip, auth_token, restore_mode, kiosk_status, autocheck_in_thread_started
         orchestrator_ip = req.orchestrator_ip
         auth_token = token
         restore_mode = "online"
+        kiosk_status = "APPROVED"
+        
+        # Start auto check-in thread if not already running
+        if not autocheck_in_thread_started:
+            import threading
+            threading.Thread(target=auto_register_with_orchestrator, daemon=True).start()
+            autocheck_in_thread_started = True
         
         # Update config.json file
         cfg_data = {}
@@ -977,9 +985,11 @@ def auto_register_with_orchestrator():
 
 @app.on_event("startup")
 def startup_event():
+    global autocheck_in_thread_started
     if auth_token and orchestrator_ip:
         import threading
         threading.Thread(target=auto_register_with_orchestrator, daemon=True).start()
+        autocheck_in_thread_started = True
 
 
 @app.post("/api/kiosk/request-activation")
