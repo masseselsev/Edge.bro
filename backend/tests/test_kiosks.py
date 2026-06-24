@@ -15,8 +15,10 @@ from routers.kiosks import (
     delete_kiosk,
     revoke_kiosk,
     handshake,
-    enroll_kiosk
+    enroll_kiosk,
+    generate_kiosk_uuid
 )
+from routers.iso import issue_kiosk
 
 TEST_DATABASE_URL = "sqlite:///./test_kiosks_db.db"
 
@@ -271,5 +273,56 @@ def test_kiosks_activation_and_auto_handshake(mock_authorize, db_session):
     res_hs_ok = auto_handshake(req_handshake, mock_request, db=db_session)
     assert res_hs_ok["status"] == "APPROVED"
     mock_authorize.assert_called_once()
+
+
+def test_generate_kiosk_uuid():
+    """
+    Test format of generated memorable kiosk IDs (starts with 'KS' + 4 digits).
+    """
+    uuid_val = generate_kiosk_uuid()
+    assert len(uuid_val) == 6
+    assert uuid_val.startswith("KS")
+    assert uuid_val[2:].isdigit()
+    # No ambiguous characters (0, 1, 2)
+    ambiguous = ["0", "1", "2"]
+    for char in ambiguous:
+        assert char not in uuid_val
+
+
+@patch("iso_tasks.repack_kiosk_iso_task.delay")
+def test_issue_kiosk_flow(mock_repack_task, db_session):
+    """
+    Test issuing a kiosk (pre-baked ISO) generates a memorable UUID directly.
+    """
+    mock_repack_task.return_value = MagicMock(id="test-task-123")
+
+    req_issue = schemas.KioskIssueRequest(
+        name="Pre-baked Kiosk Vasya",
+        phone="555-9999",
+        comment="Test pre-baked flow"
+    )
+    
+    # We call issue_kiosk directly
+    res = issue_kiosk(req_issue, db=db_session)
+    assert "kiosk" in res
+    assert "task_id" in res
+    assert res["task_id"] == "test-task-123"
+    
+    kiosk = res["kiosk"]
+    assert kiosk.name == "Pre-baked Kiosk Vasya"
+    assert kiosk.uuid.startswith("KS")
+    assert len(kiosk.uuid) == 6
+    assert kiosk.status == "APPROVED"
+    assert kiosk.auth_token is not None
+    assert len(kiosk.auth_token) == 6
+    
+    # Verify saved correctly in DB
+    db_session.expire_all()
+    kiosk_db = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk.id).first()
+    assert kiosk_db is not None
+    assert kiosk_db.uuid == kiosk.uuid
+    assert kiosk_db.status == "APPROVED"
+    assert kiosk_db.auth_token == kiosk.auth_token
+
 
 

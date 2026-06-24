@@ -28,6 +28,12 @@ def generate_kiosk_token() -> str:
     return f"{letters}{digits}"
 
 
+def generate_kiosk_uuid() -> str:
+    # Generate 'KS' followed by 4 digits, excluding confusing ones (0, 1, 2)
+    digits = "".join(random.choice("3456789") for _ in range(4))
+    return f"KS{digits}"
+
+
 @router.post("", response_model=schemas.KioskResponse)
 def create_kiosk(req: schemas.KioskCreate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     # Generate unique placeholder UUID if none provided

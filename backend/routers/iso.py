@@ -236,7 +236,7 @@ def download_repo(hostname: str, token: str, auth = Depends(require_kiosk_or_adm
 
 @router.post("/kiosks/issue")
 def issue_kiosk(req: schemas.KioskIssueRequest, db: Session = Depends(get_db), auth = Depends(require_admin)):
-    from routers.kiosks import generate_kiosk_key, generate_kiosk_token
+    from routers.kiosks import generate_kiosk_key, generate_kiosk_token, generate_kiosk_uuid
     import secrets
 
     # Generate auth token (kiosk token style, e.g. AB1234)
@@ -244,8 +244,11 @@ def issue_kiosk(req: schemas.KioskIssueRequest, db: Session = Depends(get_db), a
     while db.query(models.Kiosk).filter(models.Kiosk.auth_token == auth_token).first():
         auth_token = generate_kiosk_token()
 
-    # Generate a unique pending uuid placeholder
-    uuid_val = f"PENDING-{secrets.token_hex(8)}"
+    # Generate a unique memorable uuid (format: KS1234)
+    uuid_val = generate_kiosk_uuid()
+    while db.query(models.Kiosk).filter(models.Kiosk.uuid == uuid_val).first():
+        uuid_val = generate_kiosk_uuid()
+
     # Generate pairing key (connection token style, e.g. 1234AB)
     pairing_key = generate_kiosk_key()
     while db.query(models.Kiosk).filter(models.Kiosk.key == pairing_key).first():
