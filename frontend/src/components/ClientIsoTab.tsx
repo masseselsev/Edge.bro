@@ -12,10 +12,11 @@ interface IsoStatus {
 }
 
 const generateRandomToken = (): string => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const block1 = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  const block2 = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  return `${block1}-${block2}`;
+  const digitsChars = '3456789';
+  const lettersChars = 'ABCDEFGHJKMNPQRSTUVWXY';
+  const digits = Array.from({ length: 4 }, () => digitsChars[Math.floor(Math.random() * digitsChars.length)]).join('');
+  const letters = Array.from({ length: 2 }, () => lettersChars[Math.floor(Math.random() * lettersChars.length)]).join('');
+  return `${digits}${letters}`;
 };
 
 interface ClientIsoTabProps {

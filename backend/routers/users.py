@@ -81,7 +81,7 @@ def get_current_auth(request: Request, db: Session = Depends(get_db)) -> Union[m
                     expected_token = f.read().strip()
             else:
                 expected_token = "offline-token-1234"
-            if token == expected_token:
+            if token.strip().upper() == expected_token.strip().upper():
                 return models.Kiosk(name="Offline Restore Client", status="APPROVED", auth_token=token)
         except Exception:
             pass

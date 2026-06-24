@@ -178,7 +178,7 @@ class SchedulerLoadResponse(BaseModel):
 
 class KioskBase(BaseModel):
     name: Optional[str] = None
-    uuid: str
+    uuid: Optional[str] = None
     phone: Optional[str] = None
     comment: Optional[str] = None
 

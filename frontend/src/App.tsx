@@ -1047,7 +1047,13 @@ function AppContent() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <span className="text-zinc-500 font-semibold">UUID:</span>
-                <span className="col-span-2 text-zinc-400 font-mono select-all break-all">{activeReviewKiosk.uuid}</span>
+                <span className="col-span-2 text-zinc-400 font-mono select-all break-all">
+                  {activeReviewKiosk.uuid.startsWith('PENDING-') ? (
+                    <span className="text-zinc-500 italic">{t('kioskPending') || 'Pending...'}</span>
+                  ) : (
+                    activeReviewKiosk.uuid
+                  )}
+                </span>
               </div>
             </div>
 

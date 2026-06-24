@@ -12,6 +12,8 @@ interface Kiosk {
   ssh_pub_key: string | null;
   created_at: string;
   updated_at: string;
+  phone: string | null;
+  comment: string | null;
 }
 
 export default function KioskManagementSection() {
@@ -27,16 +29,20 @@ export default function KioskManagementSection() {
     const nameMatch = (k.name || '').toLowerCase().includes(query);
     const uuidMatch = (k.uuid || '').toLowerCase().includes(query);
     const ipMatch = (k.ip_address || '').toLowerCase().includes(query);
+    const phoneMatch = (k.phone || '').toLowerCase().includes(query);
+    const commentMatch = (k.comment || '').toLowerCase().includes(query);
     
     // Check both raw status and translated status names if possible
     const statusMatch = (k.status || '').toLowerCase().includes(query);
     
-    return nameMatch || uuidMatch || ipMatch || statusMatch;
+    return nameMatch || uuidMatch || ipMatch || statusMatch || phoneMatch || commentMatch;
   });
   
   // Form fields
   const [name, setName] = useState('');
   const [uuid, setUuid] = useState('');
+  const [phone, setPhone] = useState('');
+  const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   
@@ -72,7 +78,12 @@ export default function KioskManagementSection() {
       const res = await fetch('/api/kiosks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name || null, uuid: uuid.trim() })
+        body: JSON.stringify({
+          name: name || null,
+          uuid: uuid.trim() || null,
+          phone: phone.trim() || null,
+          comment: comment.trim() || null
+        })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -84,6 +95,8 @@ export default function KioskManagementSection() {
       setShowKeyModal(true);
       setName('');
       setUuid('');
+      setPhone('');
+      setComment('');
       fetchKiosks();
     } catch (err: any) {
       setError(err.message);
@@ -191,11 +204,28 @@ export default function KioskManagementSection() {
               <tbody className="divide-y divide-zinc-800/60">
                 {filteredKiosks.map((kiosk) => (
                   <tr key={kiosk.id} className="hover:bg-zinc-950/20 transition-colors">
-                    <td className="py-3.5 px-4 font-bold text-zinc-200">
-                      {kiosk.name || <span className="text-zinc-500 italic">{t('unnamedKiosk') || 'Unnamed Kiosk'}</span>}
+                    <td className="py-3.5 px-4">
+                      <div className="font-bold text-zinc-200">
+                        {kiosk.name || <span className="text-zinc-500 italic">{t('unnamedKiosk') || 'Unnamed Kiosk'}</span>}
+                      </div>
+                      {(kiosk.phone || kiosk.comment) && (
+                        <div className="text-[10px] text-zinc-400 mt-1 space-y-0.5">
+                          {kiosk.phone && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-zinc-500 font-semibold">{t('kioskPhone') || 'Phone'}:</span>
+                              <span>{kiosk.phone}</span>
+                            </div>
+                          )}
+                          {kiosk.comment && (
+                            <div className="italic text-zinc-500 max-w-xs truncate" title={kiosk.comment}>
+                              {kiosk.comment}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 font-mono text-zinc-400 select-all">
-                      {kiosk.uuid}
+                      {kiosk.uuid.startsWith('PENDING-') ? <span className="text-zinc-500 italic">{t('kioskPending') || 'Pending...'}</span> : kiosk.uuid}
                     </td>
                     <td className="py-3.5 px-4 font-mono font-bold text-amber-400">
                       {kiosk.key}
@@ -264,16 +294,37 @@ export default function KioskManagementSection() {
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskPhone') || 'Phone'}</label>
+                <input
+                  type="text"
+                  placeholder={t('kioskPhonePlaceholder') || 'e.g. +1 555-0199'}
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskComment') || 'Comment'}</label>
+                <textarea
+                  rows={2}
+                  placeholder={t('kioskCommentPlaceholder') || 'e.g. Backup kiosk for first floor'}
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskUuidLabel') || 'Kiosk UUID'}</label>
                 <input
                   type="text"
-                  required
-                  placeholder={t('kioskUuidPlaceholder')}
+                  placeholder={t('kioskUuidPlaceholder') || 'e.g. AB1234'}
                   value={uuid}
                   onChange={(e) => setUuid(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors font-mono"
                 />
-                <p className="text-[10px] text-zinc-500 mt-1">{t('kioskIdHint') || 'Read this ID from the footer of the Kiosk client screen.'}</p>
+                <p className="text-[10px] text-zinc-500 mt-1">{t('kioskIdHint') || 'Read this ID from the footer of the Kiosk client screen. Optional if pairing dynamically via key.'}</p>
               </div>
 
               {error && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{error}</div>}

@@ -188,7 +188,7 @@ def download_repo(hostname: str, token: str, auth = Depends(require_kiosk_or_adm
         except:
             pass
     
-    if token != expected_token:
+    if token.strip().upper() != expected_token.strip().upper():
         raise HTTPException(status_code=401, detail="Unauthorized")
         
     repo_dir = f"/data/borg/fleet/{hostname}"

@@ -158,3 +158,52 @@ def test_kiosk_enrollment_flow(db_session):
     assert kiosk.phone == "555-1234"
     assert kiosk.comment == "Testing dynamic registration flow"
 
+
+@patch("routers.kiosks.authorize_ssh_key")
+def test_pre_registered_kiosk_handshake(mock_authorize, db_session):
+    # 1. Pre-register kiosk without UUID
+    req_create = schemas.KioskCreate(
+        name="Pre-registered Kiosk",
+        phone="111-2222",
+        comment="Test pre-registration",
+        uuid=None
+    )
+    kiosk = create_kiosk(req_create, db=db_session)
+    assert kiosk.uuid.startswith("PENDING-")
+    assert kiosk.status == "PENDING"
+    
+    # 2. Perform handshake with actual client UUID
+    client_uuid = "HW_UUID_999"
+    req_handshake = schemas.HandshakeRequest(
+        uuid=client_uuid,
+        key=kiosk.key,
+        ssh_pub_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPqgXgGf18V... KioskSSHKey"
+    )
+    res = handshake(req_handshake, db=db_session)
+    assert res["status"] == "SUCCESS"
+    
+    # Verify kiosk record updated with actual UUID and APPROVED status
+    db_session.expire_all()
+    updated_kiosk = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk.id).first()
+    assert updated_kiosk.uuid == client_uuid
+    assert updated_kiosk.status == "APPROVED"
+
+    # 3. Create another pre-registered kiosk
+    req_create_2 = schemas.KioskCreate(
+        name="Second Pre-registered Kiosk",
+        uuid=None
+    )
+    kiosk_2 = create_kiosk(req_create_2, db=db_session)
+    
+    # Attempting to handshake with the duplicate client UUID should fail
+    req_handshake_dup = schemas.HandshakeRequest(
+        uuid=client_uuid,
+        key=kiosk_2.key,
+        ssh_pub_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPqgXgGf18V... KioskSSHKey"
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        handshake(req_handshake_dup, db=db_session)
+    assert exc_info.value.status_code == 400
+    assert "already registered" in exc_info.value.detail
+
+

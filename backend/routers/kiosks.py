@@ -23,17 +23,28 @@ def generate_kiosk_key() -> str:
 
 @router.post("", response_model=schemas.KioskResponse)
 def create_kiosk(req: schemas.KioskCreate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
-    # Check if uuid already registered
-    existing = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Kiosk UUID already registered")
+    # Generate unique placeholder UUID if none provided
+    kiosk_uuid = req.uuid
+    if kiosk_uuid:
+        existing = db.query(models.Kiosk).filter(models.Kiosk.uuid == kiosk_uuid).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Kiosk UUID already registered")
+    else:
+        kiosk_uuid = f"PENDING-{secrets.token_hex(8)}"
     
     # Generate unique key
     key = generate_kiosk_key()
     while db.query(models.Kiosk).filter(models.Kiosk.key == key).first():
         key = generate_kiosk_key()
 
-    kiosk = models.Kiosk(name=req.name, uuid=req.uuid, key=key)
+    kiosk = models.Kiosk(
+        name=req.name, 
+        uuid=kiosk_uuid, 
+        key=key,
+        phone=req.phone,
+        comment=req.comment,
+        status="PENDING"
+    )
     db.add(kiosk)
     db.commit()
     db.refresh(kiosk)
@@ -79,14 +90,29 @@ def revoke_kiosk(kiosk_id: int, db: Session = Depends(get_db), current_user = De
 @router.post("/handshake")
 def handshake(req: schemas.HandshakeRequest, db: Session = Depends(get_db)):
     normalized_key = req.key.strip().upper()
-    kiosk = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid, models.Kiosk.key == normalized_key).first()
+    
+    # Look up kiosk by unique pairing key
+    kiosk = db.query(models.Kiosk).filter(models.Kiosk.key == normalized_key).first()
 
     if not kiosk:
-        raise HTTPException(status_code=400, detail="Invalid UUID or security key")
-    
+        raise HTTPException(status_code=400, detail="Invalid security key")
+        
     if kiosk.status != "PENDING":
         raise HTTPException(status_code=400, detail=f"Kiosk status is {kiosk.status}")
 
+    # Verify UUID if the kiosk was pre-registered with a specific one
+    if kiosk.uuid and not kiosk.uuid.startswith("PENDING-"):
+        if kiosk.uuid != req.uuid:
+            raise HTTPException(status_code=400, detail="UUID mismatch for this key")
+
+    # Check if this UUID is already associated with another kiosk
+    existing = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid, models.Kiosk.id != kiosk.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Kiosk UUID {req.uuid} is already registered")
+
+    # Update kiosk record with actual client UUID
+    kiosk.uuid = req.uuid
+    
     # Generate unique API token
     token = secrets.token_hex(24)
     kiosk.status = "APPROVED"
