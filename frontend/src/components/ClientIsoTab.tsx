@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Cpu, RefreshCw, CheckCircle, ShieldAlert } from 'lucide-react';
+import { Download, Cpu, RefreshCw, CheckCircle, ShieldAlert, History, Trash2 } from 'lucide-react';
 import { DropdownTextInput } from './SearchableSelect';
 import { useTranslation } from '../context/TranslationContext';
 import KioskManagementSection from './KioskManagementSection';
@@ -31,6 +31,36 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
   const [issuePhone, setIssuePhone] = useState('');
   const [issueComment, setIssueComment] = useState('');
   const [isIssuing, setIsIssuing] = useState(false);
+
+  // Kiosk ISO History Modal States
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [kiosks, setKiosks] = useState<any[]>([]);
+
+  const fetchKiosks = async () => {
+    try {
+      const res = await fetch('/api/kiosks');
+      if (res.ok) {
+        const data = await res.json();
+        setKiosks(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch kiosks:', err);
+    }
+  };
+
+  const handleDeleteKiosk = async (id: number) => {
+    if (window.confirm(t('deleteConfirm') || 'Are you sure you want to delete this kiosk and its ISO file?')) {
+      try {
+        const res = await fetch(`/api/kiosks/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          fetchKiosks();
+          window.dispatchEvent(new CustomEvent('kiosks-updated'));
+        }
+      } catch (err) {
+        console.error('Failed to delete kiosk:', err);
+      }
+    }
+  };
 
   // Custom ISO Source States
   const [isoSourceType, setIsoSourceType] = useState<'official' | 'url' | 'upload'>('official');
@@ -433,7 +463,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
               </div>
 
               {status?.client_iso_ready && (
-                <div>
+                <div className="space-y-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -446,6 +476,21 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                     <Cpu size={18} />
                     {t('issueKioskBtn') || 'Issue Kiosk'}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError('');
+                      setSuccessMsg('');
+                      fetchKiosks();
+                      setShowHistoryModal(true);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 rounded-lg font-bold text-sm tracking-wide transition-all cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+                  >
+                    <History size={18} />
+                    {t('showIssuedIsosBtn') || 'Show Created ISOs'}
+                  </button>
+
                   <p className="text-center text-[10px] text-zinc-550 mt-2 leading-relaxed">
                     {t('issueKioskDesc') || 'Creates a personalized kiosk with a unique dynamic pairing token.'}
                   </p>
@@ -535,6 +580,92 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Kiosk ISO History / Created ISOs Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-2xl p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4 animate-modal-in flex flex-col max-h-[85vh]">
+            <div className="flex justify-between items-start pb-2 border-b border-zinc-800">
+              <div>
+                <h3 className="text-base font-bold text-zinc-50">{t('historyKiosksTitle') || 'Created Kiosk ISOs'}</h3>
+                <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">
+                  {t('historyKiosksSub') || 'Compiled bootable client ISOs in repository cache'}
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowHistoryModal(false)}
+                className="text-zinc-500 hover:text-zinc-300 font-bold text-xs uppercase tracking-wide cursor-pointer"
+              >
+                {t('close') || 'Close'}
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 space-y-3 min-h-[200px]">
+              {kiosks.filter(k => k.iso_exists).length === 0 ? (
+                <div className="py-12 text-center text-zinc-550">
+                  <History className="mx-auto text-zinc-700 mb-3" size={32} />
+                  <p className="text-xs font-semibold">{t('noKiosksIsosFound') || 'No compiled kiosk ISOs found'}</p>
+                  <p className="text-[10px] text-zinc-500 mt-1">
+                    {t('noKiosksIsosHint') || 'Use the "Issue Kiosk" button to generate a new customized kiosk.'}
+                  </p>
+                </div>
+              ) : (
+                kiosks.filter(k => k.iso_exists).map((kiosk) => (
+                  <div key={kiosk.id} className="p-4 bg-zinc-950/40 border border-zinc-800/80 rounded-xl flex items-center justify-between gap-4 hover:border-zinc-800 transition-colors">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-zinc-205">{kiosk.name || 'Unnamed'}</span>
+                        {kiosk.auth_token && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-black bg-indigo-500/10 text-indigo-400 border border-indigo-500/25 rounded uppercase">
+                            {kiosk.auth_token}
+                          </span>
+                        )}
+                      </div>
+                      {kiosk.comment && (
+                        <p className="text-[10px] text-zinc-400 leading-normal max-w-md">
+                          {kiosk.comment}
+                        </p>
+                      )}
+                      {kiosk.phone && (
+                        <p className="text-[9px] text-zinc-500 font-mono">
+                          {kiosk.phone}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <a
+                        href={`/api/iso/kiosks/${kiosk.id}/download`}
+                        className="p-2 bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/20 text-indigo-400 hover:text-indigo-300 rounded-lg transition-colors cursor-pointer"
+                        title={t('kioskActionDownload') || 'Download'}
+                      >
+                        <Download size={14} />
+                      </a>
+                      <button
+                        onClick={() => handleDeleteKiosk(kiosk.id)}
+                        className="p-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 hover:text-rose-350 rounded-lg transition-colors cursor-pointer"
+                        title={t('deleteLabel') || 'Delete'}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+              >
+                {t('close') || 'Close'}
+              </button>
+            </div>
           </div>
         </div>
       )}

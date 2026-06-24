@@ -73,7 +73,16 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
   useEffect(() => {
     fetchKiosks();
     const interval = setInterval(fetchKiosks, 5000);
-    return () => clearInterval(interval);
+    
+    const handleUpdateEvent = () => {
+      fetchKiosks();
+    };
+    window.addEventListener('kiosks-updated', handleUpdateEvent);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('kiosks-updated', handleUpdateEvent);
+    };
   }, []);
 
   const handleRegister = async (e: React.FormEvent) => {

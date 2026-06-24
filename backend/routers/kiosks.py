@@ -82,6 +82,17 @@ def delete_kiosk(kiosk_id: int, db: Session = Depends(get_db), current_user = De
         except Exception as e:
             logger.error(f"Failed to revoke SSH key for deleted kiosk: {e}")
 
+    # Remove compiled ISO file if exists
+    if kiosk.auth_token:
+        try:
+            from iso_tasks import CACHE_DIR
+            import os
+            iso_path = os.path.join(CACHE_DIR, "history", f"Edge.bro-kiosk-{kiosk.auth_token}.iso")
+            if os.path.exists(iso_path):
+                os.remove(iso_path)
+        except Exception as e:
+            logger.error(f"Failed to remove ISO for deleted kiosk: {e}")
+
     db.delete(kiosk)
     db.commit()
     return {"status": "SUCCESS"}
