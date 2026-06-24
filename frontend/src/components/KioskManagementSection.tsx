@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, ShieldAlert, CheckCircle, RefreshCw, Clipboard, Copy, Server, Globe, Search } from 'lucide-react';
+import { Plus, Trash2, ShieldAlert, CheckCircle, RefreshCw, Clipboard, Copy, Server, Globe, Search, Edit2 } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 
 interface Kiosk {
@@ -12,7 +12,7 @@ interface Kiosk {
   ssh_pub_key: string | null;
   created_at: string;
   updated_at: string;
-  phone: string | null;
+  contact: string | null;
   comment: string | null;
   iso_exists?: boolean;
   auth_token?: string | null;
@@ -27,6 +27,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -35,23 +36,29 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
     const nameMatch = (k.name || '').toLowerCase().includes(query);
     const uuidMatch = (k.uuid || '').toLowerCase().includes(query);
     const ipMatch = (k.ip_address || '').toLowerCase().includes(query);
-    const phoneMatch = (k.phone || '').toLowerCase().includes(query);
+    const contactMatch = (k.contact || '').toLowerCase().includes(query);
     const commentMatch = (k.comment || '').toLowerCase().includes(query);
     
     // Check both raw status and translated status names if possible
     const statusMatch = (k.status || '').toLowerCase().includes(query);
     
-    return nameMatch || uuidMatch || ipMatch || statusMatch || phoneMatch || commentMatch;
+    return nameMatch || uuidMatch || ipMatch || statusMatch || contactMatch || commentMatch;
   });
   
   // Form fields
   const [name, setName] = useState('');
   const [uuid, setUuid] = useState('');
-  const [phone, setPhone] = useState('');
+  const [contact, setContact] = useState('');
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   
+  // Edit form states
+  const [editingKiosk, setEditingKiosk] = useState<Kiosk | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editContact, setEditContact] = useState('');
+  const [editComment, setEditComment] = useState('');
+
   // Key display modal state
   const [generatedKey, setGeneratedKey] = useState('');
   const [copied, setCopied] = useState(false);
@@ -96,7 +103,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
         body: JSON.stringify({
           name: name || null,
           uuid: uuid.trim() || null,
-          phone: phone.trim() || null,
+          contact: contact.trim() || null,
           comment: comment.trim() || null
         })
       });
@@ -110,8 +117,46 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
       setShowKeyModal(true);
       setName('');
       setUuid('');
-      setPhone('');
+      setContact('');
       setComment('');
+      fetchKiosks();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditClick = (kiosk: Kiosk) => {
+    setEditingKiosk(kiosk);
+    setEditName(kiosk.name || '');
+    setEditContact(kiosk.contact || '');
+    setEditComment(kiosk.comment || '');
+    setError('');
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingKiosk) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/kiosks/${editingKiosk.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editName.trim() || null,
+          contact: editContact.trim() || null,
+          comment: editComment.trim() || null
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Failed to update kiosk');
+      }
+      setShowEditModal(false);
+      setEditingKiosk(null);
       fetchKiosks();
     } catch (err: any) {
       setError(err.message);
@@ -257,12 +302,12 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                       <div className="font-bold text-zinc-200">
                         {kiosk.name || <span className="text-zinc-500 italic">{t('unnamedKiosk') || 'Unnamed Kiosk'}</span>}
                       </div>
-                      {(kiosk.phone || kiosk.comment) && (
+                      {(kiosk.contact || kiosk.comment) && (
                         <div className="text-[10px] text-zinc-400 mt-1 space-y-0.5">
-                          {kiosk.phone && (
+                          {kiosk.contact && (
                             <div className="flex items-center gap-1">
-                              <span className="text-zinc-500 font-semibold">{t('kioskPhone') || 'Phone'}:</span>
-                              <span>{kiosk.phone}</span>
+                              <span className="text-zinc-500 font-semibold">{t('kioskContact') || 'Contact'}:</span>
+                              <span>{kiosk.contact}</span>
                             </div>
                           )}
                           {kiosk.comment && (
@@ -351,6 +396,15 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                         {t('kioskActionRecreate')}
                       </button>
 
+                      {/* Edit Kiosk */}
+                      <button
+                        onClick={() => handleEditClick(kiosk)}
+                        className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-350 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-650 rounded text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1"
+                        title={t('editLabel') || 'Edit'}
+                      >
+                        <Edit2 size={10} /> {t('editLabel') || 'Edit'}
+                      </button>
+
                       {/* Delete Kiosk */}
                       <button
                         onClick={() => handleDelete(kiosk.id)}
@@ -389,12 +443,12 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskPhone') || 'Phone'}</label>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskContact') || 'Contact'}</label>
                 <input
                   type="text"
-                  placeholder={t('kioskPhonePlaceholder') || 'e.g. +1 555-0199'}
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder={t('kioskContactPlaceholder') || 'e.g. @username or email'}
+                  value={contact}
+                  onChange={(e) => setContact(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
                 />
               </div>
@@ -481,6 +535,75 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                 {t('closeButton') || 'Close'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && editingKiosk && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4 animate-modal-in">
+            <div>
+              <h3 className="text-base font-bold text-zinc-50">{t('editKioskTitle') || 'Edit Kiosk'}</h3>
+              <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">{t('editKioskSub') || 'Update friendly name, contact info, and comments.'}</p>
+            </div>
+            
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskNameLabel') || 'Friendly Name'}</label>
+                <input
+                  type="text"
+                  placeholder={t('kioskNamePlaceholder')}
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskContact') || 'Contact'}</label>
+                <input
+                  type="text"
+                  placeholder={t('kioskContactPlaceholder') || 'e.g. @username or email'}
+                  value={editContact}
+                  onChange={(e) => setEditContact(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskComment') || 'Comment'}</label>
+                <textarea
+                  rows={2}
+                  placeholder={t('kioskCommentPlaceholder') || 'e.g. Backup kiosk for first floor'}
+                  value={editComment}
+                  onChange={(e) => setEditComment(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              {error && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{error}</div>}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingKiosk(null);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  {t('cancel') || 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  {submitting ? t('saving') : (t('saveLabel') || 'Save')}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -180,7 +180,7 @@ class SchedulerLoadResponse(BaseModel):
 class KioskBase(BaseModel):
     name: Optional[str] = None
     uuid: Optional[str] = None
-    phone: Optional[str] = None
+    contact: Optional[str] = None
     comment: Optional[str] = None
 
 
@@ -257,14 +257,20 @@ class LoginPayload(BaseModel):
 class KioskEnrollRequest(BaseModel):
     uuid: str
     name: str
-    phone: str
+    contact: str
     comment: str
     ssh_pub_key: str
 
 
 class KioskIssueRequest(BaseModel):
     name: str
-    phone: str
+    contact: str
+    comment: Optional[str] = None
+
+
+class KioskUpdate(BaseModel):
+    name: Optional[str] = None
+    contact: Optional[str] = None
     comment: Optional[str] = None
 
 

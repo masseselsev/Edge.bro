@@ -28,7 +28,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
   // Issue Kiosk Modal States
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [issueName, setIssueName] = useState('');
-  const [issuePhone, setIssuePhone] = useState('');
+  const [issueContact, setIssueContact] = useState('');
   const [issueComment, setIssueComment] = useState('');
   const [isIssuing, setIsIssuing] = useState(false);
 
@@ -154,7 +154,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: issueName.trim(),
-          phone: issuePhone.trim(),
+          contact: issueContact.trim(),
           comment: issueComment.trim() || null
         })
       });
@@ -163,7 +163,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
 
       setShowIssueModal(false);
       setIssueName('');
-      setIssuePhone('');
+      setIssueContact('');
       setIssueComment('');
 
       if (data.task_id) {
@@ -539,13 +539,13 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('issueKioskPhoneLabel') || 'Phone / Telegram Account'}</label>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('issueKioskContactLabel') || 'Contact (Phone / Telegram / Email)'}</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. +1 555-0199 or @telegram"
-                  value={issuePhone}
-                  onChange={(e) => setIssuePhone(e.target.value)}
+                  value={issueContact}
+                  onChange={(e) => setIssueContact(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
                 />
               </div>
@@ -629,9 +629,9 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                           {kiosk.comment}
                         </p>
                       )}
-                      {kiosk.phone && (
+                      {kiosk.contact && (
                         <p className="text-[9px] text-zinc-500 font-mono">
-                          {kiosk.phone}
+                          {kiosk.contact}
                         </p>
                       )}
                     </div>

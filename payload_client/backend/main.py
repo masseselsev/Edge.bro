@@ -269,7 +269,7 @@ def get_version():
 class ClientEnrollRequest(BaseModel):
     orchestrator_ip: str
     name: str
-    phone: str
+    contact: str
     comment: str
 
 @app.post("/api/kiosk/enroll")
@@ -291,7 +291,7 @@ def enroll_client_kiosk(req: ClientEnrollRequest):
     payload = {
         "uuid": kiosk_uuid,
         "name": req.name.strip(),
-        "phone": req.phone.strip(),
+        "contact": req.contact.strip(),
         "comment": req.comment.strip(),
         "ssh_pub_key": pub_key_data
     }

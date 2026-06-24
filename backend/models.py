@@ -145,7 +145,7 @@ class Kiosk(Base):
     auth_token = Column(String, unique=True, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    phone = Column(String, nullable=True)
+    contact = Column(String, nullable=True)
     comment = Column(Text, nullable=True)
 
 

@@ -16,7 +16,8 @@ from routers.kiosks import (
     revoke_kiosk,
     handshake,
     enroll_kiosk,
-    generate_kiosk_uuid
+    generate_kiosk_uuid,
+    update_kiosk
 )
 from routers.iso import issue_kiosk
 
@@ -144,7 +145,7 @@ def test_kiosk_enrollment_flow(db_session):
     req_enroll = schemas.KioskEnrollRequest(
         uuid="NEW_KIOSK_123",
         name="Dynamic Test Kiosk",
-        phone="555-1234",
+        contact="555-1234",
         comment="Testing dynamic registration flow",
         ssh_pub_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPqgXgGf18V... KioskSSHKey"
     )
@@ -157,7 +158,7 @@ def test_kiosk_enrollment_flow(db_session):
     kiosk = db_session.query(models.Kiosk).filter(models.Kiosk.uuid == "NEW_KIOSK_123").first()
     assert kiosk is not None
     assert kiosk.name == "Dynamic Test Kiosk"
-    assert kiosk.phone == "555-1234"
+    assert kiosk.contact == "555-1234"
     assert kiosk.comment == "Testing dynamic registration flow"
 
 
@@ -166,7 +167,7 @@ def test_pre_registered_kiosk_handshake(mock_authorize, db_session):
     # 1. Pre-register kiosk without UUID
     req_create = schemas.KioskCreate(
         name="Pre-registered Kiosk",
-        phone="111-2222",
+        contact="111-2222",
         comment="Test pre-registration",
         uuid=None
     )
@@ -298,7 +299,7 @@ def test_issue_kiosk_flow(mock_repack_task, db_session):
 
     req_issue = schemas.KioskIssueRequest(
         name="Pre-baked Kiosk Vasya",
-        phone="555-9999",
+        contact="555-9999",
         comment="Test pre-baked flow"
     )
     
@@ -323,6 +324,43 @@ def test_issue_kiosk_flow(mock_repack_task, db_session):
     assert kiosk_db.uuid == kiosk.uuid
     assert kiosk_db.status == "APPROVED"
     assert kiosk_db.auth_token == kiosk.auth_token
+
+
+def test_update_kiosk(db_session):
+    """
+    Test PUT endpoint to update Kiosk profile properties.
+    """
+    # 1. Create a kiosk
+    kiosk = models.Kiosk(
+        name="Old Name",
+        uuid="KS8888",
+        key="8888KS",
+        contact="old@contact.com",
+        comment="old comment",
+        status="APPROVED"
+    )
+    db_session.add(kiosk)
+    db_session.commit()
+    db_session.refresh(kiosk)
+    
+    # 2. Update it
+    req_update = schemas.KioskUpdate(
+        name="New Name",
+        contact="new@contact.com",
+        comment="new comment"
+    )
+    updated = update_kiosk(kiosk.id, req_update, db=db_session)
+    assert updated.name == "New Name"
+    assert updated.contact == "new@contact.com"
+    assert updated.comment == "new comment"
+    
+    # 3. Verify database
+    db_session.expire_all()
+    kiosk_db = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk.id).first()
+    assert kiosk_db.name == "New Name"
+    assert kiosk_db.contact == "new@contact.com"
+    assert kiosk_db.comment == "new comment"
+
 
 
 

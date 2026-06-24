@@ -54,7 +54,7 @@ def create_kiosk(req: schemas.KioskCreate, db: Session = Depends(get_db), curren
         name=req.name, 
         uuid=kiosk_uuid, 
         key=key,
-        phone=req.phone,
+        contact=req.contact,
         comment=req.comment,
         status="PENDING"
     )
@@ -230,7 +230,7 @@ def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db))
         
         # Update metadata
         existing.name = req.name
-        existing.phone = req.phone
+        existing.contact = req.contact
         existing.comment = req.comment
         existing.ssh_pub_key = req.ssh_pub_key
         existing.status = "PENDING"
@@ -246,7 +246,7 @@ def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db))
     kiosk = models.Kiosk(
         uuid=req.uuid,
         name=req.name,
-        phone=req.phone,
+        contact=req.contact,
         comment=req.comment,
         ssh_pub_key=req.ssh_pub_key,
         status="PENDING",
@@ -335,5 +335,23 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request, db: Sess
         return {"status": "APPROVED"}
         
     raise HTTPException(status_code=403, detail=f"Kiosk status is {kiosk.status}")
+
+
+@router.put("/{kiosk_id}", response_model=schemas.KioskResponse)
+def update_kiosk(kiosk_id: int, req: schemas.KioskUpdate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
+    if not kiosk:
+        raise HTTPException(status_code=404, detail="Kiosk not found")
+        
+    if req.name is not None:
+        kiosk.name = req.name
+    if req.contact is not None:
+        kiosk.contact = req.contact
+    if req.comment is not None:
+        kiosk.comment = req.comment
+        
+    db.commit()
+    db.refresh(kiosk)
+    return kiosk
 
 
