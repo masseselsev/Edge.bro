@@ -19,8 +19,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.rename_column('kiosks', 'phone', 'contact')
+    op.alter_column('kiosks', 'phone', new_column_name='contact')
 
 
 def downgrade() -> None:
-    op.rename_column('kiosks', 'contact', 'phone')
+    op.alter_column('kiosks', 'contact', new_column_name='phone')
