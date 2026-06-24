@@ -15,6 +15,7 @@ interface Kiosk {
   phone: string | null;
   comment: string | null;
   iso_exists?: boolean;
+  auth_token?: string | null;
 }
 
 interface KioskManagementSectionProps {
@@ -266,8 +267,14 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                     <td className="py-3.5 px-4 font-mono text-zinc-400 select-all">
                       {kiosk.uuid.startsWith('PENDING-') ? <span className="text-zinc-500 italic">{t('kioskPending') || 'Pending...'}</span> : kiosk.uuid}
                     </td>
-                    <td className="py-3.5 px-4 font-mono font-bold text-amber-400">
-                      {kiosk.key}
+                    <td className="py-3.5 px-4 font-mono">
+                      <div className="font-bold text-amber-400">{kiosk.key}</div>
+                      {kiosk.auth_token && (
+                        <div className="text-[10px] text-zinc-550 font-semibold mt-1">
+                          {language === 'ru' ? 'Токен: ' : language === 'uk' ? 'Токен: ' : 'Token: '}
+                          <span className="text-indigo-400 font-bold select-all">{kiosk.auth_token}</span>
+                        </div>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 font-semibold">
                       {kiosk.status === 'APPROVED' ? (

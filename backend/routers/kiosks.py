@@ -21,6 +21,13 @@ def generate_kiosk_key() -> str:
     return f"{digits}{letters}"
 
 
+def generate_kiosk_token() -> str:
+    # Generate 2 letters followed by 4 digits, excluding confusing ones (O, 0, I, 1, L, Z, 2)
+    letters = "".join(random.choice("ABCDEFGHJKMNPQRSTUVWXY") for _ in range(2))
+    digits = "".join(random.choice("3456789") for _ in range(4))
+    return f"{letters}{digits}"
+
+
 @router.post("", response_model=schemas.KioskResponse)
 def create_kiosk(req: schemas.KioskCreate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     # Generate unique placeholder UUID if none provided
@@ -121,8 +128,11 @@ def handshake(req: schemas.HandshakeRequest, db: Session = Depends(get_db)):
     # Update kiosk record with actual client UUID
     kiosk.uuid = req.uuid
     
-    # Generate unique API token
-    token = secrets.token_hex(24)
+    # Generate unique API token in format AB1234
+    token = generate_kiosk_token()
+    while db.query(models.Kiosk).filter(models.Kiosk.auth_token == token).first():
+        token = generate_kiosk_token()
+        
     kiosk.status = "APPROVED"
     kiosk.ssh_pub_key = req.ssh_pub_key
     kiosk.auth_token = token
