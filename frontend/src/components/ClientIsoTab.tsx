@@ -11,28 +11,26 @@ interface IsoStatus {
   base_iso_speed?: string;
 }
 
-const generateRandomToken = (): string => {
-  const digitsChars = '3456789';
-  const lettersChars = 'ABCDEFGHJKMNPQRSTUVWXY';
-  const digits = Array.from({ length: 4 }, () => digitsChars[Math.floor(Math.random() * digitsChars.length)]).join('');
-  const letters = Array.from({ length: 2 }, () => lettersChars[Math.floor(Math.random() * lettersChars.length)]).join('');
-  return `${digits}${letters}`;
-};
-
 interface ClientIsoTabProps {
   onViewLogs: (taskId: string, title: string) => void;
 }
 
 export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [status, setStatus] = useState<IsoStatus | null>(null);
   const [orchestratorIp, setOrchestratorIp] = useState(window.location.hostname);
-  const [authToken, setAuthToken] = useState(() => generateRandomToken());
   const [availableIps, setAvailableIps] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloadingBase, setIsDownloadingBase] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Issue Kiosk Modal States
+  const [showIssueModal, setShowIssueModal] = useState(false);
+  const [issueName, setIssueName] = useState('');
+  const [issuePhone, setIssuePhone] = useState('');
+  const [issueComment, setIssueComment] = useState('');
+  const [isIssuing, setIsIssuing] = useState(false);
 
   // Custom ISO Source States
   const [isoSourceType, setIsoSourceType] = useState<'official' | 'url' | 'upload'>('official');
@@ -95,7 +93,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           target_ip: orchestratorIp,
-          auth_token: authToken
+          auth_token: 'TEMPLATE'
         })
       });
       const data = await res.json();
@@ -113,6 +111,40 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
       setError(e.message);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleIssueSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsIssuing(true);
+    setError('');
+    try {
+      const res = await fetch('/api/iso/kiosks/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: issueName.trim(),
+          phone: issuePhone.trim(),
+          comment: issueComment.trim() || null
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to issue kiosk');
+
+      setShowIssueModal(false);
+      setIssueName('');
+      setIssuePhone('');
+      setIssueComment('');
+
+      if (data.task_id) {
+        onViewLogs(data.task_id, t('issueKioskGenerating') || 'Repackaging ISO image...');
+      }
+      
+      fetchStatus();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setIsIssuing(false);
     }
   };
 
@@ -374,19 +406,6 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                 />
               </div>
 
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <label className="block text-xs font-semibold text-zinc-400">{t('apiTokenLabel') || 'API Authentication Token'}</label>
-                </div>
-                <input
-                  type="text"
-                  required
-                  value={authToken}
-                  onChange={(e) => setAuthToken(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors font-mono"
-                />
-              </div>
-
               {error && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{error}</div>}
               {successMsg && <div className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg">{successMsg}</div>}
 
@@ -415,24 +434,24 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
 
               {status?.client_iso_ready && (
                 <div>
-                  <a
-                    href="/api/iso/download"
-                    download
-                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-sm tracking-wide shadow-lg transition-all"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError('');
+                      setSuccessMsg('');
+                      setShowIssueModal(true);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm tracking-wide shadow-lg transition-all cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
                   >
-                    <Download size={18} />
-                    {t('downloadIsoImage') || 'DOWNLOAD ISO IMAGE'}
-                  </a>
-                  <p className="text-center text-[10px] text-zinc-500 mt-2 leading-relaxed">
-                    {t('flashInstructions').split(/(Rufus|balenaEtcher)/).map((part, index) => {
-                      if (part === 'Rufus') {
-                        return <a key={index} href="https://rufus.ie/en/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 transition-colors underline">Rufus</a>;
-                      }
-                      if (part === 'balenaEtcher') {
-                        return <a key={index} href="https://etcher.balena.io/" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 transition-colors underline">balenaEtcher</a>;
-                      }
-                      return part;
-                    })}
+                    <Cpu size={18} />
+                    {t('issueKioskBtn') || 'Issue Kiosk'}
+                  </button>
+                  <p className="text-center text-[10px] text-zinc-550 mt-2 leading-relaxed">
+                    {language === 'ru' 
+                      ? 'Создает персонализированный киоск с уникальным токеном.' 
+                      : language === 'uk'
+                      ? 'Створює персоналізований кіоск з унікальним токеном.'
+                      : 'Creates a personalized kiosk with a unique dynamic pairing token.'}
                   </p>
                 </div>
               )}
@@ -450,10 +469,83 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
 
         {/* Right Column (70% / 7 cols) */}
         <div className="lg:col-span-7">
-          <KioskManagementSection />
+          <KioskManagementSection onViewLogs={onViewLogs} />
         </div>
       </div>
 
+      {/* Issue Kiosk Modal */}
+      {showIssueModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4 animate-modal-in">
+            <div>
+              <h3 className="text-base font-bold text-zinc-50">{t('issueKioskModalTitle') || 'Issue New Kiosk'}</h3>
+              <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">
+                {language === 'ru' 
+                  ? 'Сборка Live-CD образа для нового получателя' 
+                  : language === 'uk'
+                  ? 'Збірка Live-CD образу для нового отримувача'
+                  : 'Compile Live-CD ISO image for custom recipient'}
+              </p>
+            </div>
+            
+            <form onSubmit={handleIssueSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('issueKioskNameLabel') || 'Recipient Name'}</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. John Doe"
+                  value={issueName}
+                  onChange={(e) => setIssueName(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('issueKioskPhoneLabel') || 'Phone / Telegram Account'}</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. +1 555-0199 or @telegram"
+                  value={issuePhone}
+                  onChange={(e) => setIssuePhone(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('issueKioskCommentLabel') || 'Comment (Optional)'}</label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Technician kiosk for remote site recovery"
+                  value={issueComment}
+                  onChange={(e) => setIssueComment(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              {error && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{error}</div>}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShowIssueModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  {t('cancel') || 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isIssuing}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  {isIssuing ? t('saving') : (t('issueKioskSubmitBtn') || 'Issue & Generate ISO')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -9,8 +9,11 @@ from typing import Dict, Any, Optional
 
 from iso_tasks import generate_client_iso_task, download_base_iso_task, CACHE_DIR
 from models import TaskLog
-from database import SessionLocal
+from database import SessionLocal, get_db
+from sqlalchemy.orm import Session
 from routers.users import require_admin, require_kiosk_or_admin
+import models
+import schemas
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 redis_client = redis.Redis.from_url(REDIS_URL)
@@ -229,4 +232,77 @@ def download_repo(hostname: str, token: str, auth = Depends(require_kiosk_or_adm
             "X-Total-Size": str(total_size)
         }
     )
+
+
+@router.post("/kiosks/issue")
+def issue_kiosk(req: schemas.KioskIssueRequest, db: Session = Depends(get_db), auth = Depends(require_admin)):
+    from routers.kiosks import generate_kiosk_key
+    import secrets
+
+    # Generate auth token (pairing key style, e.g. 1234AB)
+    auth_token = generate_kiosk_key()
+    while db.query(models.Kiosk).filter(models.Kiosk.auth_token == auth_token).first():
+        auth_token = generate_kiosk_key()
+
+    # Generate a unique pending uuid placeholder
+    uuid_val = f"PENDING-{secrets.token_hex(8)}"
+    # Generate another pairing key (redundant but satisfies non-null constraint)
+    pairing_key = generate_kiosk_key()
+    while db.query(models.Kiosk).filter(models.Kiosk.key == pairing_key).first():
+        pairing_key = generate_kiosk_key()
+
+    # Create kiosk record directly approved
+    kiosk = models.Kiosk(
+        name=req.name,
+        uuid=uuid_val,
+        key=pairing_key,
+        phone=req.phone,
+        comment=req.comment,
+        status="APPROVED",
+        auth_token=auth_token
+    )
+    db.add(kiosk)
+    db.commit()
+    db.refresh(kiosk)
+
+    # Trigger repack Celery task
+    from iso_tasks import repack_kiosk_iso_task
+    task = repack_kiosk_iso_task.delay(kiosk.id)
+    
+    # Return kiosk response + task_id to follow progress
+    return {"kiosk": kiosk, "task_id": task.id}
+
+
+@router.post("/kiosks/{id}/recreate")
+def recreate_kiosk_iso(id: int, db: Session = Depends(get_db), auth = Depends(require_admin)):
+    kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == id).first()
+    if not kiosk:
+        raise HTTPException(status_code=404, detail="Kiosk not found")
+        
+    from iso_tasks import repack_kiosk_iso_task
+    task = repack_kiosk_iso_task.delay(kiosk.id)
+    return {"task_id": task.id, "message": "Recreation task started"}
+
+
+@router.get("/kiosks/{id}/download")
+def download_kiosk_iso(id: int, db: Session = Depends(get_db), auth = Depends(require_admin)):
+    kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == id).first()
+    if not kiosk:
+        raise HTTPException(status_code=404, detail="Kiosk not found")
+        
+    if not kiosk.auth_token:
+        raise HTTPException(status_code=400, detail="Kiosk does not have a dynamic auth token")
+        
+    from iso_tasks import CACHE_DIR
+    iso_path = os.path.join(CACHE_DIR, "history", f"Edge.bro-kiosk-{kiosk.auth_token}.iso")
+    if not os.path.exists(iso_path):
+        raise HTTPException(status_code=404, detail="ISO image has been pruned from cache. Re-create it first.")
+        
+    filename = f"Edge.bro-kiosk-{kiosk.auth_token}.iso"
+    return FileResponse(
+        path=iso_path,
+        filename=filename,
+        media_type="application/x-iso9660-image"
+    )
+
 

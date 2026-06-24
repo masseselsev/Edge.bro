@@ -31,6 +31,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [defaultCpuQuota, setDefaultCpuQuota] = useState<number | ''>('');
   const [hostDataPath, setHostDataPath] = useState<string | null>(null);
   const [serverIpsInput, setServerIpsInput] = useState('');
+  const [maxKioskIsos, setMaxKioskIsos] = useState(5);
   
   const [useLocalTime, setUseLocalTime] = useState(true);
   const [timezone, setTimezone] = useState(() => {
@@ -118,6 +119,9 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           setHostDataPath(data.borg_host_data_path);
         }
         setServerIpsInput(data.server_ips ? data.server_ips.join(', ') : '');
+        if (data.max_kiosk_isos !== undefined) {
+          setMaxKioskIsos(data.max_kiosk_isos);
+        }
         
         const dbTz = data.timezone || 'Browser Local';
         let resolvedTz = 'Europe/Moscow';
@@ -162,6 +166,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           default_compression: defaultCompression,
           default_cpu_quota: defaultCpuQuota === '' ? null : Number(defaultCpuQuota),
           server_ips: serverIpsInput.split(',').map(s => s.trim()).filter(Boolean),
+          max_kiosk_isos: maxKioskIsos,
           retention_policy: {
             type: policyType,
             keep_daily: policyKeepDaily,
@@ -350,15 +355,34 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('serverIpsLabel') || 'Server IP Addresses'}</label>
-                <input
-                  type="text"
-                  value={serverIpsInput}
-                  onChange={(e) => setServerIpsInput(e.target.value)}
-                  placeholder={t('serverIpsPlaceholder') || 'e.g. 192.168.1.100, 10.0.0.5'}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none mb-4"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('serverIpsLabel') || 'Server IP Addresses'}</label>
+                  <input
+                    type="text"
+                    value={serverIpsInput}
+                    onChange={(e) => setServerIpsInput(e.target.value)}
+                    placeholder={t('serverIpsPlaceholder') || 'e.g. 192.168.1.100, 10.0.0.5'}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
+                    {language === 'ru' 
+                      ? 'Макс. число Live-ISO в истории' 
+                      : language === 'uk' 
+                      ? 'Макс. число Live-ISO в історії' 
+                      : 'Max Kiosk ISOs in Repository'}
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={maxKioskIsos}
+                    onChange={(e) => setMaxKioskIsos(parseInt(e.target.value) || 5)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div>

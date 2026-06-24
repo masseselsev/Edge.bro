@@ -18,7 +18,7 @@ except ImportError:
 try:
     from version import VERSION
 except ImportError:
-    VERSION = "v0.8beta"
+    VERSION = "v0.9beta"
 
 app = FastAPI(title="Offline Technician Client", version=VERSION)
 
@@ -33,6 +33,7 @@ orchestrator_ssh_port = 12345
 auth_token = ""
 language = "en"
 kiosk_uuid = ""
+kiosk_status = "PENDING"
 restore_mode = "offline"
 local_storage_path = "/media/usb-data"
 available_server_ips = []
@@ -260,7 +261,8 @@ def get_version():
         "available_server_ips": available_server_ips,
         "auth_token": auth_token,
         "language": language,
-        "kiosk_uuid": kiosk_uuid
+        "kiosk_uuid": kiosk_uuid,
+        "kiosk_status": kiosk_status
     }
 
 class ClientEnrollRequest(BaseModel):
@@ -909,6 +911,101 @@ def trigger_kiosk_sync(hostname: str, background_tasks: BackgroundTasks):
     task_id = f"task-{uuid.uuid4().hex[:8]}"
     background_tasks.add_task(run_kiosk_sync, task_id, hostname)
     return {"task_id": task_id}
+
+
+def auto_register_with_orchestrator():
+    global kiosk_status, restore_mode
+    import time
+    import urllib.error
+    ensure_ssh_keypair()
+    pub_key_path = SSH_KEY_PATH + ".pub"
+    if not os.path.exists(pub_key_path):
+        logging.error("SSH public key missing during auto-registration")
+        return
+        
+    try:
+        with open(pub_key_path, "r") as f:
+            pub_key_data = f.read().strip()
+    except Exception as e:
+        logging.error(f"Failed to read SSH public key during auto-registration: {e}")
+        return
+
+    while True:
+        try:
+            url = f"http://{orchestrator_ip}:{orchestrator_api_port}/api/kiosks/auto-handshake"
+            payload = {
+                "uuid": kiosk_uuid,
+                "ssh_pub_key": pub_key_data
+            }
+            post_data = json.dumps(payload).encode("utf-8")
+            req_obj = urllib.request.Request(
+                url, 
+                data=post_data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {auth_token}"
+                }
+            )
+            with urllib.request.urlopen(req_obj, timeout=10) as response:
+                res_data = json.loads(response.read().decode())
+                
+            status_returned = res_data.get("status")
+            if status_returned == "SUCCESS" or status_returned == "APPROVED":
+                kiosk_status = "APPROVED"
+                restore_mode = "online"
+            elif status_returned == "DISABLED":
+                kiosk_status = "DISABLED"
+                restore_mode = "offline"
+            elif status_returned == "PENDING":
+                kiosk_status = "PENDING"
+                restore_mode = "offline"
+            elif status_returned == "REVOKED":
+                kiosk_status = "REVOKED"
+                restore_mode = "offline"
+        except urllib.error.HTTPError as he:
+            if he.code in [401, 403]:
+                logging.warning(f"Auto check-in unauthorized/forbidden ({he.code}): transitioning kiosk to DISABLED")
+                kiosk_status = "DISABLED"
+                restore_mode = "offline"
+            else:
+                logging.warning(f"Auto check-in failed with HTTP error {he.code}: {he}")
+        except Exception as e:
+            logging.warning(f"Auto check-in failed (retrying in 10s): {e}")
+            
+        time.sleep(10)
+
+
+@app.on_event("startup")
+def startup_event():
+    if auth_token and orchestrator_ip:
+        import threading
+        threading.Thread(target=auto_register_with_orchestrator, daemon=True).start()
+
+
+@app.post("/api/kiosk/request-activation")
+def request_activation():
+    if not auth_token or not orchestrator_ip:
+        raise HTTPException(status_code=400, detail="Orchestrator not configured or not paired")
+        
+    url = f"http://{orchestrator_ip}:{orchestrator_api_port}/api/kiosks/request-activation"
+    payload = {"token": auth_token}
+    try:
+        post_data = json.dumps(payload).encode("utf-8")
+        req_obj = urllib.request.Request(
+            url, 
+            data=post_data,
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req_obj, timeout=10) as response:
+            res_data = json.loads(response.read().decode())
+            
+        global kiosk_status
+        kiosk_status = "PENDING"  # Update local state immediately
+        return res_data
+    except Exception as e:
+        logging.error(f"Failed to submit activation request to orchestrator: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to request activation: {str(e)}")
+
 
 # Fallback to serve the React frontend built for the offline client
 if os.path.exists("frontend_build"):

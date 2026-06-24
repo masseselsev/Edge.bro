@@ -7,17 +7,22 @@ interface Kiosk {
   name: string | null;
   uuid: string;
   key: string;
-  status: 'PENDING' | 'APPROVED' | 'REVOKED';
+  status: 'PENDING' | 'APPROVED' | 'REVOKED' | 'DISABLED';
   ip_address: string | null;
   ssh_pub_key: string | null;
   created_at: string;
   updated_at: string;
   phone: string | null;
   comment: string | null;
+  iso_exists?: boolean;
 }
 
-export default function KioskManagementSection() {
-  const { t } = useTranslation();
+interface KioskManagementSectionProps {
+  onViewLogs?: (taskId: string, title: string) => void;
+}
+
+export default function KioskManagementSection({ onViewLogs }: KioskManagementSectionProps) {
+  const { t, language } = useTranslation();
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -115,6 +120,40 @@ export default function KioskManagementSection() {
       } catch (err) {
         console.error(err);
       }
+    }
+  };
+
+  const handleToggleActive = async (id: number) => {
+    try {
+      const res = await fetch(`/api/kiosks/${id}/toggle-active`, { method: 'POST' });
+      if (res.ok) {
+        fetchKiosks();
+      } else {
+        const data = await res.json();
+        alert(data.detail || 'Failed to toggle active state');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleRecreateIso = async (id: number) => {
+    try {
+      const res = await fetch(`/api/iso/kiosks/${id}/recreate`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.task_id && onViewLogs) {
+          onViewLogs(data.task_id, t('issueKioskGenerating') || 'Repackaging ISO image...');
+        } else {
+          alert(t('issueKioskGenerating') || 'ISO regeneration task started.');
+        }
+        fetchKiosks();
+      } else {
+        const data = await res.json();
+        alert(data.detail || 'Failed to start ISO recreation');
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -230,10 +269,18 @@ export default function KioskManagementSection() {
                     <td className="py-3.5 px-4 font-mono font-bold text-amber-400">
                       {kiosk.key}
                     </td>
-                    <td className="py-3.5 px-4">
+                    <td className="py-3.5 px-4 font-semibold">
                       {kiosk.status === 'APPROVED' ? (
                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          <CheckCircle size={10} /> {t('kioskApproved') || 'Authorized'}
+                          <CheckCircle size={10} /> {t('kioskStatusApprovedLabel') || 'Active'}
+                        </span>
+                      ) : kiosk.status === 'DISABLED' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
+                          <ShieldAlert size={10} /> {t('kioskStatusDisabledLabel') || 'Disabled'}
+                        </span>
+                      ) : kiosk.status === 'PENDING' && kiosk.uuid && !kiosk.uuid.startsWith('PENDING-') ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
+                          <ShieldAlert size={10} /> {t('kioskStatusPendingLabel') || 'Re-activation Request'}
                         </span>
                       ) : kiosk.status === 'REVOKED' ? (
                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
@@ -248,18 +295,48 @@ export default function KioskManagementSection() {
                     <td className="py-3.5 px-4 text-zinc-300 font-mono">
                       {kiosk.ip_address || <span className="text-zinc-600">—</span>}
                     </td>
-                    <td className="py-3.5 px-4 text-right space-x-2">
-                      {kiosk.status === 'APPROVED' && (
+                    <td className="py-3.5 px-4 text-right space-x-2 whitespace-nowrap">
+                      {/* Toggle Active state (Block/Unblock) */}
+                      {(kiosk.status === 'APPROVED' || kiosk.status === 'DISABLED' || (kiosk.status === 'PENDING' && !kiosk.uuid.startsWith('PENDING-'))) && (
                         <button
-                          onClick={() => handleRevoke(kiosk.id)}
-                          className="px-2 py-1 bg-red-950/20 border border-red-900/30 hover:border-red-900/60 hover:bg-red-950/40 text-red-400 rounded text-[10px] font-bold transition-all cursor-pointer"
+                          onClick={() => handleToggleActive(kiosk.id)}
+                          className={`px-2 py-1 border rounded text-[10px] font-bold transition-all cursor-pointer ${
+                            kiosk.status === 'APPROVED'
+                              ? 'bg-amber-950/20 border-amber-900/30 hover:border-amber-900/60 hover:bg-amber-950/40 text-amber-400'
+                              : 'bg-emerald-950/20 border-emerald-900/30 hover:border-emerald-900/60 hover:bg-emerald-950/40 text-emerald-400'
+                          }`}
                         >
-                          {t('revokeAccess') || 'Revoke'}
+                          {kiosk.status === 'APPROVED' ? t('kioskActionDisable') : t('kioskActionEnable')}
                         </button>
                       )}
+
+                      {/* Download Kiosk ISO */}
+                      {kiosk.iso_exists ? (
+                        <a
+                          href={`/api/iso/kiosks/${kiosk.id}/download`}
+                          className="inline-block px-2 py-1 bg-indigo-950/20 border border-indigo-900/30 hover:border-indigo-900/60 hover:bg-indigo-950/40 text-indigo-400 rounded text-[10px] font-bold transition-all"
+                        >
+                          {t('kioskActionDownload')}
+                        </a>
+                      ) : (
+                        <span className="text-[10px] text-zinc-550 italic" title={t('issueKioskPrunedMsg')}>
+                          {language === 'ru' ? 'Удален' : language === 'uk' ? 'Видалений' : 'Pruned'}
+                        </span>
+                      )}
+
+                      {/* Re-create ISO */}
+                      <button
+                        onClick={() => handleRecreateIso(kiosk.id)}
+                        className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-bold transition-all cursor-pointer"
+                        title="Recreate ISO image"
+                      >
+                        {t('kioskActionRecreate')}
+                      </button>
+
+                      {/* Delete Kiosk */}
                       <button
                         onClick={() => handleDelete(kiosk.id)}
-                        className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-bold transition-all cursor-pointer"
+                        className="px-2 py-1 bg-zinc-800 hover:bg-rose-900/30 hover:text-rose-400 text-zinc-400 rounded text-[10px] font-bold transition-all cursor-pointer"
                       >
                         {t('deleteLabel') || 'Delete'}
                       </button>

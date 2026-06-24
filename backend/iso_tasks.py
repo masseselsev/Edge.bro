@@ -514,3 +514,141 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         return {"status": "FAILED", "error": str(e)}
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
+
+
+@celery_app.task(bind=True)
+def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
+    from tasks import log_to_task, run_command_with_logging
+    from database import SessionLocal
+    from models import TaskLog, Kiosk, Settings
+    
+    task_id = self.request.id
+
+    db = SessionLocal()
+    task_log = TaskLog(id=task_id, task_type="ISO_GEN", status="RUNNING", log_output="")
+    db.add(task_log)
+    db.commit()
+
+    try:
+        kiosk = db.query(Kiosk).filter(Kiosk.id == kiosk_id).first()
+        if not kiosk:
+            raise Exception(f"Kiosk record {kiosk_id} not found")
+
+        settings = db.query(Settings).first()
+        max_kiosk_isos = settings.max_kiosk_isos if settings else 5
+        target_ip = settings.orchestrator_ip if settings else "127.0.0.1"
+        available_ips = settings.server_ips if (settings and settings.server_ips) else []
+        lang = settings.language if settings else "en"
+
+        template_iso = os.path.join(CACHE_DIR, "technician_client_v1.iso")
+        if not os.path.exists(template_iso):
+            raise Exception("Base template ISO not found. Compile generic Live-USB first.")
+
+        history_dir = os.path.join(CACHE_DIR, "history")
+        os.makedirs(history_dir, exist_ok=True)
+        output_kiosk_iso = os.path.join(history_dir, f"Edge.bro-kiosk-{kiosk.auth_token}.iso")
+
+        work_dir = f"/tmp/repack_{kiosk_id}_{task_id}"
+        iso_unpacked = os.path.join(work_dir, "iso_unpacked")
+        payload_unpacked = os.path.join(work_dir, "payload_unpacked")
+        os.makedirs(work_dir, exist_ok=True)
+
+        # 1. Unpack generic template ISO
+        log_to_task(task_id, "[PROGRESS] 10:Extracting generic ISO template...")
+        run_command_with_logging(task_id, ["xorriso", "-osirrox", "on", "-indev", template_iso, "-extract", "/", iso_unpacked])
+        run_command_with_logging(task_id, ["chmod", "-R", "+w", iso_unpacked])
+
+        # 2. Extract payload.img
+        log_to_task(task_id, "[PROGRESS] 30:Extracting secondary initrd payload...")
+        os.makedirs(payload_unpacked, exist_ok=True)
+        payload_img_path = os.path.join(iso_unpacked, "live", "payload.img")
+        if not os.path.exists(payload_img_path):
+            raise Exception("payload.img not found in template ISO")
+            
+        subprocess.run(
+            f"gzip -dc {payload_img_path} | cpio -idmv",
+            shell=True,
+            cwd=payload_unpacked,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True
+        )
+
+        # 3. Update config.json with kiosk details
+        log_to_task(task_id, "[PROGRESS] 50:Updating configuration token...")
+        config_path = os.path.join(payload_unpacked, "opt", "offline-client", "backend", "config.json")
+        config_data = {}
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                config_data = json.load(f)
+                
+        config_data["auth_token"] = kiosk.auth_token
+        config_data["kiosk_uuid"] = kiosk.uuid
+        config_data["available_server_ips"] = available_ips
+        config_data["orchestrator_ip"] = target_ip
+        config_data["language"] = lang
+
+        with open(config_path, "w") as f:
+            json.dump(config_data, f, indent=4)
+
+        # 4. Repack payload.img
+        log_to_task(task_id, "[PROGRESS] 70:Repacking secondary initrd...")
+        subprocess.run(
+            f"find . -print0 | cpio -o -H newc --null | gzip > {payload_img_path}",
+            shell=True,
+            cwd=payload_unpacked,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True
+        )
+
+        # 5. Compile custom ISO
+        log_to_task(task_id, "[PROGRESS] 80:Compiling custom kiosk ISO...")
+        run_command_with_logging(task_id, [
+            "xorriso",
+            "-as", "mkisofs",
+            "-r", "-J", "-joliet-long",
+            "-l", "-cache-inodes",
+            "-isohybrid-mbr", "/usr/lib/ISOLINUX/isohdpfx.bin",
+            "-partition_offset", "16",
+            "-A", "Borg-Restore-Technician-Client",
+            "-b", "isolinux/isolinux.bin",
+            "-c", "isolinux/boot.cat",
+            "-no-emul-boot", "-boot-load-size", "4", "-boot-info-table",
+            "-eltorito-alt-boot",
+            "-e", "boot/grub/efi.img",
+            "-no-emul-boot", "-isohybrid-gpt-basdat", "-isohybrid-apm-hfsplus",
+            "-o", output_kiosk_iso,
+            iso_unpacked
+        ])
+
+        # 6. Run history pruning
+        log_to_task(task_id, "[PROGRESS] 95:Pruning old repository ISOs...")
+        iso_files = []
+        for file in os.listdir(history_dir):
+            if file.endswith(".iso") and file.startswith("Edge.bro-kiosk-"):
+                filepath = os.path.join(history_dir, file)
+                iso_files.append((filepath, os.path.getmtime(filepath)))
+                
+        # Sort by mtime ascending (oldest first)
+        iso_files.sort(key=lambda x: x[1])
+        if len(iso_files) > max_kiosk_isos:
+            to_delete = len(iso_files) - max_kiosk_isos
+            for i in range(to_delete):
+                try:
+                    os.remove(iso_files[i][0])
+                    logger.info(f"Pruned old kiosk ISO: {iso_files[i][0]}")
+                except Exception as pe:
+                    logger.error(f"Failed to prune old ISO {iso_files[i][0]}: {pe}")
+
+        log_to_task(task_id, "[PROGRESS] 100:Kiosk custom ISO generated successfully!", status="SUCCESS")
+        return {"status": "SUCCESS", "iso_path": output_kiosk_iso}
+
+    except Exception as e:
+        logger.error(f"Kiosk ISO repackaging failed: {e}")
+        log_to_task(task_id, f"Kiosk ISO repackaging failed: {str(e)}", status="FAILED")
+        return {"status": "FAILED", "error": str(e)}
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        db.close()
+

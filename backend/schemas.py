@@ -26,6 +26,7 @@ class SettingsBase(BaseModel):
     default_compression: str = Field(default='zstd:3')
     default_cpu_quota: Optional[int] = Field(default=None, ge=0, le=400)
     server_ips: Optional[List[str]] = Field(default=[])
+    max_kiosk_isos: int = Field(default=5, ge=1)
 
 
 
@@ -195,6 +196,7 @@ class KioskResponse(KioskBase):
     ip_address: Optional[str] = None
     ssh_pub_key: Optional[str] = None
     auth_token: Optional[str] = None
+    iso_exists: Optional[bool] = None
     created_at: datetime
     updated_at: datetime
 
@@ -258,6 +260,22 @@ class KioskEnrollRequest(BaseModel):
     phone: str
     comment: str
     ssh_pub_key: str
+
+
+class KioskIssueRequest(BaseModel):
+    name: str
+    phone: str
+    comment: Optional[str] = None
+
+
+class AutoHandshakeRequest(BaseModel):
+    uuid: str
+    ssh_pub_key: str
+
+
+class RequestActivationRequest(BaseModel):
+    token: str
+
 
 
 

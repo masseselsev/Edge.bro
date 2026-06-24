@@ -207,3 +207,69 @@ def test_pre_registered_kiosk_handshake(mock_authorize, db_session):
     assert "already registered" in exc_info.value.detail
 
 
+@patch("routers.kiosks.authorize_ssh_key")
+def test_kiosks_activation_and_auto_handshake(mock_authorize, db_session):
+    from routers.kiosks import toggle_kiosk_active, request_kiosk_activation, auto_handshake
+    
+    # 1. Create an approved kiosk record
+    kiosk = models.Kiosk(
+        name="Test Kiosk Active",
+        uuid="TEST_KIOSK_UUID_111",
+        key="1234AB",
+        status="APPROVED",
+        auth_token="token-active-123"
+    )
+    db_session.add(kiosk)
+    db_session.commit()
+    db_session.refresh(kiosk)
+    
+    # 2. Toggle active (should disable it)
+    res = toggle_kiosk_active(kiosk.id, db=db_session)
+    assert res["status"] == "SUCCESS"
+    assert res["kiosk_status"] == "DISABLED"
+    
+    db_session.expire_all()
+    kiosk_db = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk.id).first()
+    assert kiosk_db.status == "DISABLED"
+    
+    # 3. auto_handshake on disabled kiosk should fail with 403
+    mock_request = MagicMock()
+    mock_request.headers = {"Authorization": "Bearer token-active-123"}
+    req_handshake = schemas.AutoHandshakeRequest(
+        uuid="TEST_KIOSK_UUID_111",
+        ssh_pub_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPqgXgGf18V... KioskSSHKey"
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        auto_handshake(req_handshake, mock_request, db=db_session)
+    assert exc_info.value.status_code == 403
+    assert "DISABLED" in exc_info.value.detail
+    
+    # 4. Request activation
+    req_act = schemas.RequestActivationRequest(token="token-active-123")
+    res_act = request_kiosk_activation(req_act, db=db_session)
+    assert res_act["status"] == "SUCCESS"
+    
+    db_session.expire_all()
+    kiosk_db = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk.id).first()
+    assert kiosk_db.status == "PENDING"
+    
+    # 5. auto_handshake on pending kiosk should return PENDING and NOT authorize SSH
+    res_hs = auto_handshake(req_handshake, mock_request, db=db_session)
+    assert res_hs["status"] == "PENDING"
+    mock_authorize.assert_not_called()
+    
+    db_session.expire_all()
+    kiosk_db = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk.id).first()
+    assert kiosk_db.status == "PENDING"
+    
+    # 6. Toggle active again (should approve it)
+    res_toggle = toggle_kiosk_active(kiosk.id, db=db_session)
+    assert res_toggle["status"] == "SUCCESS"
+    assert res_toggle["kiosk_status"] == "APPROVED"
+    
+    # 7. auto_handshake on approved kiosk should succeed and authorize SSH
+    res_hs_ok = auto_handshake(req_handshake, mock_request, db=db_session)
+    assert res_hs_ok["status"] == "APPROVED"
+    mock_authorize.assert_called_once()
+
+

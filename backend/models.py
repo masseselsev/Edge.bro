@@ -23,6 +23,7 @@ class Settings(Base):
     default_compression = Column(String, default='zstd:3', nullable=False)
     default_cpu_quota = Column(Integer, nullable=True)   # % of one core, NULL = no limit
     server_ips = Column(JSON, nullable=True)
+    max_kiosk_isos = Column(Integer, default=5, nullable=False)
 
 
 

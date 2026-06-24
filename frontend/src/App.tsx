@@ -124,6 +124,137 @@ function LanguageSelector() {
   );
 }
 
+function BlockedKioskScreen({ 
+  status, 
+  onActivationRequested, 
+  appVersion,
+  kioskUuid
+}: { 
+  status: string; 
+  onActivationRequested: () => void; 
+  appVersion: string;
+  kioskUuid: string;
+}) {
+  const { t, language } = useTranslation();
+  const [requesting, setRequesting] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const handleRequest = async () => {
+    setRequesting(true);
+    setMsg('');
+    setErrorMsg('');
+    try {
+      const res = await fetch('/api/kiosk/request-activation', { method: 'POST' });
+      if (res.ok) {
+        setMsg(t('kioskBlockedSuccess') || 'Request submitted successfully!');
+        onActivationRequested();
+      } else {
+        const data = await res.json();
+        setErrorMsg(data.detail || t('kioskBlockedError') || 'Failed to submit request.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || t('kioskBlockedError') || 'Failed to submit request.');
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-between bg-zinc-950 text-zinc-100 font-sans select-none">
+      {/* Top Bar with Language Selector */}
+      <div className="flex justify-between items-center px-6 py-4 border-b border-zinc-900 bg-zinc-900/35 backdrop-blur-md">
+        <div className="flex items-center gap-2">
+          <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded font-mono font-bold text-xs uppercase tracking-wider">Edge B.R.O.</span>
+          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono font-bold">{appVersion}</span>
+        </div>
+        <LanguageSelector />
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="max-w-md w-full p-8 bg-zinc-900/50 border border-zinc-800/80 rounded-3xl shadow-2xl space-y-6 text-center animate-fade-in relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 via-transparent to-transparent pointer-events-none" />
+          
+          {/* Status Icon */}
+          <div className="flex justify-center">
+            {status === 'PENDING' ? (
+              <div className="relative p-5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl animate-pulse">
+                <Loader2 size={36} className="text-indigo-400 animate-spin" strokeWidth={2.5} />
+              </div>
+            ) : (
+              <div className="relative p-5 bg-red-500/15 border border-red-500/30 rounded-2xl shadow-lg">
+                <ShieldAlert size={36} className="text-red-400 filter drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
+              </div>
+            )}
+          </div>
+
+          {/* Title and Descriptions */}
+          <div className="space-y-2">
+            <h2 className="text-xl font-black text-zinc-150 tracking-tight">
+              {status === 'PENDING' ? t('kioskBlockedPendingTitle') : t('kioskBlockedTitle')}
+            </h2>
+            <p className="text-sm font-semibold text-zinc-400">
+              {status === 'PENDING' ? t('kioskBlockedPendingSub') : t('kioskBlockedSub')}
+            </p>
+            <p className="text-xs text-zinc-400 leading-relaxed font-medium">
+              {status === 'PENDING' 
+                ? t('kioskBlockedPendingDesc') 
+                : (language === 'ru' 
+                  ? 'Пожалуйста, свяжитесь с вашим администратором или отправьте запрос на активацию.' 
+                  : language === 'uk'
+                  ? 'Будь ласка, зв’яжіться з вашим адміністратором або надішліть запит на активацію.'
+                  : 'Please contact the administrator or request activation below.')
+              }
+            </p>
+          </div>
+
+          {/* Action button / Status messages */}
+          <div className="pt-2">
+            {status !== 'PENDING' ? (
+              <button
+                onClick={handleRequest}
+                disabled={requesting}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-zinc-50 rounded-xl text-sm font-bold shadow-lg shadow-indigo-600/15 border border-indigo-500/30 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+              >
+                {requesting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin text-zinc-50" />
+                    <span>{t('saving') || 'Submitting...'}</span>
+                  </>
+                ) : (
+                  <span>{t('kioskBlockedRequest')}</span>
+                )}
+              </button>
+            ) : null}
+
+            {msg && (
+              <div className="mt-3 p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs rounded-xl font-bold animate-fade-in">
+                {msg}
+              </div>
+            )}
+            {errorMsg && (
+              <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-xl font-bold animate-fade-in">
+                {errorMsg}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer Info */}
+      <div className="text-center pb-8 space-y-1">
+        <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
+          {t('kioskBlockedThisId')}
+        </span>
+        <span className="font-mono text-xs font-black text-indigo-400 bg-indigo-500/5 border border-indigo-500/10 px-3 py-1 rounded-lg">
+          {kioskUuid || 'UNKNOWN'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function AppContent() {
   const { t, language } = useTranslation();
   const [activeTab, setActiveTab] = useState<Tab>('fleet');
@@ -174,6 +305,7 @@ function AppContent() {
 
   // Pairing states
   const [kioskUuid, setKioskUuid] = useState('');
+  const [kioskStatus, setKioskStatus] = useState('APPROVED');
   const [showPairingModal, setShowPairingModal] = useState(false);
   const [pairingIp, setPairingIp] = useState('');
   const [pairingKey, setPairingKey] = useState('');
@@ -321,6 +453,28 @@ function AppContent() {
   useEffect(() => {
     if (!isKiosk) return;
 
+    const pollKioskStatus = async () => {
+      try {
+        const res = await fetch('/api/version');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.kiosk_status) {
+            setKioskStatus(data.kiosk_status);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to poll kiosk status:', err);
+      }
+    };
+
+    pollKioskStatus();
+    const interval = setInterval(pollKioskStatus, 8000);
+    return () => clearInterval(interval);
+  }, [isKiosk]);
+
+  useEffect(() => {
+    if (!isKiosk) return;
+
     const fetchNetStatus = async () => {
       try {
         const res = await fetch('/api/network/status');
@@ -445,6 +599,9 @@ function AppContent() {
             setConnectionKeyphrase(data.auth_token || '');
             setKioskUuid(data.kiosk_uuid || '');
             setAvailableServerIps(data.available_server_ips || []);
+            if (data.kiosk_status) {
+              setKioskStatus(data.kiosk_status);
+            }
             
             // Kiosk mode: pre-fetch network status
             fetch('/api/network/status')
@@ -633,6 +790,17 @@ function AppContent() {
 
   if (isAuthenticated === false && !isKiosk) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  if (appReady && isKiosk && kioskStatus !== 'APPROVED') {
+    return (
+      <BlockedKioskScreen 
+        status={kioskStatus} 
+        onActivationRequested={() => setKioskStatus('PENDING')}
+        appVersion={appVersion}
+        kioskUuid={kioskUuid}
+      />
+    );
   }
 
   return (

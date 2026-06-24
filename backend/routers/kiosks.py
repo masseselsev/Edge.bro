@@ -2,7 +2,7 @@ import random
 import secrets
 import os
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
 from database import get_db
@@ -52,7 +52,15 @@ def create_kiosk(req: schemas.KioskCreate, db: Session = Depends(get_db), curren
 
 @router.get("", response_model=List[schemas.KioskResponse])
 def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_admin)):
-    return db.query(models.Kiosk).all()
+    kiosks = db.query(models.Kiosk).all()
+    from iso_tasks import CACHE_DIR
+    for k in kiosks:
+        if k.auth_token:
+            iso_path = os.path.join(CACHE_DIR, "history", f"Edge.bro-kiosk-{k.auth_token}.iso")
+            k.iso_exists = os.path.exists(iso_path)
+        else:
+            k.iso_exists = False
+    return kiosks
 
 @router.delete("/{kiosk_id}")
 def delete_kiosk(kiosk_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
@@ -220,4 +228,85 @@ def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db))
     db.add(kiosk)
     db.commit()
     return {"status": "PENDING", "key": key}
+
+
+@router.post("/{id}/toggle-active")
+def toggle_kiosk_active(id: int, db: Session = Depends(get_db), auth = Depends(require_admin)):
+    kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == id).first()
+    if not kiosk:
+        raise HTTPException(status_code=404, detail="Kiosk not found")
+        
+    if kiosk.status == "APPROVED":
+        kiosk.status = "DISABLED"
+    elif kiosk.status in ["DISABLED", "PENDING"]:
+        kiosk.status = "APPROVED"
+    else:
+        raise HTTPException(status_code=400, detail=f"Cannot toggle active state for status {kiosk.status}")
+        
+    db.commit()
+    db.refresh(kiosk)
+    return {"status": "SUCCESS", "kiosk_status": kiosk.status}
+
+
+@router.post("/request-activation")
+def request_kiosk_activation(req: schemas.RequestActivationRequest, db: Session = Depends(get_db)):
+    kiosk = db.query(models.Kiosk).filter(models.Kiosk.auth_token == req.token).first()
+    if not kiosk:
+        raise HTTPException(status_code=404, detail="Kiosk not found")
+        
+    if kiosk.status != "DISABLED":
+        raise HTTPException(status_code=400, detail=f"Kiosk is not in disabled state (current status: {kiosk.status})")
+        
+    kiosk.status = "PENDING"
+    db.commit()
+    return {"status": "SUCCESS", "message": "Activation request submitted"}
+
+
+@router.post("/auto-handshake")
+def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request, db: Session = Depends(get_db)):
+    auth_header = request.headers.get("Authorization")
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1].strip()
+        
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing auth token")
+
+    kiosk = db.query(models.Kiosk).filter(models.Kiosk.auth_token == token).first()
+    if not kiosk:
+        raise HTTPException(status_code=401, detail="Invalid auth token")
+
+    if kiosk.status == "DISABLED":
+        raise HTTPException(status_code=403, detail="Kiosk status is DISABLED")
+        
+    if kiosk.status == "PENDING":
+        # Keep it pending, update metadata if needed, but do not authorize SSH
+        kiosk.uuid = req.uuid
+        kiosk.ssh_pub_key = req.ssh_pub_key
+        db.commit()
+        return {"status": "PENDING"}
+
+    if kiosk.status == "APPROVED":
+        # Check if this UUID is already associated with another kiosk
+        existing = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid, models.Kiosk.id != kiosk.id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="UUID is already registered under another kiosk")
+
+        # Update kiosk details
+        kiosk.uuid = req.uuid
+        kiosk.ssh_pub_key = req.ssh_pub_key
+
+        # Authorize SSH key
+        try:
+            from routers.kiosks import authorize_ssh_key
+            authorize_ssh_key(req.ssh_pub_key)
+        except Exception as e:
+            logger.error(f"Failed to authorize kiosk SSH key during auto-handshake: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to authorize SSH key: {str(e)}")
+
+        db.commit()
+        return {"status": "APPROVED"}
+        
+    raise HTTPException(status_code=403, detail=f"Kiosk status is {kiosk.status}")
+
 
