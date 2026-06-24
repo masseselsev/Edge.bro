@@ -9,7 +9,17 @@ interface IsoStatus {
   client_iso_ready: boolean;
   base_iso_progress?: number;
   base_iso_speed?: string;
+  iso_cache_free_space?: number;
+  iso_cache_total_space?: number;
 }
+
+const formatBytes = (bytes: number) => {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
 
 interface ClientIsoTabProps {
   onViewLogs: (taskId: string, title: string) => void;
@@ -38,6 +48,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
 
   const fetchKiosks = async () => {
     try {
+      fetchStatus();
       const res = await fetch('/api/kiosks');
       if (res.ok) {
         const data = await res.json();
@@ -634,6 +645,22 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                           {kiosk.contact}
                         </p>
                       )}
+                      {kiosk.iso_path && (
+                        <div className="text-[10px] text-zinc-400 space-y-1 font-sans mt-2 border-t border-zinc-800/50 pt-2">
+                          <div className="flex items-start gap-1">
+                            <span className="font-semibold text-zinc-500 shrink-0">{t('isoLocationLabel') || 'Location'}:</span>
+                            <code className="text-[9px] font-mono text-zinc-300 bg-zinc-900/60 px-1 py-0.5 rounded border border-zinc-800/30 break-all select-all">
+                              {kiosk.iso_path}
+                            </code>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-zinc-500">{t('isoSizeLabel') || 'Size'}:</span>{' '}
+                            <span className="text-emerald-400 font-bold font-mono">
+                              {formatBytes(kiosk.iso_size)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
@@ -657,11 +684,23 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
               )}
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-zinc-800">
+            <div className="flex justify-between items-center pt-3 border-t border-zinc-800">
+              {status?.iso_cache_free_space !== undefined && status?.iso_cache_total_space !== undefined && (
+                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wide">
+                  {t('isoFreeSpaceLabel') || 'Free space in repository:'}{' '}
+                  <span className="text-indigo-400 font-mono">
+                    {formatBytes(status.iso_cache_free_space)}
+                  </span>{' '}
+                  <span className="text-zinc-600 font-normal">/</span>{' '}
+                  <span className="text-zinc-500 font-mono">
+                    {formatBytes(status.iso_cache_total_space)}
+                  </span>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => setShowHistoryModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer ml-auto"
               >
                 {t('close') || 'Close'}
               </button>

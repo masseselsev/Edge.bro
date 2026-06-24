@@ -197,6 +197,9 @@ class KioskResponse(KioskBase):
     ssh_pub_key: Optional[str] = None
     auth_token: Optional[str] = None
     iso_exists: Optional[bool] = None
+    iso_path: Optional[str] = None
+    iso_name: Optional[str] = None
+    iso_size: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 

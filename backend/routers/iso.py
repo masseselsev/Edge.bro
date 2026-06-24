@@ -170,11 +170,19 @@ def get_iso_status(auth = Depends(require_admin)):
             except:
                 pass
         
+    import shutil
+    try:
+        total, used, free = shutil.disk_usage(CACHE_DIR)
+    except Exception:
+        total, free = 0, 0
+
     return {
         "base_iso_cached": base_exists or client_exists,
         "base_iso_progress": progress,
         "base_iso_speed": speed_str,
-        "client_iso_ready": client_exists
+        "client_iso_ready": client_exists,
+        "iso_cache_free_space": free,
+        "iso_cache_total_space": total
     }
 
 import subprocess

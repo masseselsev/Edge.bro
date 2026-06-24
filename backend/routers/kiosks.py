@@ -70,9 +70,21 @@ def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_ad
     for k in kiosks:
         if k.auth_token:
             iso_path = os.path.join(CACHE_DIR, "history", f"Edge.bro-kiosk-{k.auth_token}.iso")
-            k.iso_exists = os.path.exists(iso_path)
+            exists = os.path.exists(iso_path)
+            k.iso_exists = exists
+            if exists:
+                k.iso_path = iso_path
+                k.iso_name = f"Edge.bro-kiosk-{k.auth_token}.iso"
+                k.iso_size = os.path.getsize(iso_path)
+            else:
+                k.iso_path = None
+                k.iso_name = None
+                k.iso_size = None
         else:
             k.iso_exists = False
+            k.iso_path = None
+            k.iso_name = None
+            k.iso_size = None
     return kiosks
 
 @router.delete("/{kiosk_id}")
