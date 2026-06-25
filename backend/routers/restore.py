@@ -174,7 +174,8 @@ def trigger_restore(payload: schemas.RestoreRequest, request: Request = None, db
             except Exception:
                 pass
 
-    if node.disk_type != "UNKNOWN" and node.disk_type != target_disk_type:
+    node_base_type = "NVME" if node.disk_type.upper().startswith("NVME") else ("SATA" if node.disk_type.upper().startswith("SATA") else "UNKNOWN")
+    if node_base_type != "UNKNOWN" and node_base_type != target_disk_type:
         if not payload.override_mismatch:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

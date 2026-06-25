@@ -1,4 +1,12 @@
-# Backup Progress Indicator Progress Ledger
+# Flasher Disk Mismatch Resolution Progress Ledger
 
-- [x] Task 1: Backend Integration (Redis, Schemas, Router) (verification clean, all 51 tests pass)
-- [x] Task 2: Frontend Progress Button and Redirect (Vite build successful, UI verified)
+Plan: docs/superpowers/plans/2026-06-25-flasher-mismatch-resolution.md
+Branch: master
+Session start commit: f8104cf
+
+## Tasks
+
+- [ ] Task 1: Backend Base Disk Type Comparison
+- [ ] Task 2: Frontend Base Disk Type Calculation and Warnings Fix
+- [ ] Task 3: Frontend Override Mismatch Checkbox
+- [ ] Task 4: Verification & Testing
