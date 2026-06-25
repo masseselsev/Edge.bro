@@ -197,20 +197,10 @@ function BlockedKioskScreen({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-between bg-zinc-950 text-zinc-100 font-sans select-none">
-      {/* Top Bar with Language Selector */}
-      <div className="flex justify-between items-center px-6 py-4 border-b border-zinc-900 bg-zinc-900/35 backdrop-blur-md">
-        <div className="flex items-center gap-2">
-          <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded font-mono font-bold text-xs uppercase tracking-wider">Edge B.R.O.</span>
-          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono font-bold">{appVersion}</span>
-        </div>
-        <LanguageSelector />
-      </div>
+    <div className="w-full flex items-center justify-center p-4">
+      <div className="max-w-md w-full p-8 bg-zinc-900/50 border border-zinc-800/80 rounded-3xl shadow-2xl space-y-6 text-center animate-fade-in relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 via-transparent to-transparent pointer-events-none" />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="max-w-md w-full p-8 bg-zinc-900/50 border border-zinc-800/80 rounded-3xl shadow-2xl space-y-6 text-center animate-fade-in relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 via-transparent to-transparent pointer-events-none" />
           
           {/* Status Icon */}
           <div className="flex justify-center">
@@ -336,17 +326,15 @@ function BlockedKioskScreen({
               </div>
             )}
           </div>
+        {/* Footer Info inside card */}
+        <div className="text-center pt-4 border-t border-zinc-800/50 space-y-1">
+          <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider block">
+            {t('kioskBlockedThisId')}
+          </span>
+          <span className="font-mono text-xs font-black text-indigo-400 bg-indigo-500/5 border border-indigo-500/10 px-3 py-1 rounded-lg inline-block">
+            {kioskUuid || 'UNKNOWN'}
+          </span>
         </div>
-      </div>
-
-      {/* Footer Info */}
-      <div className="text-center pb-8 space-y-1">
-        <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
-          {t('kioskBlockedThisId')}
-        </span>
-        <span className="font-mono text-xs font-black text-indigo-400 bg-indigo-500/5 border border-indigo-500/10 px-3 py-1 rounded-lg">
-          {kioskUuid || 'UNKNOWN'}
-        </span>
       </div>
     </div>
   );
