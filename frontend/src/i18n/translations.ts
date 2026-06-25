@@ -552,7 +552,9 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskActionEnable: 'Activate',
     kioskStatusDisabledLabel: 'Disabled',
     kioskStatusApprovedLabel: 'Active',
-    kioskStatusPendingLabel: 'Re-activation Request'
+    kioskStatusPendingLabel: 'Re-activation Request',
+    bandwidthDownload: 'Download',
+    bandwidthUpload: 'Upload'
   },
   ru: {
     // Navigation / Tabs
@@ -1104,7 +1106,9 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskActionEnable: 'Активировать',
     kioskStatusDisabledLabel: 'Заблокирован',
     kioskStatusApprovedLabel: 'Активен',
-    kioskStatusPendingLabel: 'Запрос на активацию'
+    kioskStatusPendingLabel: 'Запрос на активацию',
+    bandwidthDownload: 'Загрузка',
+    bandwidthUpload: 'Отдача'
   },
   uk: {
     // Navigation / Tabs
@@ -1653,6 +1657,8 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskActionEnable: 'Активувати',
     kioskStatusDisabledLabel: 'Заблоковано',
     kioskStatusApprovedLabel: 'Активний',
-    kioskStatusPendingLabel: 'Запит на активацію'
+    kioskStatusPendingLabel: 'Запит на активацію',
+    bandwidthDownload: 'Завантаження',
+    bandwidthUpload: 'Віддача'
   }
 };
