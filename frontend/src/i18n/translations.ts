@@ -149,6 +149,9 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Tab
     orchestratorSettings: 'Orchestrator Settings',
     orchestratorSettingsSub: 'Configure global parameters and Borg pruning rules.',
+    serverNameLabel: 'Server Name',
+    serverNamePlaceholder: 'Enter server name (e.g. main-server)',
+    serverNameError: 'Server name must contain only letters, numbers, hyphens, and underscores, without spaces.',
     borgSshPort: 'Borg SSH Daemon Port',
     repoLocation: 'Repository Location',
     globalPruning: 'Global Retention Policies',
@@ -696,6 +699,9 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Tab
     orchestratorSettings: 'Настройки оркестратора',
     orchestratorSettingsSub: 'Глобальные параметры и правила очистки Borg.',
+    serverNameLabel: 'Название сервера',
+    serverNamePlaceholder: 'Введите название сервера (например main-server)',
+    serverNameError: 'Название сервера должно содержать только буквы, цифры, дефисы и подчеркивания, без пробелов.',
     borgSshPort: 'Порт SSH-демона Borg',
     repoLocation: 'Путь к репозиториям',
     globalPruning: 'Глобальная политика удержания',
@@ -1242,6 +1248,9 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Tab
     orchestratorSettings: 'Налаштування оркестратора',
     orchestratorSettingsSub: 'Глобальні параметри та правила очищення Borg.',
+    serverNameLabel: 'Назва сервера',
+    serverNamePlaceholder: 'Введіть назву сервера (наприклад main-server)',
+    serverNameError: 'Назва сервера повинна містити тільки букви, цифри, дефіси та підкреслення, без пробілів.',
     borgSshPort: 'Порт SSH-демона Borg',
     repoLocation: 'Шлях до репозиторіїв',
     globalPruning: 'Глобальна політика утримання',

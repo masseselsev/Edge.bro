@@ -33,6 +33,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [hostDataPath, setHostDataPath] = useState<string | null>(null);
   const [serverIpsInput, setServerIpsInput] = useState('');
   const [maxKioskIsos, setMaxKioskIsos] = useState(5);
+  const [serverName, setServerName] = useState('orchestrator');
   
   const [useLocalTime, setUseLocalTime] = useState(true);
   const [timezone, setTimezone] = useState(() => {
@@ -123,6 +124,9 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         if (data.max_kiosk_isos !== undefined) {
           setMaxKioskIsos(data.max_kiosk_isos);
         }
+        if (data.server_name !== undefined) {
+          setServerName(data.server_name || 'orchestrator');
+        }
         
         const dbTz = data.timezone || 'Browser Local';
         let resolvedTz = 'Europe/Moscow';
@@ -149,6 +153,13 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
     e.preventDefault();
     setSaving(true);
     setSuccess(false);
+    
+    const serverNamePattern = /^[a-zA-Z0-9_-]+$/;
+    if (!serverNamePattern.test(serverName)) {
+      alert(t('serverNameError') || 'Server name must contain only letters, numbers, hyphens, and underscores, without spaces.');
+      setSaving(false);
+      return;
+    }
     try {
       const savedTz = useLocalTime ? 'Browser Local' : timezone;
       const res = await fetch('/api/settings', {
@@ -168,6 +179,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           default_cpu_quota: defaultCpuQuota === '' ? null : Number(defaultCpuQuota),
           server_ips: serverIpsInput.split(',').map(s => s.trim()).filter(Boolean),
           max_kiosk_isos: maxKioskIsos,
+          server_name: serverName,
           retention_policy: {
             type: policyType,
             keep_daily: policyKeepDaily,
@@ -275,6 +287,20 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
               <h3 className="text-sm font-bold text-zinc-50 border-b border-zinc-850 pb-2">
                 {language === 'ru' ? 'Общие настройки' : language === 'uk' ? 'Загальні налаштування' : 'General & Connection'}
               </h3>
+
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('serverNameLabel') || 'Server Name'}</label>
+                  <input
+                    type="text"
+                    required
+                    value={serverName}
+                    onChange={(e) => setServerName(e.target.value)}
+                    placeholder={t('serverNamePlaceholder') || 'e.g. main-server'}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
