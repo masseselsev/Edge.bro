@@ -397,6 +397,9 @@ function AppContent() {
   const [pairingSubmitting, setPairingSubmitting] = useState(false);
   const [pairingError, setPairingError] = useState('');
   const [pairingSuccess, setPairingSuccess] = useState('');
+  const [requestingActivation, setRequestingActivation] = useState(false);
+  const [activationMsg, setActivationMsg] = useState('');
+  const [activationError, setActivationError] = useState('');
   const [pendingKiosks, setPendingKiosks] = useState<any[]>([]);
   const [activeReviewKiosk, setActiveReviewKiosk] = useState<any | null>(null);
   const [pairingMode, setPairingMode] = useState<'enroll' | 'connect'>('enroll');
@@ -469,6 +472,26 @@ function AppContent() {
       setPairingError(err.message);
     } finally {
       setPairingSubmitting(false);
+    }
+  };
+
+  const handleRequestActivation = async () => {
+    setRequestingActivation(true);
+    setActivationMsg('');
+    setActivationError('');
+    try {
+      const res = await fetch('/api/kiosk/request-activation', { method: 'POST' });
+      if (res.ok) {
+        setActivationMsg(t('kioskBlockedSuccess') || 'Request submitted successfully!');
+        setKioskStatus('PENDING');
+      } else {
+        const data = await res.json();
+        setActivationError(data.detail || t('kioskBlockedError') || 'Failed to submit request.');
+      }
+    } catch (err: any) {
+      setActivationError(err.message || t('kioskBlockedError') || 'Failed to submit request.');
+    } finally {
+      setRequestingActivation(false);
     }
   };
 
@@ -1159,31 +1182,74 @@ function AppContent() {
       )}
 
       {/* Main Body */}
-      <main className={`flex-1 max-w-7xl w-full mx-auto px-6 py-8 ${isKiosk ? 'pb-20' : ''}`}>
+      <main className={`flex-1 max-w-7xl w-full mx-auto px-6 py-8 ${isKiosk ? (restoreMode === 'online' && kioskStatus !== 'APPROVED' ? 'pb-28' : 'pb-20') : ''}`}>
         <div key={activeTab} className="animate-fade-in">
           {renderTabContent()}
         </div>
-        
-        {isKiosk && restoreMode === 'online' && kioskStatus !== 'APPROVED' && (
-          <div className="mt-8 border-t border-zinc-800/80 pt-8 animate-fade-in">
-            <BlockedKioskScreen 
-              status={kioskStatus} 
-              onActivationRequested={() => setKioskStatus('PENDING')}
-              onPairingSuccess={() => setKioskStatus('APPROVED')}
-              appVersion={appVersion}
-              kioskUuid={kioskUuid}
-            />
-          </div>
-        )}
       </main>
 
       {/* Kiosk Mode Footer */}
       {isKiosk && (
-        <footer className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/90 backdrop-blur-md border-t border-zinc-900 py-3 text-center text-xs text-zinc-500 flex flex-wrap items-center justify-center gap-4 animate-fade-in">
-          <span>{t('kioskTitle')}</span>
-          <span className="h-4 w-px bg-zinc-800" />
-          <span>UUID: <span className="font-mono text-zinc-400 select-all font-bold">{kioskUuid || 'Generating...'}</span></span>
-          <span className="h-4 w-px bg-zinc-800" />
+        <footer className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-900 flex flex-col animate-fade-in">
+          {/* Connection / Activation Bar (Horizontal) */}
+          {restoreMode === 'online' && kioskStatus !== 'APPROVED' && (
+            <div className="px-6 py-2.5 bg-indigo-950/10 border-b border-zinc-900/60 flex flex-wrap items-center justify-between gap-4 text-xs font-semibold">
+              <div className="flex items-center gap-2">
+                {kioskStatus === 'PENDING' ? (
+                  <>
+                    <Loader2 size={13} className="text-indigo-400 animate-spin" />
+                    <span className="text-indigo-400 font-bold">{t('kioskBlockedPendingTitle') || 'Activation Request Pending'}</span>
+                    <span className="h-3 w-px bg-zinc-800" />
+                    <span className="text-[11px] text-zinc-400 font-medium">{t('kioskBlockedPendingSub') || 'Waiting for administrator approval.'}</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldAlert size={13} className="text-red-400" />
+                    <span className="text-red-400 font-bold">{t('kioskBlockedTitle') || 'Kiosk Access Blocked'}</span>
+                    <span className="h-3 w-px bg-zinc-800" />
+                    <span className="text-[11px] text-zinc-400 font-medium">{t('kioskBlockedSub') || 'This kiosk terminal is not authorized. Request activation to connect.'}</span>
+                  </>
+                )}
+              </div>
+              
+              <div className="flex items-center gap-3">
+                {activationMsg && <span className="text-emerald-400 text-[11px] font-bold">{activationMsg}</span>}
+                {activationError && <span className="text-red-400 text-[11px] font-bold">{activationError}</span>}
+                
+                {kioskStatus !== 'PENDING' && (
+                  <button
+                    onClick={handleRequestActivation}
+                    disabled={requestingActivation}
+                    className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1.5 active:translate-y-0.5"
+                  >
+                    {requestingActivation && <Loader2 size={11} className="animate-spin" />}
+                    {t('kioskBlockedRequest') || 'Request Activation'}
+                  </button>
+                )}
+                
+                <button
+                  onClick={() => {
+                    setPairingIp(kioskOrchestratorIp || window.location.hostname);
+                    setPairingKey('');
+                    setPairingError('');
+                    setPairingSuccess('');
+                    setShowPairingModal(true);
+                  }}
+                  className="px-3 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded border border-zinc-800 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 active:translate-y-0.5"
+                >
+                  <Link2 size={11} />
+                  {t('kioskPairOtherServer') || 'Pair with another server'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Main Footer Info */}
+          <div className="py-3 text-center text-xs text-zinc-500 flex flex-wrap items-center justify-center gap-4">
+            <span>{t('kioskTitle')}</span>
+            <span className="h-4 w-px bg-zinc-800" />
+            <span>UUID: <span className="font-mono text-zinc-400 select-all font-bold">{kioskUuid || 'Generating...'}</span></span>
+            <span className="h-4 w-px bg-zinc-800" />
           <div className="relative group flex items-center gap-1">
             <span>{t('configuredServer')}</span>
             <span className="text-indigo-400 font-bold border-b border-dashed border-indigo-400/50 cursor-help pb-[1px] hover:text-indigo-300 hover:border-indigo-300 transition-colors">
@@ -1221,6 +1287,7 @@ function AppContent() {
               </div>
             </>
           )}
+          </div>
         </footer>
       )}
 

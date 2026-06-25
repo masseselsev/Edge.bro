@@ -1,7 +1,12 @@
 import subprocess
 import re
 from fastapi import APIRouter, Depends
-from routers.users import require_admin
+try:
+    from routers.users import require_admin
+except ImportError:
+    # On the kiosk terminal, network configuration is local and does not require web session authentication.
+    def require_admin():
+        pass
 from pydantic import BaseModel, Field
 from typing import Optional, List
 

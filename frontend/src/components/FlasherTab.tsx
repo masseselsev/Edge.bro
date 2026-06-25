@@ -329,14 +329,11 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative">
       {isOnlineWaitingApproval && (
-        <div className="absolute inset-0 z-30 bg-zinc-950/70 backdrop-blur-sm rounded-3xl flex flex-col items-center justify-center p-6 text-center animate-fade-in border border-zinc-800/50">
-          <div className="max-w-md space-y-4">
-            <div className="inline-flex p-4 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-2xl">
-              <Loader2 size={32} className="animate-spin" />
-            </div>
-            <h3 className="text-lg font-bold text-zinc-150">Waiting for Server Approval</h3>
-            <p className="text-xs text-zinc-400 leading-relaxed font-medium">
-              This kiosk is waiting to connect to the server. You can configure the network using the indicator in the header, or toggle to Offline Mode to restore from local USB storage.
+        <div className="absolute inset-0 z-30 bg-zinc-950/45 backdrop-blur-[2px] rounded-3xl flex items-center justify-center p-6 text-center animate-fade-in border border-zinc-800/30">
+          <div className="max-w-xs p-5 bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-xl space-y-2">
+            <h3 className="text-sm font-bold text-zinc-200">Flasher Locked</h3>
+            <p className="text-[11px] text-zinc-400 leading-normal">
+              Restore controls are disabled in Online Mode until this kiosk is authorized by the orchestrator.
             </p>
           </div>
         </div>
