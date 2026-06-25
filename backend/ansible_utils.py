@@ -166,9 +166,9 @@ def run_ansible_playbook(
         PROGRESS_TRANSLATIONS = {
             "bootstrap": {
                 "en": {
-                    "verifying_os": "Verifying OS compatibility...",
-                    "installing_python": "Ensuring Python3/Pip are installed...",
-                    "installing_deps": "Installing system dependencies...",
+                    "verifying_os": "Connecting to node via SSH & verifying OS compatibility (please wait)...",
+                    "installing_python": "Ensuring Python3/Pip are installed (Downloading/Installing - this may take several minutes)...",
+                    "installing_deps": "Installing system dependencies (parted, borgbackup, udev... this may take a moment)...",
                     "creating_user": "Creating borg system user...",
                     "generating_ssh": "Generating SSH keys for borg...",
                     "authorizing_keys": "Authorizing orchestrator SSH key...",
@@ -178,9 +178,9 @@ def run_ansible_playbook(
                     "complete": "Bootstrap completed successfully!"
                 },
                 "ru": {
-                    "verifying_os": "Проверка совместимости ОС...",
-                    "installing_python": "Установка Python3/Pip...",
-                    "installing_deps": "Установка системных зависимостей...",
+                    "verifying_os": "Подключение к узлу по SSH и проверка совместимости ОС (пожалуйста, подождите)...",
+                    "installing_python": "Установка Python3/Pip (скачивание и установка пакетов, может занять несколько минут)...",
+                    "installing_deps": "Установка системных зависимостей (parted, borgbackup, udev... это может занять некоторое время)...",
                     "creating_user": "Создание системного пользователя borg...",
                     "generating_ssh": "Генерация SSH-ключей для borg...",
                     "authorizing_keys": "Авторизация SSH-ключа оркестратора...",
@@ -190,9 +190,9 @@ def run_ansible_playbook(
                     "complete": "Начальная настройка успешно завершена!"
                 },
                 "uk": {
-                    "verifying_os": "Перевірка сумісності ОС...",
-                    "installing_python": "Встановлення Python3/Pip...",
-                    "installing_deps": "Встановлення системних залежностей...",
+                    "verifying_os": "Підключення до вузла по SSH та перевірка сумісності ОС (будь ласка, зачекайте)...",
+                    "installing_python": "Встановлення Python3/Pip (завантаження та встановлення пакетів, може зайняти кілька хвилин)...",
+                    "installing_deps": "Встановлення системних залежностей (parted, borgbackup, udev... це може зайняти деякий час)...",
                     "creating_user": "Створення системного користувача borg...",
                     "generating_ssh": "Генерація SSH-ключів для borg...",
                     "authorizing_keys": "Авторизація SSH-ключа оркестратора...",
