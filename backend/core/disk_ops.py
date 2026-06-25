@@ -46,6 +46,23 @@ def format_and_restore(
         if host_root_disk in target_dev:
             raise PermissionError("PROTECTION SHIELD: Attempted to flash the orchestrator host's root drive. Blocked.")
 
+        # 1.5. Release active mount locks on target device & its partitions
+        try:
+            import re
+            if os.path.exists("/proc/mounts"):
+                part_pattern = re.compile(r"^" + re.escape(target_dev) + r"(p?\d+)?$")
+                with open("/proc/mounts", "r") as f:
+                    for line in f:
+                        parts = line.strip().split()
+                        if len(parts) >= 2:
+                            dev_src = parts[0]
+                            if part_pattern.match(dev_src):
+                                mount_point = parts[1]
+                                emit_log(f"Releasing mount lock: unmounting {dev_src} from {mount_point}...", prog=8)
+                                subprocess.call(["umount", "-l", mount_point])
+        except Exception as ue:
+            emit_log(f"Warning: Failed to release mount locks: {str(ue)}")
+
         # 2. Wipe target signature
         emit_log(f"Wiping signatures on {target_dev}...", prog=10)
         subprocess.check_call(["wipefs", "-a", target_dev])
