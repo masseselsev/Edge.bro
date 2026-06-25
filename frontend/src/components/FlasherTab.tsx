@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertTriangle, Server, HardDrive, Play, Download } from 'lucide-react';
+import { AlertTriangle, Server, HardDrive, Play, Download, Loader2 } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import { DeviceScannerSection } from './DeviceScannerSection';
 
@@ -38,9 +38,10 @@ interface FlasherTabProps {
   timezone?: string;
   restoreMode?: 'offline' | 'online';
   isKiosk?: boolean;
+  kioskStatus?: string;
 }
 
-export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offline', isKiosk = false }: FlasherTabProps) {
+export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offline', isKiosk = false, kioskStatus = 'APPROVED' }: FlasherTabProps) {
   const { t } = useTranslation();
   const [devices, setDevices] = useState<Device[]>([]);
   const [nodes, setNodes] = useState<EdgeNode[]>([]);
@@ -323,8 +324,23 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     disabled: false
   }));
 
+  const isOnlineWaitingApproval = isKiosk && restoreMode === 'online' && kioskStatus !== 'APPROVED';
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative">
+      {isOnlineWaitingApproval && (
+        <div className="absolute inset-0 z-30 bg-zinc-950/70 backdrop-blur-sm rounded-3xl flex flex-col items-center justify-center p-6 text-center animate-fade-in border border-zinc-800/50">
+          <div className="max-w-md space-y-4">
+            <div className="inline-flex p-4 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-2xl">
+              <Loader2 size={32} className="animate-spin" />
+            </div>
+            <h3 className="text-lg font-bold text-zinc-150">Waiting for Server Approval</h3>
+            <p className="text-xs text-zinc-400 leading-relaxed font-medium">
+              This kiosk is waiting to connect to the server. You can configure the network using the indicator in the header, or toggle to Offline Mode to restore from local USB storage.
+            </p>
+          </div>
+        </div>
+      )}
       {/* Configuration & Trigger form */}
       <div className="lg:col-span-2 space-y-6">
         <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
