@@ -114,6 +114,7 @@ export const translations: Record<Language, Record<string, string>> = {
     flashTypeConfirm: 'Type "CONFIRM" to proceed:',
     flashProceedButton: 'CONFIRM & WIPE DISK',
     flashConfirmError: 'Please type "CONFIRM" correctly.',
+    flashOverrideCheckbox: 'I confirm the disk wipe and proceed despite disk type mismatch',
     kioskOfflineNodesWarning: 'Offline Mode (No local cache found)',
 
     // History Tab
@@ -669,6 +670,7 @@ export const translations: Record<Language, Record<string, string>> = {
     flashTypeConfirm: 'Введите "CONFIRM" для продолжения:',
     flashProceedButton: 'ОЧИСТИТЬ ДИСК И ЗАПИСАТЬ',
     flashConfirmError: 'Вы ввели слово "CONFIRM" неверно.',
+    flashOverrideCheckbox: 'Я подтверждаю очистку диска и соглашаюсь продолжить, несмотря на несоответствие типов дисков',
     kioskOfflineNodesWarning: 'Офлайн-режим (Локальный кэш пуст)',
 
     // History Tab
@@ -1223,6 +1225,7 @@ export const translations: Record<Language, Record<string, string>> = {
     flashTypeConfirm: 'Введіть "CONFIRM" для продовження:',
     flashProceedButton: 'ОЧИСТИТИ ДИСК ТА ЗАПИСАТИ',
     flashConfirmError: 'Ви ввели слово "CONFIRM" невірно.',
+    flashOverrideCheckbox: 'Я підтверджую очищення диска та погоджуюся продовжити, незважаючи на невідповідність типів дисків',
     kioskOfflineNodesWarning: 'Офлайн-режим (Локальний кеш порожній)',
 
     // History Tab

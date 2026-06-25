@@ -432,7 +432,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
 
             {/* Mismatch warnings */}
             {mismatchWarning && (
-              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-2">
+              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-3">
                 <div className="flex items-start gap-2.5">
                   <AlertTriangle className="text-amber-400 mt-0.5 shrink-0" size={18} />
                   <div>
@@ -442,6 +442,17 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
                     </p>
                   </div>
                 </div>
+                <label className="flex items-center gap-2.5 mt-1 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={overrideChecked}
+                    onChange={(e) => setOverrideChecked(e.target.checked)}
+                    className="rounded bg-zinc-950 border-zinc-800 text-indigo-600 focus:ring-0"
+                  />
+                  <span className="text-xs font-semibold text-zinc-200">
+                    {t('flashOverrideCheckbox')}
+                  </span>
+                </label>
               </div>
             )}
 
