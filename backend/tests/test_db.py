@@ -463,3 +463,21 @@ def test_task_log_node_association(db_session):
     assert retrieved.id == "test-task-uuid-1234"
     assert retrieved.node_id == node.id
     assert retrieved.log_output == "Task completed successfully"
+
+
+def test_settings_server_name_validation():
+    from schemas import SettingsBase
+    from pydantic import ValidationError
+
+    # Valid server names
+    valid_names = ["orchestrator", "edge-server", "main_server_01", "Edge-Server-99"]
+    for name in valid_names:
+        s = SettingsBase(server_name=name)
+        assert s.server_name == name
+
+    # Invalid server names (spaces, special characters)
+    invalid_names = ["orchestrator ", "edge server", "main@server", "edge.server"]
+    for name in invalid_names:
+        with pytest.raises(ValidationError):
+            SettingsBase(server_name=name)
+
