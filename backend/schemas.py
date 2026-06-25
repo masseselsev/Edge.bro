@@ -110,6 +110,9 @@ class NodeResponse(BaseModel):
     memory_info: Optional[str] = None
     edge_version: Optional[str] = None
     notes: Optional[str] = None
+    is_backup_running: Optional[bool] = False
+    backup_progress: Optional[int] = 0
+    backup_task_id: Optional[str] = None
 
     class Config:
         from_attributes = True

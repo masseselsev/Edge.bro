@@ -246,8 +246,9 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         return {"status": "FAILED", "error": "Node not found"}
 
     import redis
+    import time
     redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
-    redis_client.setex(f"backup_running:{node.id}", 14400, "1")
+    redis_client.setex(f"backup_running:{node.id}", 14400, f"{int(time.time())}:{task_id}")
 
     task_log = TaskLog(id=task_id, task_type="BACKUP", status="RUNNING", node_id=node_id, log_output="")
     db.add(task_log)

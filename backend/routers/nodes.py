@@ -84,6 +84,29 @@ def get_nodes(db: Session = Depends(get_db), current_user = Depends(require_kios
             except Exception:
                 repo_size = None
 
+        # Check if backup is running
+        is_running = False
+        progress = 0
+        running_task_id = None
+        try:
+            val = redis_client.get(f"backup_running:{node.id}")
+            if val:
+                val_str = val.decode('utf-8') if isinstance(val, bytes) else str(val)
+                is_running = True
+                if ":" in val_str:
+                    parts = val_str.split(":", 1)
+                    start_time = int(parts[0])
+                    running_task_id = parts[1]
+                else:
+                    start_time = int(val_str)
+                
+                import time
+                import math
+                elapsed = max(0, int(time.time()) - start_time)
+                progress = max(0, min(99, int(100 * (1 - math.exp(-elapsed / 45.0)))))
+        except Exception:
+            pass
+
         node_dict = {
             "id": node.id,
             "hostname": node.hostname,
@@ -105,7 +128,10 @@ def get_nodes(db: Session = Depends(get_db), current_user = Depends(require_kios
             "cpu_info": node.cpu_info,
             "memory_info": node.memory_info,
             "edge_version": node.edge_version,
-            "notes": node.notes
+            "notes": node.notes,
+            "is_backup_running": is_running,
+            "backup_progress": progress,
+            "backup_task_id": running_task_id
         }
         if node.status == "OFFLINE":
             try:

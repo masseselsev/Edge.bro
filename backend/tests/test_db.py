@@ -482,3 +482,38 @@ def test_settings_server_name_validation():
         with pytest.raises(ValidationError):
             SettingsBase(server_name=name)
 
+
+def test_node_response_backup_fields():
+    from schemas import NodeResponse
+    data = {
+        "id": 1,
+        "hostname": "test-node",
+        "ip_address": "192.168.1.100",
+        "ssh_port": 22,
+        "status": "READY",
+        "last_backup": None,
+        "disk_type": "SATA",
+        "network_iface": "eth0",
+        "efi_uuid": "1234",
+        "partition_layout": None,
+        "os_version": "Debian 12",
+        "next_retry_at": None,
+        "repo_size_bytes": 100,
+        "group_id": None,
+        "backup_paused": False,
+        "backup_today": False,
+        "missed_window": False,
+        "cpu_info": None,
+        "memory_info": None,
+        "edge_version": None,
+        "notes": None,
+        "is_backup_running": True,
+        "backup_progress": 45,
+        "backup_task_id": "test-task-id-123"
+    }
+    resp = NodeResponse(**data)
+    assert resp.is_backup_running is True
+    assert resp.backup_progress == 45
+    assert resp.backup_task_id == "test-task-id-123"
+
+
