@@ -23,7 +23,7 @@ BASE_ISO_PATH_TMP = BASE_ISO_PATH + ".tmp"
 def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
     os.makedirs(CACHE_DIR, exist_ok=True)
     lock_path = os.path.join(CACHE_DIR, "download.lock")
-    
+    download_completed = False
     try:
         if os.path.exists(BASE_ISO_PATH):
             if os.path.getsize(BASE_ISO_PATH) > 1000 * 1024 * 1024:
@@ -78,12 +78,28 @@ def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
         except subprocess.CalledProcessError:
             pass
 
-        # Use curl to download the file safely to a temporary path with fail-fast (-f)
-        # Relaxed speed limits to prevent download failures on slow connections
-        subprocess.check_call([
-            "curl", "-4", "--connect-timeout", "15", "--retry", "3", "--retry-delay", "2",
-            "-f", "-L", "-o", BASE_ISO_PATH_TMP, download_url
-        ])
+        # Check if the temporary file is already completely downloaded
+        if os.path.exists(BASE_ISO_PATH_TMP) and content_length:
+            try:
+                current_size = os.path.getsize(BASE_ISO_PATH_TMP)
+                target_size = int(content_length)
+                if current_size == target_size:
+                    logger.info("Temporary file is already complete. Skipping curl download.")
+                    download_completed = True
+                elif current_size > target_size:
+                    logger.warning("Local temporary file size is larger than remote content length. Deleting and restarting.")
+                    os.remove(BASE_ISO_PATH_TMP)
+            except ValueError:
+                pass
+
+        if not download_completed:
+            # Use curl to download the file safely to a temporary path with fail-fast (-f) and resume (-C -)
+            # Relaxed speed limits to prevent download failures on slow connections
+            subprocess.check_call([
+                "curl", "-4", "--connect-timeout", "15", "--retry", "3", "--retry-delay", "2",
+                "-f", "-L", "-C", "-", "-o", BASE_ISO_PATH_TMP, download_url
+            ])
+            download_completed = True
 
         if is_official:
             logger.info("Downloading SHA512SUMS for validation...")
@@ -121,8 +137,12 @@ def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
         return {"status": "SUCCESS", "message": "Base ISO downloaded successfully."}
     except Exception as e:
         logger.error(f"Download or validation failed: {e}")
-        if os.path.exists(BASE_ISO_PATH_TMP):
-            os.remove(BASE_ISO_PATH_TMP)
+        # Only remove the temporary file if download completed but checksum validation failed
+        if download_completed and os.path.exists(BASE_ISO_PATH_TMP):
+            try:
+                os.remove(BASE_ISO_PATH_TMP)
+            except Exception as re:
+                logger.error(f"Failed to remove corrupt temporary file: {re}")
         return {"status": "FAILED", "error": str(e)}
     finally:
         # Only clean up lock file if no other download process is currently active
