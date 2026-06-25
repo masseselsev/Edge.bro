@@ -868,7 +868,7 @@ function AppContent() {
     const tz = settings?.timezone || 'Browser Local';
     switch (activeTab) {
       case 'flasher':
-        return <FlasherTab onViewLogs={handleViewLogs} timezone={tz} restoreMode={restoreMode} isKiosk={isKiosk} />;
+        return <FlasherTab onViewLogs={handleViewLogs} timezone={tz} restoreMode={restoreMode} isKiosk={isKiosk} kioskStatus={kioskStatus} />;
       case 'clientiso':
         return <ClientIsoTab onViewLogs={handleViewLogs} />;
       case 'history':
@@ -889,17 +889,7 @@ function AppContent() {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
-  if (appReady && isKiosk && kioskStatus !== 'APPROVED') {
-    return (
-      <BlockedKioskScreen 
-        status={kioskStatus} 
-        onActivationRequested={() => setKioskStatus('PENDING')}
-        onPairingSuccess={() => setKioskStatus('APPROVED')}
-        appVersion={appVersion}
-        kioskUuid={kioskUuid}
-      />
-    );
-  }
+  // Render main app layout unconditionally once appReady is true.
 
   return (
     <div className="min-h-full flex flex-col font-sans select-none">
@@ -1185,6 +1175,18 @@ function AppContent() {
         <div key={activeTab} className="animate-fade-in">
           {renderTabContent()}
         </div>
+        
+        {isKiosk && restoreMode === 'online' && kioskStatus !== 'APPROVED' && (
+          <div className="mt-8 border-t border-zinc-800/80 pt-8 animate-fade-in">
+            <BlockedKioskScreen 
+              status={kioskStatus} 
+              onActivationRequested={() => setKioskStatus('PENDING')}
+              onPairingSuccess={() => setKioskStatus('APPROVED')}
+              appVersion={appVersion}
+              kioskUuid={kioskUuid}
+            />
+          </div>
+        )}
       </main>
 
       {/* Kiosk Mode Footer */}
