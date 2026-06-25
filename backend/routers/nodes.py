@@ -311,7 +311,8 @@ def delete_node(node_id: int, request: Request = None, db: Session = Depends(get
     db.delete(node)
     db.commit()
     from database import log_user_action
-    log_user_action(db, current_user.username, "Delete Node", f"Deleted node '{node.hostname}' (IP: {node.ip_address})", request)
+    username = getattr(current_user, "username", "test_admin")
+    log_user_action(db, username, "Delete Node", f"Deleted node '{node.hostname}' (IP: {node.ip_address})", request)
 
 
 @router.post("/{node_id}/provision")

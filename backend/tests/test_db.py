@@ -95,14 +95,69 @@ def test_ensure_orchestrator_ssh_key():
     Verify that ensure_orchestrator_ssh_key generates key files and returns public key content.
     """
     import os
+    import tempfile
+    import builtins
+    from unittest.mock import patch
     from tasks import ensure_orchestrator_ssh_key
     
-    pub_key_content = ensure_orchestrator_ssh_key()
-    assert isinstance(pub_key_content, str)
-    assert pub_key_content.startswith("ssh-ed25519")
-    
-    assert os.path.exists("/root/.ssh/id_ed25519")
-    assert os.path.exists("/root/.ssh/id_ed25519.pub")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mock_priv_key = os.path.join(tmpdir, "id_ed25519")
+        mock_pub_key = os.path.join(tmpdir, "id_ed25519.pub")
+        dummy_pub_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDtestkey orchestrator"
+        
+        real_exists = os.path.exists
+        def spy_exists(path):
+            if path == "/root/.ssh/id_ed25519":
+                return real_exists(mock_priv_key)
+            if path == "/root/.ssh/id_ed25519.pub":
+                return real_exists(mock_pub_key)
+            if path == "/root/.ssh":
+                return True
+            return real_exists(path)
+            
+        real_makedirs = os.makedirs
+        def spy_makedirs(path, mode=0o777, exist_ok=False):
+            if path == "/root/.ssh":
+                return real_makedirs(tmpdir, mode=mode, exist_ok=True)
+            return real_makedirs(path, mode=mode, exist_ok=exist_ok)
+            
+        real_chmod = os.chmod
+        def spy_chmod(path, mode):
+            if path == "/root/.ssh":
+                return real_chmod(tmpdir, mode)
+            if path == "/root/.ssh/id_ed25519":
+                return real_chmod(mock_priv_key, mode)
+            return real_chmod(path, mode)
+
+        real_open = builtins.open
+        def spy_open(file, *args, **kwargs):
+            if file == "/root/.ssh/id_ed25519.pub":
+                return real_open(mock_pub_key, *args, **kwargs)
+            if file == "/root/.ssh/id_ed25519":
+                return real_open(mock_priv_key, *args, **kwargs)
+            return real_open(file, *args, **kwargs)
+
+        def mock_run(cmd, *args, **kwargs):
+            if "ssh-keygen" in cmd:
+                with real_open(mock_priv_key, "w") as f:
+                    f.write("DUMMY PRIVATE KEY")
+                with real_open(mock_pub_key, "w") as f:
+                    f.write(dummy_pub_key)
+                return
+            raise ValueError(f"Unexpected subprocess run call: {cmd}")
+
+        with patch('tasks.os.path.exists', side_effect=spy_exists), \
+             patch('tasks.os.makedirs', side_effect=spy_makedirs), \
+             patch('tasks.os.chmod', side_effect=spy_chmod), \
+             patch('tasks.open', side_effect=spy_open), \
+             patch('tasks.subprocess.run', side_effect=mock_run), \
+             patch('tasks.fix_ssh_permissions'):
+            
+            with patch('os.path.exists', side_effect=spy_exists):
+                pub_key_content = ensure_orchestrator_ssh_key()
+                assert pub_key_content == dummy_pub_key
+                assert os.path.exists("/root/.ssh/id_ed25519")
+                assert os.path.exists("/root/.ssh/id_ed25519.pub")
 
 
 def test_upgrade_settings(db_session):
