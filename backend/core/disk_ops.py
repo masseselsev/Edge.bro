@@ -86,9 +86,11 @@ def format_and_restore(
             part_name = part.get("name") or f"part{i+1}"
             fstype = part.get("fstype", "ext4")
             parted_fs = "fat32" if fstype == "vfat" else fstype
+            emit_log(f"Creating partition {i+1} with GPT label/name '{part_name}' ({parted_fs}, {start_offset} to {end_offset})...")
             subprocess.check_call(["parted", "-s", target_dev, "mkpart", part_name, parted_fs, start_offset, end_offset])
 
             if part.get("mount") == "/boot/efi":
+                emit_log(f"Setting EFI System Partition (esp) flag on partition {i+1}...")
                 subprocess.check_call(["parted", "-s", target_dev, "set", str(i+1), "esp", "on"])
 
         # Set pmbr_boot flag to 'on' for older BIOS compatibility
