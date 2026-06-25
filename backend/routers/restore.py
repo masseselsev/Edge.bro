@@ -1,7 +1,7 @@
 import os
 import subprocess
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from database import get_db
 import models
@@ -142,7 +142,7 @@ def scan_devices():
 
 
 @router.post("/restore")
-def trigger_restore(payload: schemas.RestoreRequest, db: Session = Depends(get_db)):
+def trigger_restore(payload: schemas.RestoreRequest, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Triggers bare-metal flashing restore process.
     Validates NVMe/SATA mismatch and starts flashing task.
@@ -188,4 +188,6 @@ def trigger_restore(payload: schemas.RestoreRequest, db: Session = Depends(get_d
         keep_network_configs=payload.keep_network_configs,
         wipe_mac_bindings=payload.wipe_mac_bindings
     )
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Trigger Restore", f"Triggered bare-metal flashing restore of node '{node.hostname}' using archive '{payload.archive_name}' onto target device '{payload.target_dev}'", request)
     return {"message": "Restore flashing process started.", "task_id": task.id}

@@ -35,15 +35,16 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
 
 # --- Dependency Guards ---
 
-def get_current_auth(request: Request, db: Session = Depends(get_db)) -> Union[models.User, models.Kiosk]:
+def get_current_auth(request: Request = None, db: Session = Depends(get_db)) -> Union[models.User, models.Kiosk]:
     token = None
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.split(" ")[1]
-    else:
-        token = request.cookies.get("admin_session")
-        if not token:
-            token = request.query_params.get("token")
+    if request:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+        else:
+            token = request.cookies.get("admin_session")
+            if not token:
+                token = request.query_params.get("token")
 
     if not token:
         raise HTTPException(
@@ -123,9 +124,11 @@ def require_kiosk_or_admin(auth = Depends(get_current_auth)) -> Union[models.Use
 # --- Endpoints ---
 
 @router.post("/api/auth/login")
-def login(payload: schemas.LoginPayload, response: Response, db: Session = Depends(get_db)):
+def login(payload: schemas.LoginPayload, response: Response, request: Request = None, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == payload.username).first()
+    from database import log_user_action
     if not user or not verify_password(payload.password, user.hashed_password):
+        log_user_action(db, payload.username, "Login Failed", "Failed login attempt (invalid username or password)", request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password"
@@ -145,6 +148,8 @@ def login(payload: schemas.LoginPayload, response: Response, db: Session = Depen
         secure=False, # Set to True in production with TLS
     )
 
+    log_user_action(db, user.username, "Login", "User logged in successfully", request)
+
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -155,8 +160,10 @@ def login(payload: schemas.LoginPayload, response: Response, db: Session = Depen
 
 
 @router.post("/api/auth/logout")
-def logout(response: Response):
+def logout(response: Response, db: Session = Depends(get_db), current_user = Depends(require_admin), request: Request = None):
     response.delete_cookie(key="admin_session", httponly=True, samesite="lax")
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Logout", "User logged out", request)
     return {"status": "SUCCESS"}
 
 
@@ -204,6 +211,7 @@ def list_users(
 @router.post("/api/users", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
     payload: schemas.UserCreate,
+    request: Request = None,
     current_user: models.User = Depends(require_admin_plus_or_superadmin),
     db: Session = Depends(get_db)
 ):
@@ -238,6 +246,8 @@ def create_user(
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Create User", f"Created administrator user '{db_user.username}' (admin_plus={db_user.is_admin_plus})", request)
     return db_user
 
 
@@ -245,6 +255,7 @@ def create_user(
 def update_user(
     user_id: int,
     payload: schemas.UserUpdate,
+    request: Request = None,
     current_user: models.User = Depends(require_admin_plus_or_superadmin),
     db: Session = Depends(get_db)
 ):
@@ -295,12 +306,15 @@ def update_user(
 
     db.commit()
     db.refresh(user)
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Update User", f"Updated administrator user '{user.username}'", request)
     return user
 
 
 @router.delete("/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(
     user_id: int,
+    request: Request = None,
     current_user: models.User = Depends(require_admin_plus_or_superadmin),
     db: Session = Depends(get_db)
 ):
@@ -336,4 +350,18 @@ def delete_user(
 
     db.delete(user)
     db.commit()
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Delete User", f"Deleted administrator user '{user.username}'", request)
+
+
+@router.get("/api/users/audit-logs", response_model=List[schemas.AuditLogResponse])
+def get_audit_logs(
+    current_user: models.User = Depends(require_admin_plus_or_superadmin),
+    db: Session = Depends(get_db)
+):
+    """
+    Lists audit logs of user actions. Restricted to Admin+ or Superadmin.
+    """
+    return db.query(models.AuditLog).order_by(models.AuditLog.created_at.desc()).limit(1000).all()
+
 

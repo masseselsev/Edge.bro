@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from database import get_db
 import models
@@ -52,7 +52,7 @@ def get_settings(db: Session = Depends(get_db), current_user: models.User = Depe
 
 
 @router.post("/settings", response_model=schemas.SettingsResponse)
-def update_settings(payload: schemas.SettingsBase, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
+def update_settings(payload: schemas.SettingsBase, request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
     """
     Updates global orchestrator settings.
     """
@@ -75,6 +75,8 @@ def update_settings(payload: schemas.SettingsBase, db: Session = Depends(get_db)
     settings.default_cpu_quota = payload.default_cpu_quota
     settings.server_ips = payload.server_ips
     db.commit()
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Update Settings", "Updated global orchestrator settings", request)
 
     settings.available_ips = get_local_ips()
     import os

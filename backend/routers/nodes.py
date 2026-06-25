@@ -5,7 +5,7 @@ import redis
 import json
 import datetime
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from database import get_db
 import models
@@ -127,7 +127,7 @@ def get_all_history(db: Session = Depends(get_db), current_user = Depends(requir
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-def add_node(payload: schemas.NodeCreate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def add_node(payload: schemas.NodeCreate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Registers one or more new nodes and triggers bootstrap.
     """
@@ -188,6 +188,9 @@ def add_node(payload: schemas.NodeCreate, db: Session = Depends(get_db), current
             detail="All parsed nodes already exist in the database."
         )
 
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Register Nodes", f"Registered {len(created_nodes)} node(s). Starting bootstrap. First IP: {ips[0]}", request)
+
     return {
         "message": f"Successfully registered {len(created_nodes)} node(s). Bootstrap triggered.",
         "task_id": task_ids[0],
@@ -198,7 +201,7 @@ def add_node(payload: schemas.NodeCreate, db: Session = Depends(get_db), current
 
 
 @router.post("/{node_id}/prepare")
-def trigger_prepare(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def trigger_prepare(node_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Triggers the Auto-Prepare disk labels playbook task for a node.
     """
@@ -210,11 +213,13 @@ def trigger_prepare(node_id: int, db: Session = Depends(get_db), current_user = 
     db.commit()
 
     task = run_prepare_task.delay(node.id)
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Prepare Node", f"Triggered disk Auto-Prepare for node '{node.hostname}'", request)
     return {"message": "Auto-prepare playbook execution triggered.", "task_id": task.id}
 
 
 @router.post("/{node_id}/backup")
-def trigger_backup(node_id: int, payload: schemas.BackupTriggerRequest = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def trigger_backup(node_id: int, request: Request = None, payload: schemas.BackupTriggerRequest = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Triggers immediate remote backup execution.
     """
@@ -224,6 +229,8 @@ def trigger_backup(node_id: int, payload: schemas.BackupTriggerRequest = None, d
 
     comment = payload.comment if payload else None
     task = run_backup_task.delay(node.id, comment=comment)
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Backup Node", f"Triggered immediate remote backup for node '{node.hostname}' (comment: {comment})", request)
     return {"message": "Backup execution task triggered.", "task_id": task.id}
 
 
@@ -236,7 +243,7 @@ def get_node_history(node_id: int, db: Session = Depends(get_db), current_user =
 
 
 @router.delete("/{node_id}/archives")
-def purge_node_backups(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def purge_node_backups(node_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Deletes all Borg backup archives for a specific node.
     """
@@ -245,11 +252,13 @@ def purge_node_backups(node_id: int, db: Session = Depends(get_db), current_user
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
 
     task = purge_node_archives.delay(node.id)
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Purge Node Backups", f"Purged all Borg backup archives for node '{node.hostname}'", request)
     return {"message": f"Purge of all archives for '{node.hostname}' started.", "task_id": task.id}
 
 
 @router.delete("/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_node(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def delete_node(node_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Deletes a node and its related backup history records from the database,
     cleans up its specific backup archives from the shared repository, and removes its restricted
@@ -301,10 +310,12 @@ def delete_node(node_id: int, db: Session = Depends(get_db), current_user = Depe
 
     db.delete(node)
     db.commit()
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Delete Node", f"Deleted node '{node.hostname}' (IP: {node.ip_address})", request)
 
 
 @router.post("/{node_id}/provision")
-def trigger_provision(node_id: int, payload: schemas.NodeProvisionRequest, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def trigger_provision(node_id: int, payload: schemas.NodeProvisionRequest, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Triggers bootstrap on an existing node, caching its credentials in Redis.
     """
@@ -330,11 +341,13 @@ def trigger_provision(node_id: int, payload: schemas.NodeProvisionRequest, db: S
     redis_client.setex(f"bootstrap_creds:{node.id}", 86400, json.dumps(creds))
 
     task = run_bootstrap_task.delay(node.id, payload.bootstrap_password, payload.bootstrap_user, payload.force_orchestrator_proxy)
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Provision Node", f"Triggered provisioning/bootstrap for node '{node.hostname}'", request)
     return {"message": "Provisioning triggered.", "task_id": task.id}
 
 
 @router.post("/{node_id}/notes")
-def update_node_notes(node_id: int, payload: schemas.NodeNotesUpdate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def update_node_notes(node_id: int, payload: schemas.NodeNotesUpdate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Updates the notes field for a specific node.
     """
@@ -344,11 +357,13 @@ def update_node_notes(node_id: int, payload: schemas.NodeNotesUpdate, db: Sessio
     
     node.notes = payload.notes
     db.commit()
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Update Node Notes", f"Updated notes/notes for node '{node.hostname}'", request)
     return {"message": "Node notes updated successfully."}
 
 
 @router.post("/{node_id}/backup-today")
-def trigger_backup_today(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def trigger_backup_today(node_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Sets backup_today to True for the node.
     """
@@ -358,11 +373,13 @@ def trigger_backup_today(node_id: int, db: Session = Depends(get_db), current_us
     
     node.backup_today = True
     db.commit()
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Queue Node Backup", f"Queued node '{node.hostname}' for backup execution in next window", request)
     return {"message": "Node queued for backup execution during the next window."}
 
 
 @router.post("/{node_id}/toggle-pause")
-def toggle_backup_pause(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def toggle_backup_pause(node_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Toggles backup_paused state for the node.
     """
@@ -372,11 +389,13 @@ def toggle_backup_pause(node_id: int, db: Session = Depends(get_db), current_use
     
     node.backup_paused = not node.backup_paused
     db.commit()
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Toggle Node Backup Pause", f"Toggled backup pause for '{node.hostname}' to {node.backup_paused}", request)
     return {"message": "Backup status toggled successfully.", "backup_paused": node.backup_paused}
 
 
 @router.post("/{node_id}/assign-group/{group_id}")
-def assign_node_group(node_id: int, group_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def assign_node_group(node_id: int, group_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Assigns the node to a backup group. If group_id is 0 or negative, unassigns the node.
     """
@@ -393,6 +412,8 @@ def assign_node_group(node_id: int, group_id: int, db: Session = Depends(get_db)
         node.group_id = group_id
         
     db.commit()
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Assign Node Group", f"Updated group assignment for node '{node.hostname}' to group ID {group_id}", request)
     return {"message": "Node group assignment updated successfully."}
 
 

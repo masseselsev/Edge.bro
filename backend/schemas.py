@@ -286,5 +286,18 @@ class RequestActivationRequest(BaseModel):
     token: str
 
 
+class AuditLogResponse(BaseModel):
+    id: int
+    username: str
+    action: str
+    details: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+
 
 

@@ -2,7 +2,7 @@ import os
 import json
 import time
 import redis
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Depends
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Depends, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
@@ -243,7 +243,7 @@ def download_repo(hostname: str, token: str, auth = Depends(require_kiosk_or_adm
 
 
 @router.post("/kiosks/issue")
-def issue_kiosk(req: schemas.KioskIssueRequest, db: Session = Depends(get_db), auth = Depends(require_admin)):
+def issue_kiosk(req: schemas.KioskIssueRequest, request: Request = None, db: Session = Depends(get_db), auth = Depends(require_admin)):
     from routers.kiosks import generate_kiosk_key, generate_kiosk_token, generate_kiosk_uuid
     import secrets
 
@@ -280,23 +280,32 @@ def issue_kiosk(req: schemas.KioskIssueRequest, db: Session = Depends(get_db), a
     from iso_tasks import repack_kiosk_iso_task
     task = repack_kiosk_iso_task.delay(kiosk.id)
     
+    from database import log_user_action
+    username = getattr(auth, "username", "test_admin")
+    log_user_action(db, username, "Issue Kiosk", f"Issued kiosk {kiosk.uuid} (token: {kiosk.auth_token}) for recipient {kiosk.name}", request)
+
     # Return kiosk response + task_id to follow progress
     return {"kiosk": kiosk, "task_id": task.id}
 
 
 @router.post("/kiosks/{id}/recreate")
-def recreate_kiosk_iso(id: int, db: Session = Depends(get_db), auth = Depends(require_admin)):
+def recreate_kiosk_iso(id: int, request: Request = None, db: Session = Depends(get_db), auth = Depends(require_admin)):
     kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == id).first()
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")
         
     from iso_tasks import repack_kiosk_iso_task
     task = repack_kiosk_iso_task.delay(kiosk.id)
+    
+    from database import log_user_action
+    username = getattr(auth, "username", "test_admin")
+    log_user_action(db, username, "Recreate Kiosk ISO", f"Triggered recreation of Kiosk {kiosk.uuid} ISO (token: {kiosk.auth_token})", request)
+
     return {"task_id": task.id, "message": "Recreation task started"}
 
 
 @router.get("/kiosks/{id}/download")
-def download_kiosk_iso(id: int, db: Session = Depends(get_db), auth = Depends(require_admin)):
+def download_kiosk_iso(id: int, request: Request = None, db: Session = Depends(get_db), auth = Depends(require_admin)):
     kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == id).first()
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")
@@ -310,6 +319,11 @@ def download_kiosk_iso(id: int, db: Session = Depends(get_db), auth = Depends(re
         raise HTTPException(status_code=404, detail="ISO image has been pruned from cache. Re-create it first.")
         
     filename = f"Edge.bro-kiosk-{kiosk.auth_token}.iso"
+    
+    from database import log_user_action
+    username = getattr(auth, "username", "test_admin")
+    log_user_action(db, username, "Download Kiosk ISO", f"Downloaded Kiosk {kiosk.uuid} ISO (token: {kiosk.auth_token})", request)
+
     return FileResponse(
         path=iso_path,
         filename=filename,

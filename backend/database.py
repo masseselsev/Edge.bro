@@ -87,3 +87,28 @@ def setup_db_logging():
         if not any(isinstance(h, DBLoggingHandler) for h in l.handlers):
             l.addHandler(handler)
 
+
+def log_user_action(db, username: str, action: str, details: str = None, request = None):
+    """
+    Records a user action to the audit_logs database table.
+    """
+    ip_address = None
+    if request and hasattr(request, "client") and request.client:
+        host = request.client.host
+        if isinstance(host, str):
+            ip_address = host
+    try:
+        from models import AuditLog
+        log_entry = AuditLog(
+            username=username,
+            action=action,
+            details=details,
+            ip_address=ip_address
+        )
+        db.add(log_entry)
+        db.commit()
+    except Exception as e:
+        import sys
+        print(f"Failed to log user action: {e}", file=sys.stderr)
+
+

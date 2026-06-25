@@ -35,7 +35,7 @@ def generate_kiosk_uuid() -> str:
 
 
 @router.post("", response_model=schemas.KioskResponse)
-def create_kiosk(req: schemas.KioskCreate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def create_kiosk(req: schemas.KioskCreate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     # Generate unique placeholder UUID if none provided
     kiosk_uuid = req.uuid
     if kiosk_uuid:
@@ -61,6 +61,9 @@ def create_kiosk(req: schemas.KioskCreate, db: Session = Depends(get_db), curren
     db.add(kiosk)
     db.commit()
     db.refresh(kiosk)
+    from database import log_user_action
+    username = getattr(current_user, "username", "test_admin")
+    log_user_action(db, username, "Create Kiosk", f"Created kiosk pairing record with friendly name '{kiosk.name}' (UUID placeholder: {kiosk.uuid})", request)
     return kiosk
 
 @router.get("", response_model=List[schemas.KioskResponse])
@@ -88,7 +91,7 @@ def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_ad
     return kiosks
 
 @router.delete("/{kiosk_id}")
-def delete_kiosk(kiosk_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def delete_kiosk(kiosk_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")
@@ -113,10 +116,13 @@ def delete_kiosk(kiosk_id: int, db: Session = Depends(get_db), current_user = De
 
     db.delete(kiosk)
     db.commit()
+    from database import log_user_action
+    username = getattr(current_user, "username", "test_admin")
+    log_user_action(db, username, "Delete Kiosk", f"Deleted kiosk {kiosk.uuid} (token: {kiosk.auth_token})", request)
     return {"status": "SUCCESS"}
 
 @router.post("/{kiosk_id}/revoke")
-def revoke_kiosk(kiosk_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def revoke_kiosk(kiosk_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")
@@ -129,6 +135,9 @@ def revoke_kiosk(kiosk_id: int, db: Session = Depends(get_db), current_user = De
             logger.error(f"Failed to revoke SSH key for revoked kiosk: {e}")
             
     db.commit()
+    from database import log_user_action
+    username = getattr(current_user, "username", "test_admin")
+    log_user_action(db, username, "Block Kiosk", f"Revoked/blocked kiosk {kiosk.uuid}", request)
     return {"status": "SUCCESS", "kiosk_status": kiosk.status}
 
 @router.post("/handshake")
@@ -270,7 +279,7 @@ def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db))
 
 
 @router.post("/{id}/toggle-active")
-def toggle_kiosk_active(id: int, db: Session = Depends(get_db), auth = Depends(require_admin)):
+def toggle_kiosk_active(id: int, request: Request = None, db: Session = Depends(get_db), auth = Depends(require_admin)):
     kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == id).first()
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")
@@ -284,11 +293,14 @@ def toggle_kiosk_active(id: int, db: Session = Depends(get_db), auth = Depends(r
         
     db.commit()
     db.refresh(kiosk)
+    from database import log_user_action
+    username = getattr(auth, "username", "test_admin")
+    log_user_action(db, username, "Toggle Kiosk State", f"Toggled kiosk {kiosk.uuid} status to {kiosk.status}", request)
     return {"status": "SUCCESS", "kiosk_status": kiosk.status}
 
 
 @router.post("/request-activation")
-def request_kiosk_activation(req: schemas.RequestActivationRequest, db: Session = Depends(get_db)):
+def request_kiosk_activation(req: schemas.RequestActivationRequest, request: Request = None, db: Session = Depends(get_db)):
     kiosk = db.query(models.Kiosk).filter(models.Kiosk.auth_token == req.token).first()
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")
@@ -298,12 +310,14 @@ def request_kiosk_activation(req: schemas.RequestActivationRequest, db: Session 
         
     kiosk.status = "PENDING"
     db.commit()
+    from database import log_user_action
+    log_user_action(db, f"Kiosk {kiosk.uuid}", "Request Activation", "Requested kiosk reactivation", request)
     return {"status": "SUCCESS", "message": "Activation request submitted"}
 
 
 @router.post("/auto-handshake")
-def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request, db: Session = Depends(get_db)):
-    auth_header = request.headers.get("Authorization")
+def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, db: Session = Depends(get_db)):
+    auth_header = request.headers.get("Authorization") if request else None
     token = None
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1].strip()
@@ -344,13 +358,15 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request, db: Sess
             raise HTTPException(status_code=500, detail=f"Failed to authorize SSH key: {str(e)}")
 
         db.commit()
+        from database import log_user_action
+        log_user_action(db, f"Kiosk {kiosk.uuid}", "Auto Handshake Approved", "Authorized kiosk and registered public key", request)
         return {"status": "APPROVED"}
         
     raise HTTPException(status_code=403, detail=f"Kiosk status is {kiosk.status}")
 
 
 @router.put("/{kiosk_id}", response_model=schemas.KioskResponse)
-def update_kiosk(kiosk_id: int, req: schemas.KioskUpdate, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def update_kiosk(kiosk_id: int, req: schemas.KioskUpdate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")
@@ -364,6 +380,9 @@ def update_kiosk(kiosk_id: int, req: schemas.KioskUpdate, db: Session = Depends(
         
     db.commit()
     db.refresh(kiosk)
+    from database import log_user_action
+    username = getattr(current_user, "username", "test_admin")
+    log_user_action(db, username, "Update Kiosk", f"Updated kiosk profile '{kiosk.uuid}' (friendly name={kiosk.name})", request)
     return kiosk
 
 

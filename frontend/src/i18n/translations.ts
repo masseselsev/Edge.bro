@@ -166,6 +166,15 @@ export const translations: Record<Language, Record<string, string>> = {
     selectTimezone: 'Select Timezone...',
     appLanguageLabel: 'Interface Language',
 
+    // Audit Logs Tab
+    tabAuditLogs: 'Audit Logs',
+    auditTableUser: 'User',
+    auditTableAction: 'Action',
+    auditTableDetails: 'Details',
+    auditTableIp: 'IP Address',
+    noAuditLogsFound: 'No audit logs found',
+    searchLogsPlaceholder: 'Search logs...',
+
     // Technician Kiosk Tab (Client ISO Generator)
     liveUsbGenerator: 'Technician Live-USB Generator',
     liveUsbGeneratorSub: 'Generate a bootable Debian Live client for offline fleet restoration and disk wiping.',
@@ -702,6 +711,15 @@ export const translations: Record<Language, Record<string, string>> = {
     selectTimezone: 'Выберите часовой пояс...',
     appLanguageLabel: 'Язык интерфейса',
 
+    // Audit Logs Tab
+    tabAuditLogs: 'Журнал действий',
+    auditTableUser: 'Пользователь',
+    auditTableAction: 'Действие',
+    auditTableDetails: 'Детали',
+    auditTableIp: 'IP-адрес',
+    noAuditLogsFound: 'Журнал действий пуст',
+    searchLogsPlaceholder: 'Поиск по журналу...',
+
     // Technician Kiosk Tab (Client ISO Generator)
     liveUsbGenerator: 'Live-USB',
     liveUsbGeneratorSub: 'Сборка загрузочного Debian Live для восстановления узлов и очистки дисков в офлайне.',
@@ -1236,6 +1254,15 @@ export const translations: Record<Language, Record<string, string>> = {
     useBrowserLocal: 'Час браузера',
     selectTimezone: 'Виберіть часовий пояс...',
     appLanguageLabel: 'Мова інтерфейсу',
+
+    // Audit Logs Tab
+    tabAuditLogs: 'Журнал дій',
+    auditTableUser: 'Користувач',
+    auditTableAction: 'Дія',
+    auditTableDetails: 'Деталі',
+    auditTableIp: 'IP-адреса',
+    noAuditLogsFound: 'Журнал дій порожній',
+    searchLogsPlaceholder: 'Пошук у журналі...',
 
     // Technician Kiosk Tab (Client ISO Generator)
     liveUsbGenerator: 'Live-USB',

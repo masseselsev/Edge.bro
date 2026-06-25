@@ -1,6 +1,6 @@
 import hashlib
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
 import zoneinfo
@@ -40,7 +40,7 @@ def get_groups(db: Session = Depends(get_db)):
     return db.query(models.BackupGroup).all()
 
 @router.post("", response_model=schemas.BackupGroupResponse, status_code=status.HTTP_201_CREATED)
-def create_group(payload: schemas.BackupGroupCreate, db: Session = Depends(get_db)):
+def create_group(payload: schemas.BackupGroupCreate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Creates a new backup group.
     """
@@ -70,10 +70,12 @@ def create_group(payload: schemas.BackupGroupCreate, db: Session = Depends(get_d
     db.add(group)
     db.commit()
     db.refresh(group)
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Create Backup Group", f"Created backup group '{group.name}' (interval={group.interval})", request)
     return group
 
 @router.put("/{group_id}", response_model=schemas.BackupGroupResponse)
-def update_group(group_id: int, payload: schemas.BackupGroupCreate, db: Session = Depends(get_db)):
+def update_group(group_id: int, payload: schemas.BackupGroupCreate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Updates configuration parameters of a backup group.
     """
@@ -98,10 +100,12 @@ def update_group(group_id: int, payload: schemas.BackupGroupCreate, db: Session 
     
     db.commit()
     db.refresh(group)
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Update Backup Group", f"Updated configuration of backup group '{group.name}'", request)
     return group
 
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_group(group_id: int, db: Session = Depends(get_db)):
+def delete_group(group_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Deletes a backup group. Any nodes in this group will be unassigned.
     """
@@ -113,9 +117,11 @@ def delete_group(group_id: int, db: Session = Depends(get_db)):
     db.query(models.Node).filter(models.Node.group_id == group_id).update({"group_id": None})
     db.delete(group)
     db.commit()
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Delete Backup Group", f"Deleted backup group '{group.name}'", request)
 
 @router.post("/{group_id}/backup-now")
-def trigger_group_backup(group_id: int, db: Session = Depends(get_db)):
+def trigger_group_backup(group_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
     Immediately triggers background Borg backups in parallel for all unpaused nodes inside the group.
     """
@@ -133,6 +139,9 @@ def trigger_group_backup(group_id: int, db: Session = Depends(get_db)):
         task = run_backup_task.delay(node.id, comment=f"Manual trigger for group: {group.name}")
         task_ids.append(task.id)
         
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Backup Group", f"Triggered manual backups for {len(nodes)} node(s) in group '{group.name}'", request)
+
     return {
         "message": f"Triggered manual backups for {len(nodes)} node(s) in group '{group.name}'.",
         "task_ids": task_ids

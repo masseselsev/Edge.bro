@@ -129,6 +129,20 @@ class SystemLog(Base):
     created_at = Column(DateTime, default=func.now(), nullable=False)
 
 
+class AuditLog(Base):
+    """
+    Model for recording user action audits (logging who did what, from where, and when).
+    """
+    __tablename__ = 'audit_logs'
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, nullable=False, index=True)
+    action = Column(String, nullable=False)
+    details = Column(Text, nullable=True)
+    ip_address = Column(String, nullable=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+
 class Kiosk(Base):
     """
     Model for dynamic Kiosk connection and pairing.
