@@ -141,7 +141,7 @@ def revoke_kiosk(kiosk_id: int, request: Request = None, db: Session = Depends(g
     return {"status": "SUCCESS", "kiosk_status": kiosk.status}
 
 @router.post("/handshake")
-def handshake(req: schemas.HandshakeRequest, db: Session = Depends(get_db)):
+def handshake(req: schemas.HandshakeRequest, request: Request = None, db: Session = Depends(get_db)):
     normalized_key = req.key.strip().upper()
     
     # Look up kiosk by unique pairing key
@@ -175,6 +175,11 @@ def handshake(req: schemas.HandshakeRequest, db: Session = Depends(get_db)):
     kiosk.ssh_pub_key = req.ssh_pub_key
     kiosk.auth_token = token
     db.commit()
+
+    # Log successful handshake
+    kiosk_username = f"Kiosk: {kiosk.name} (UUID: {kiosk.uuid})" if kiosk.name else f"Kiosk: {kiosk.uuid}"
+    from database import log_user_action
+    log_user_action(db, kiosk_username, "Kiosk Connected (Handshake)", "Kiosk paired and initialized SSH public key", request)
 
     # Authorize SSH key
     try:
@@ -337,6 +342,9 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
         kiosk.uuid = req.uuid
         kiosk.ssh_pub_key = req.ssh_pub_key
         db.commit()
+        from database import log_user_action
+        kiosk_username = f"Kiosk: {kiosk.name} (UUID: {kiosk.uuid})" if kiosk.name else f"Kiosk: {kiosk.uuid}"
+        log_user_action(db, kiosk_username, "Auto Handshake Pending", "Kiosk requested status check, remains pending activation", request)
         return {"status": "PENDING"}
 
     if kiosk.status == "APPROVED":
@@ -359,7 +367,8 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
 
         db.commit()
         from database import log_user_action
-        log_user_action(db, f"Kiosk {kiosk.uuid}", "Auto Handshake Approved", "Authorized kiosk and registered public key", request)
+        kiosk_username = f"Kiosk: {kiosk.name} (UUID: {kiosk.uuid})" if kiosk.name else f"Kiosk: {kiosk.uuid}"
+        log_user_action(db, kiosk_username, "Auto Handshake Approved", "Authorized kiosk and registered public key", request)
         return {"status": "APPROVED"}
         
     raise HTTPException(status_code=403, detail=f"Kiosk status is {kiosk.status}")
@@ -371,6 +380,18 @@ def update_kiosk(kiosk_id: int, req: schemas.KioskUpdate, request: Request = Non
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")
         
+    changes = []
+    fields = [
+        ("name", "Name"),
+        ("contact", "Contact"),
+        ("comment", "Comment"),
+    ]
+    for attr, label in fields:
+        old_val = getattr(kiosk, attr, None)
+        new_val = getattr(req, attr, None)
+        if new_val is not None and old_val != new_val:
+            changes.append(f"{label}: '{old_val}' ➔ '{new_val}'")
+
     if req.name is not None:
         kiosk.name = req.name
     if req.contact is not None:
@@ -382,7 +403,8 @@ def update_kiosk(kiosk_id: int, req: schemas.KioskUpdate, request: Request = Non
     db.refresh(kiosk)
     from database import log_user_action
     username = getattr(current_user, "username", "test_admin")
-    log_user_action(db, username, "Update Kiosk", f"Updated kiosk profile '{kiosk.uuid}' (friendly name={kiosk.name})", request)
+    details_str = f"Update Kiosk '{kiosk.uuid}': {', '.join(changes)}" if changes else f"Updated kiosk profile '{kiosk.uuid}' (friendly name={kiosk.name}) (no values changed)"
+    log_user_action(db, username, "Update Kiosk", details_str, request)
     return kiosk
 
 

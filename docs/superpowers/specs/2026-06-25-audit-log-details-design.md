@@ -1,6 +1,9 @@
-# Design Spec: Detailed User Action Audit Logs (Before/After Diffs)
+# Design Spec: Detailed User Audit Diffs & Kiosk Actions Logging
 
-Implement a detailed audit log logging mechanism on the backend to track exact property modifications (e.g. `Timezone: 'Europe/Moscow' ➔ 'Europe/London'`), and render these changes cleanly inside a premium glassmorphic tooltip in the frontend settings panel.
+Implement:
+1. Property diff tracking for backend modifications (e.g. `Timezone: 'Europe/Moscow' ➔ 'Europe/London'`) and render these inside a premium glassmorphic hover tooltip in the frontend.
+2. Logging for connected kiosks' actions (first-time handshakes, auto-handshakes, and repository downloads).
+3. A separate settings sub-tab "Kiosk Logs" to display these logs.
 
 ## Requirements
 
@@ -12,8 +15,17 @@ Implement a detailed audit log logging mechanism on the backend to track exact p
    Compare updated kiosk properties inside `backend/routers/kiosks.py` (`name`, `contact`, `comment`) and log changes.
 4. **Detailed Node Actions Logging**:
    Compare updated node notes and group changes.
-5. **Premium Floating Tooltip**:
-   Replace native browser tooltips in the `Details` column of `AuditLogsTab.tsx` with a styled, absolute-positioned glassmorphic overlay containing list items and highlight the transition arrow `➔`.
+5. **Kiosk Connection & Download Logging**:
+   - Log `/handshake` pairings as `"Kiosk Connected (Handshake)"`.
+   - Log `/auto-handshake` checks.
+   - Log `/repos/{hostname}/download` repository sync requests as `"Download Repository"`, displaying the file size.
+   - Standardize logged username as `"Kiosk: <name> (UUID: <uuid>)"` or `"Kiosk: <uuid>"`.
+6. **Query Filter by Type**:
+   Expose query filter on `GET /api/users/audit-logs?type=admin|kiosk` to query admin actions or kiosk actions.
+7. **Premium Hover Tooltip in UI**:
+   Render absolute-positioned tooltip inside the Details cell in `AuditLogsTab.tsx` with transition animations and highlight the arrow `➔`.
+8. **Kiosk Logs Tab**:
+   Add `Kiosk Logs` settings sub-tab in settings rendering the same `AuditLogsTab` with `type="kiosk"`.
 
 ## Technical Specification
 
@@ -46,7 +58,6 @@ for attr, label in fields:
 old_policy = settings.retention_policy or {}
 new_policy = payload.retention_policy.model_dump() if payload.retention_policy else {}
 if old_policy != new_policy:
-    # Extract only changed sub-policy elements for brief log
     policy_changes = []
     for pk in ["type", "keep_last", "within_value", "within_unit"]:
         op_val = old_policy.get(pk)
@@ -76,6 +87,21 @@ for attr, label in fields:
 if payload.password is not None:
     changes.append("Password updated")
 ```
+Modify `get_audit_logs` endpoint to support type filtering:
+```python
+@router.get("/api/users/audit-logs", response_model=List[schemas.AuditLogResponse])
+def get_audit_logs(
+    type: Optional[str] = None,
+    current_user: models.User = Depends(require_admin_plus_or_superadmin),
+    db: Session = Depends(get_db)
+):
+    query = db.query(models.AuditLog)
+    if type == "kiosk":
+        query = query.filter(models.AuditLog.username.like("Kiosk%"))
+    elif type == "admin":
+        query = query.filter(~models.AuditLog.username.like("Kiosk%"))
+    return query.order_by(models.AuditLog.created_at.desc()).limit(1000).all()
+```
 
 #### Kiosk Update (`backend/routers/kiosks.py`)
 Compare kiosk fields:
@@ -92,24 +118,73 @@ for attr, label in fields:
     if new_val is not None and old_val != new_val:
         changes.append(f"{label}: '{old_val}' ➔ '{new_val}'")
 ```
+Add logging to handshake pairing:
+```python
+    kiosk_name = f"Kiosk: {kiosk.name or kiosk.uuid}"
+    if kiosk.name and kiosk.uuid:
+        kiosk_name = f"Kiosk: {kiosk.name} (UUID: {kiosk.uuid})"
+    log_user_action(db, kiosk_name, "Kiosk Connected (Handshake)", "Kiosk paired and initialized SSH public key", request)
+```
+Standardize logging in auto-handshake and activation endpoints.
 
-#### Node Notes & Groups (`backend/routers/nodes.py`)
-- In `update_node_notes`: record `Notes: '{old_notes}' ➔ '{new_notes}'`.
-- In `assign_node_group`: check node's current `group_id` vs new `group_id` and query group names to log: `Group: '{old_group_name}' ➔ '{new_group_name}'`.
+#### Kiosk Downloads (`backend/routers/iso.py`)
+Add logging inside `download_repo`:
+```python
+    kiosk_name = "Kiosk"
+    if isinstance(auth, models.Kiosk):
+        kiosk_name = f"Kiosk: {auth.name} (UUID: {auth.uuid})" if auth.name else f"Kiosk: {auth.uuid}"
+    elif isinstance(auth, models.User):
+        kiosk_name = f"Admin: {auth.username}"
+        
+    def get_format_size(size_bytes):
+        if size_bytes == 0: return "0 B"
+        import math
+        size_name = ("B", "KB", "MB", "GB", "TB")
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        p = math.pow(1024, i)
+        s = round(size_bytes / p, 2)
+        return f"{s} {size_name[i]}"
+
+    formatted_size = get_format_size(total_size)
+    log_user_action(db, kiosk_name, "Download Repository", f"Downloaded archive/repository for node '{hostname}' (Size: {formatted_size})", request)
+```
 
 ---
 
-### 2. Frontend Modifications (`AuditLogsTab.tsx`)
+### 2. Frontend Modifications
 
-Render a custom tooltip wrapper in the table cell:
+#### Reusable Tooltip & Tab Component (`AuditLogsTab.tsx`)
+```tsx
+interface AuditLogsTabProps {
+  type?: 'admin' | 'kiosk';
+  timezone?: string;
+}
+
+// Inside AuditLogsTab:
+const fetchLogs = async () => {
+  setLoading(true);
+  setError('');
+  try {
+    const url = `/api/users/audit-logs${type ? `?type=${type}` : ''}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      setLogs(data);
+    } else { ... }
+  } catch (e) { ... }
+};
+```
+Change header title dynamically:
+`{type === 'kiosk' ? (t('tabKioskLogs') || 'Kiosk Logs') : (t('tabAuditLogs') || 'Audit Logs')}`
+Description dynamically:
+`{type === 'kiosk' ? (t('kioskLogsSub') || 'Monitor connected kiosk handshakes and archive downloads.') : (t('auditLogsSub') || 'Monitor administrative actions and user login attempts.')}`
+
+Tooltip renderer:
 ```tsx
 const renderDetailsCell = (details: string | null) => {
   if (!details) return <span className="text-zinc-650">—</span>;
 
-  // Check if details is a diff-style log (starts with "Updated..." and contains "➔")
   const isDiff = details.includes('➔');
-  
-  // Parse elements
   let header = "";
   let items: string[] = [];
   
@@ -118,8 +193,7 @@ const renderDetailsCell = (details: string | null) => {
     if (colonIndex !== -1) {
       header = details.substring(0, colonIndex).trim();
       const changesStr = details.substring(colonIndex + 1).trim();
-      // Split by comma followed by space
-      items = changesStr.split(/,\s*(?![^()]*\))/); // avoid splitting commas inside parenthesis if any
+      items = changesStr.split(/,\s*(?![^()]*\))/);
     } else {
       items = [details];
     }
@@ -166,15 +240,43 @@ const renderDetailsCell = (details: string | null) => {
 };
 ```
 
+#### Settings Panel Tab Addition (`SettingsTab.tsx`)
+1. Extend `activeSubTab` state:
+   `const [activeSubTab, setActiveSubTab] = useState<'general' | 'admins' | 'audit' | 'kiosk_logs'>('general');`
+2. Add Kiosk Logs sub-tab header:
+   ```tsx
+   <button
+     type="button"
+     onClick={() => setActiveSubTab('kiosk_logs')}
+     className={`pb-2 border-b-2 px-1 transition-all cursor-pointer outline-none ${
+       activeSubTab === 'kiosk_logs'
+         ? 'border-indigo-500 text-zinc-150'
+         : 'border-transparent text-zinc-450 hover:text-zinc-300'
+     }`}
+   >
+     {t('tabKioskLogs') || 'Kiosk Logs'}
+   </button>
+   ```
+3. Render sub-tab content:
+   ```tsx
+   ) : activeSubTab === 'kiosk_logs' && (currentUser?.is_superadmin || currentUser?.is_admin_plus) ? (
+     <AuditLogsTab type="kiosk" timezone={timezone} />
+   ```
+
+#### i18n localization keys (`translations.ts`)
+Add:
+- `tabKioskLogs`: 'Kiosk Logs' / 'Логи киосков' / 'Логи кіосків'
+- `kioskLogsSub`: 'Monitor connected kiosk handshakes and archive downloads.' / 'Мониторинг подключений киосков и скачиваний архивов.' / 'Моніторинг підключень кіосків та завантажень архівів.'
+
 ---
 
 ## Verification Plan
 
 ### 1. Automated Unit Tests
-- Add a new test in `test_audit_logs.py` simulating setting updates and checking that the difference details string is populated correctly with the `➔` token.
-- Run `PYTHONPATH=. venv/bin/pytest tests/test_audit_logs.py` to verify backend correctness.
+- Update unit tests in `test_audit_logs.py` to cover settings change logs and `type` queries (`?type=admin` vs `?type=kiosk`).
+- Run `PYTHONPATH=. venv/bin/pytest tests/test_audit_logs.py` to verify backend logic.
 
 ### 2. Manual Verification
-- Log in, edit settings timezone, edit user profile (e.g. comment), and assign a node group.
-- Go to Settings -> Audit Logs.
-- Hover over the updated details cells and verify that the custom styled tooltip shows up with the old/new values styled and transition arrows highlighted.
+- Pair a kiosk and sync nodes list.
+- Check "Settings -> Kiosk Logs". Verify handshake/auto-handshake and download entries are recorded under `Kiosk: Room A (UUID: <uuid>)`.
+- Hover details and confirm formatting.

@@ -48,3 +48,24 @@ def test_log_user_action(db_session):
     assert logs[0].action == "Another Action"
     assert logs[0].details == "More details"
     assert logs[0].ip_address == "192.168.1.55"
+
+def test_audit_logs_type_filtering(db_session):
+    # Clear existing logs
+    db_session.query(models.AuditLog).delete()
+    db_session.commit()
+
+    # Log admin action
+    log_user_action(db_session, "admin_user", "Action A", "Details A")
+    # Log kiosk action
+    log_user_action(db_session, "Kiosk: Room A (UUID: abc-123)", "Action B", "Details B")
+    db_session.commit()
+
+    # Query kiosk actions
+    kiosk_logs = db_session.query(models.AuditLog).filter(models.AuditLog.username.like("Kiosk%")).all()
+    assert len(kiosk_logs) == 1
+    assert kiosk_logs[0].username == "Kiosk: Room A (UUID: abc-123)"
+
+    # Query admin actions
+    admin_logs = db_session.query(models.AuditLog).filter(~models.AuditLog.username.like("Kiosk%")).all()
+    assert len(admin_logs) == 1
+    assert admin_logs[0].username == "admin_user"

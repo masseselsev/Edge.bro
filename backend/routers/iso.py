@@ -189,7 +189,13 @@ import subprocess
 from fastapi.responses import StreamingResponse
 
 @router.get("/repos/{hostname}/download")
-def download_repo(hostname: str, token: str, auth = Depends(require_kiosk_or_admin)):
+def download_repo(
+    hostname: str,
+    token: str,
+    request: Request = None,
+    db: Session = Depends(get_db),
+    auth = Depends(require_kiosk_or_admin)
+):
     token_path = os.path.join(CACHE_DIR, "auth_token.txt")
     expected_token = "offline-token-1234"
     if os.path.exists(token_path):
@@ -232,6 +238,29 @@ def download_repo(hostname: str, token: str, auth = Depends(require_kiosk_or_adm
             proc.terminate()
             proc.wait()
             
+    # Format size
+    def get_format_size(size_bytes):
+        if size_bytes == 0: return "0 B"
+        import math
+        size_name = ("B", "KB", "MB", "GB", "TB")
+        i = int(math.floor(math.log(size_bytes, 1024)))
+        p = math.pow(1024, i)
+        s = round(size_bytes / p, 2)
+        return f"{s} {size_name[i]}"
+
+    formatted_size = get_format_size(total_size)
+    kiosk_name = "Kiosk"
+    if isinstance(auth, models.Kiosk):
+        if auth.name == "Offline Restore Client":
+            kiosk_name = "Kiosk: Offline Restore Client"
+        else:
+            kiosk_name = f"Kiosk: {auth.name} (UUID: {auth.uuid})" if auth.name else f"Kiosk: {auth.uuid}"
+    elif isinstance(auth, models.User):
+        kiosk_name = f"Admin: {auth.username}"
+
+    from database import log_user_action
+    log_user_action(db, kiosk_name, "Download Repository", f"Downloaded archive/repository for node '{hostname}' (Size: {formatted_size})", request)
+
     return StreamingResponse(
         tar_generator(),
         media_type="application/x-tar",

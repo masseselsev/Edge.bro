@@ -61,6 +61,39 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
         settings = models.Settings()
         db.add(settings)
 
+    changes = []
+    fields = [
+        ("borg_ssh_port", "Borg SSH Port"),
+        ("borg_repo_path", "Repository Path"),
+        ("keep_daily", "Keep Daily"),
+        ("keep_weekly", "Keep Weekly"),
+        ("keep_monthly", "Keep Monthly"),
+        ("global_exclusions", "Global Exclusions"),
+        ("orchestrator_ip", "Orchestrator IP"),
+        ("timezone", "Timezone"),
+        ("language", "Language"),
+        ("default_compression", "Compression"),
+        ("default_cpu_quota", "CPU Quota"),
+        ("server_ips", "Server IPs"),
+    ]
+    for attr, label in fields:
+        old_val = getattr(settings, attr, None)
+        new_val = getattr(payload, attr, None)
+        if old_val != new_val:
+            changes.append(f"{label}: '{old_val}' ➔ '{new_val}'")
+
+    old_policy = settings.retention_policy or {}
+    new_policy = payload.retention_policy.model_dump() if payload.retention_policy else {}
+    if old_policy != new_policy:
+        policy_changes = []
+        for pk in ["type", "keep_last", "within_value", "within_unit"]:
+            op_val = old_policy.get(pk)
+            np_val = new_policy.get(pk)
+            if op_val != np_val:
+                policy_changes.append(f"Retention {pk.replace('_', ' ')}: '{op_val}' ➔ '{np_val}'")
+        if policy_changes:
+            changes.extend(policy_changes)
+
     settings.borg_ssh_port = payload.borg_ssh_port
     settings.borg_repo_path = payload.borg_repo_path
     settings.keep_daily = payload.keep_daily
@@ -76,7 +109,8 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     settings.server_ips = payload.server_ips
     db.commit()
     from database import log_user_action
-    log_user_action(db, current_user.username, "Update Settings", "Updated global orchestrator settings", request)
+    details_str = f"Update Settings: {', '.join(changes)}" if changes else "Updated global orchestrator settings (no values changed)"
+    log_user_action(db, current_user.username, "Update Settings", details_str, request)
 
     settings.available_ips = get_local_ips()
     import os

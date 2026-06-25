@@ -14,9 +14,10 @@ interface AuditLog {
 
 interface AuditLogsTabProps {
   timezone?: string;
+  type?: 'admin' | 'kiosk';
 }
 
-export default function AuditLogsTab({ timezone }: AuditLogsTabProps) {
+export default function AuditLogsTab({ timezone, type }: AuditLogsTabProps) {
   const { t } = useTranslation();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +30,8 @@ export default function AuditLogsTab({ timezone }: AuditLogsTabProps) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/users/audit-logs');
+      const url = `/api/users/audit-logs${type ? `?type=${type}` : ''}`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setLogs(data);
@@ -86,6 +88,64 @@ export default function AuditLogsTab({ timezone }: AuditLogsTabProps) {
     return 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20';
   };
 
+  const renderDetailsCell = (details: string | null) => {
+    if (!details) return <span className="text-zinc-650">—</span>;
+
+    const isDiff = details.includes('➔');
+    let header = "";
+    let items: string[] = [];
+    
+    if (isDiff) {
+      const colonIndex = details.indexOf(':');
+      if (colonIndex !== -1) {
+        header = details.substring(0, colonIndex).trim();
+        const changesStr = details.substring(colonIndex + 1).trim();
+        items = changesStr.split(/,\s*(?![^()]*\))/);
+      } else {
+        items = [details];
+      }
+    } else {
+      items = [details];
+    }
+
+    const formatItem = (item: string) => {
+      if (item.includes('➔')) {
+        const parts = item.split('➔');
+        return (
+          <>
+            <span className="text-zinc-300 font-medium">{parts[0]}</span>
+            <span className="text-indigo-400 font-bold px-1.5 text-[11px]">➔</span>
+            <span className="text-emerald-400 font-medium">{parts[1]}</span>
+          </>
+        );
+      }
+      return <span className="text-zinc-300">{item}</span>;
+    };
+
+    return (
+      <div className="relative group cursor-help py-1">
+        <span className="truncate block max-w-xs sm:max-w-md text-zinc-300">{details}</span>
+        
+        {/* Premium Glassmorphic Tooltip */}
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-80 p-3 bg-zinc-950/95 backdrop-blur-md border border-zinc-800 rounded-xl shadow-2xl opacity-0 scale-95 pointer-events-none group-hover:opacity-100 group-hover:scale-100 transition-all duration-200 z-50 transform translate-y-1 group-hover:translate-y-0 text-left">
+          {header && (
+            <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1.5 border-b border-zinc-850 pb-1">
+              {header}
+            </div>
+          )}
+          <ul className="space-y-1 text-[11px] leading-relaxed max-h-48 overflow-y-auto pr-1">
+            {items.map((item, idx) => (
+              <li key={idx} className="flex items-start gap-1">
+                <span className="text-zinc-500 mt-0.5">•</span>
+                <span className="break-all">{formatItem(item)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Header and Refresh Button */}
@@ -93,10 +153,12 @@ export default function AuditLogsTab({ timezone }: AuditLogsTabProps) {
         <div>
           <h2 className="text-xl font-bold tracking-tight text-zinc-50 flex items-center gap-2">
             <ScrollText size={22} className="text-indigo-400" />
-            {t('tabAuditLogs') || 'Audit Logs'}
+            {type === 'kiosk' ? (t('tabKioskLogs') || 'Kiosk Logs') : (t('tabAuditLogs') || 'Audit Logs')}
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
-            {t('auditLogsSub') || 'Monitor administrative actions and user login attempts.'}
+            {type === 'kiosk'
+              ? (t('kioskActionLogsSub') || 'Monitor connected kiosk handshakes and archive downloads.')
+              : (t('auditLogsSub') || 'Monitor administrative actions and user login attempts.')}
           </p>
         </div>
         <button
@@ -175,8 +237,8 @@ export default function AuditLogsTab({ timezone }: AuditLogsTabProps) {
                         {log.action}
                       </span>
                     </td>
-                    <td className="p-4 text-zinc-400 break-words max-w-md" title={log.details || ''}>
-                      {log.details || <span className="text-zinc-600">—</span>}
+                    <td className="p-4 text-zinc-400 break-words max-w-md relative">
+                      {renderDetailsCell(log.details)}
                     </td>
                     <td className="p-4 font-mono text-zinc-400 whitespace-nowrap">
                       {log.ip_address || <span className="text-zinc-650">—</span>}

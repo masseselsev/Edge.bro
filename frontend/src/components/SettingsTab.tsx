@@ -14,7 +14,7 @@ interface SettingsTabProps {
 
 export default function SettingsTab({ onSettingsUpdated, currentUser }: SettingsTabProps) {
   const { t, setLanguage } = useTranslation();
-  const [activeSubTab, setActiveSubTab] = useState<'general' | 'admins' | 'audit'>('general');
+  const [activeSubTab, setActiveSubTab] = useState<'general' | 'admins' | 'audit' | 'kiosk_logs'>('general');
   const [sshPort, setSshPort] = useState(12345);
   const [repoPath, setRepoPath] = useState('/data/borg');
   const [policyType, setPolicyType] = useState<'interval' | 'count' | 'timeframe'>('interval');
@@ -247,13 +247,26 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           >
             {t('tabAuditLogs')}
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('kiosk_logs')}
+            className={`pb-2 border-b-2 px-1 transition-all cursor-pointer outline-none ${
+              activeSubTab === 'kiosk_logs'
+                ? 'border-indigo-500 text-zinc-150'
+                : 'border-transparent text-zinc-450 hover:text-zinc-300'
+            }`}
+          >
+            {t('tabKioskLogs') || 'Kiosk Logs'}
+          </button>
         </div>
       )}
 
       {activeSubTab === 'admins' && (currentUser?.is_superadmin || currentUser?.is_admin_plus) ? (
         <AdminsTab currentUser={currentUser} />
       ) : activeSubTab === 'audit' && (currentUser?.is_superadmin || currentUser?.is_admin_plus) ? (
-        <AuditLogsTab timezone={timezone} />
+        <AuditLogsTab timezone={timezone} type="admin" />
+      ) : activeSubTab === 'kiosk_logs' && (currentUser?.is_superadmin || currentUser?.is_admin_plus) ? (
+        <AuditLogsTab timezone={timezone} type="kiosk" />
       ) : (
         <form onSubmit={handleSave} className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">

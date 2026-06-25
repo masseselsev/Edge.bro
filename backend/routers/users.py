@@ -283,6 +283,29 @@ def update_user(
                 detail="Standard admin+ users cannot promote standard administrators to admin+."
             )
 
+    changes = []
+    fields = [
+        ("name", "Name"),
+        ("phone", "Contact"),
+        ("telegram_id", "Telegram ID"),
+        ("comment", "Comment"),
+        ("is_admin_plus", "Admin+ Privilege"),
+    ]
+    for attr, label in fields:
+        old_val = getattr(user, attr, None)
+        new_val = getattr(payload, attr, None)
+        if new_val is not None and old_val != new_val:
+            changes.append(f"{label}: '{old_val}' ➔ '{new_val}'")
+
+    if payload.password is not None:
+        if len(payload.password) < 6:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password must be at least 6 characters long."
+            )
+        user.hashed_password = get_password_hash(payload.password)
+        changes.append("Password updated")
+
     if payload.name is not None:
         user.name = payload.name
     if payload.phone is not None:
@@ -291,13 +314,6 @@ def update_user(
         user.telegram_id = payload.telegram_id
     if payload.comment is not None:
         user.comment = payload.comment
-    if payload.password is not None:
-        if len(payload.password) < 6:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Password must be at least 6 characters long."
-            )
-        user.hashed_password = get_password_hash(payload.password)
     
     if payload.is_admin_plus is not None:
         # Only superadmin can modify admin+ status
@@ -307,7 +323,8 @@ def update_user(
     db.commit()
     db.refresh(user)
     from database import log_user_action
-    log_user_action(db, current_user.username, "Update User", f"Updated administrator user '{user.username}'", request)
+    details_str = f"Update User '{user.username}': {', '.join(changes)}" if changes else f"Updated administrator user '{user.username}' (no values changed)"
+    log_user_action(db, current_user.username, "Update User", details_str, request)
     return user
 
 
@@ -356,12 +373,18 @@ def delete_user(
 
 @router.get("/api/users/audit-logs", response_model=List[schemas.AuditLogResponse])
 def get_audit_logs(
+    type: Optional[str] = None,
     current_user: models.User = Depends(require_admin_plus_or_superadmin),
     db: Session = Depends(get_db)
 ):
     """
     Lists audit logs of user actions. Restricted to Admin+ or Superadmin.
     """
-    return db.query(models.AuditLog).order_by(models.AuditLog.created_at.desc()).limit(1000).all()
+    query = db.query(models.AuditLog)
+    if type == "kiosk":
+        query = query.filter(models.AuditLog.username.like("Kiosk%"))
+    elif type == "admin":
+        query = query.filter(~models.AuditLog.username.like("Kiosk%"))
+    return query.order_by(models.AuditLog.created_at.desc()).limit(1000).all()
 
 

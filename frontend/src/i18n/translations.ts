@@ -168,6 +168,8 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Audit Logs Tab
     tabAuditLogs: 'Audit Logs',
+    tabKioskLogs: 'Kiosk Logs',
+    kioskActionLogsSub: 'Monitor connected kiosk handshakes and archive downloads.',
     auditTableUser: 'User',
     auditTableAction: 'Action',
     auditTableDetails: 'Details',
@@ -713,6 +715,8 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Audit Logs Tab
     tabAuditLogs: 'Журнал действий',
+    tabKioskLogs: 'Логи киосков',
+    kioskActionLogsSub: 'Мониторинг подключений киосков и скачиваний архивов.',
     auditTableUser: 'Пользователь',
     auditTableAction: 'Действие',
     auditTableDetails: 'Детали',
@@ -1257,6 +1261,8 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Audit Logs Tab
     tabAuditLogs: 'Журнал дій',
+    tabKioskLogs: 'Логи кіосків',
+    kioskActionLogsSub: 'Моніторинг підключень кіосків та завантажень архівів.',
     auditTableUser: 'Користувач',
     auditTableAction: 'Дія',
     auditTableDetails: 'Деталі',
