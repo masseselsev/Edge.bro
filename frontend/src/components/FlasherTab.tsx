@@ -244,7 +244,8 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
       const node = nodes.find(n => n.id === Number(selectedNodeId));
       const device = devices.find(d => d.name === selectedDevice);
       if (node && device) {
-        const isMismatch = node.disk_type !== 'UNKNOWN' && node.disk_type !== device.disk_type;
+        const nodeBaseType = node.disk_type.toUpperCase().startsWith('NVME') ? 'NVME' : (node.disk_type.toUpperCase().startsWith('SATA') ? 'SATA' : 'UNKNOWN');
+        const isMismatch = nodeBaseType !== 'UNKNOWN' && nodeBaseType !== device.disk_type;
         setMismatchWarning(isMismatch);
         if (!isMismatch) {
           setOverrideChecked(false);
@@ -437,7 +438,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
                   <div>
                     <h4 className="text-sm font-bold text-amber-400">{t('flashWarningTitle')}</h4>
                     <p className="text-xs text-zinc-300">
-                      {t('flashWarningText', { dev: selectedDevice, snapshot: selectedSnapshot, node: selectedNode?.hostname || '' })}
+                      {t('flashWarningText', { dev: selectedDevice.replace(/^\/dev\//, ''), snapshot: selectedSnapshot, node: selectedNode?.hostname || '' })}
                     </p>
                   </div>
                 </div>
