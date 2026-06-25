@@ -24,6 +24,9 @@ interface Node {
   id: number;
   hostname: string;
   ip_address: string;
+  is_backup_running?: boolean;
+  backup_progress?: number;
+  backup_task_id?: string | null;
 }
 
 import { formatDate } from './dateUtils';

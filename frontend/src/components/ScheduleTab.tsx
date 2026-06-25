@@ -9,6 +9,9 @@ interface Node {
   hostname: string;
   group_id: number | null;
   backup_paused: boolean;
+  is_backup_running?: boolean;
+  backup_progress?: number;
+  backup_task_id?: string | null;
 }
 
 interface LoadData {

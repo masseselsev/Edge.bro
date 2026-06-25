@@ -21,6 +21,9 @@ interface Node {
   backup_paused: boolean;
   backup_today: boolean;
   missed_window: boolean;
+  is_backup_running?: boolean;
+  backup_progress?: number;
+  backup_task_id?: string | null;
 }
 
 interface BackupGroup {
@@ -268,7 +271,13 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
         onSelectNode={handleSelectNode}
         onRunPrepare={runPrepare}
         onShowProvision={setShowProvisionModal}
-        onShowBackup={setShowBackupModal}
+        onShowBackup={(node) => {
+          if (node.is_backup_running && node.backup_task_id) {
+            onViewLogs(node.backup_task_id, `Backing up ${node.hostname}`);
+          } else {
+            setShowBackupModal(node);
+          }
+        }}
         onDeleteNode={handleDeleteNode}
         onShowDetails={() => setSelectedNodeDetails(node.id)}
         groupName={groupName}

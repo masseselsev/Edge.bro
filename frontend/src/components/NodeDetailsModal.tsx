@@ -27,6 +27,9 @@ interface Node {
   memory_info: string | null;
   edge_version: string | null;
   notes: string | null;
+  is_backup_running?: boolean;
+  backup_progress?: number;
+  backup_task_id?: string | null;
 }
 
 interface BackupHistory {

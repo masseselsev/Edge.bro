@@ -19,6 +19,9 @@ export interface Node {
   backup_paused: boolean;
   backup_today: boolean;
   missed_window: boolean;
+  is_backup_running?: boolean;
+  backup_progress?: number;
+  backup_task_id?: string | null;
 }
 
 interface NodeRowProps {
@@ -179,10 +182,19 @@ export function NodeRow({
         </button>
         <button
           onClick={() => onShowBackup(node)}
-          disabled={node.status !== 'READY'}
-          className="px-2.5 py-1.5 text-xs font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded border border-indigo-500/20 disabled:opacity-30 transition-colors"
+          disabled={node.status !== 'READY' && !node.is_backup_running}
+          style={node.is_backup_running ? {
+            background: `linear-gradient(to right, rgba(99, 102, 241, 0.25) ${node.backup_progress}%, transparent ${node.backup_progress}%)`
+          } : undefined}
+          className={`px-2.5 py-1.5 text-xs font-semibold rounded border transition-colors ${
+            node.is_backup_running
+              ? 'animate-pulse text-indigo-300 border-indigo-500 bg-indigo-500/5 hover:bg-indigo-500/10 cursor-pointer'
+              : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border-indigo-500/20 disabled:opacity-30'
+          }`}
         >
-          {t('backupAction')}
+          {node.is_backup_running
+            ? `${t('backupAction')} (${node.backup_progress}%)`
+            : t('backupAction')}
         </button>
         <button
           onClick={() => onDeleteNode(node.id, node.hostname)}

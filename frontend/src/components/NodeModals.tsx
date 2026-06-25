@@ -8,6 +8,9 @@ interface Node {
   ip_address: string;
   ssh_port: number;
   status: string;
+  is_backup_running?: boolean;
+  backup_progress?: number;
+  backup_task_id?: string | null;
 }
 
 interface AddNodeModalProps {
