@@ -1,6 +1,6 @@
 FROM python:3.13-slim
 RUN apt-get update && apt-get install -y \
-    ssh openssh-client sshpass rsync curl parted util-linux dosfstools e2fsprogs systemd iproute2 borgbackup udev \
+    ssh openssh-client sshpass rsync curl parted util-linux fdisk dosfstools e2fsprogs systemd iproute2 borgbackup udev \
     xorriso squashfs-tools syslinux syslinux-common isolinux cpio \
     gcc libpq-dev \
     && mkdir -p /opt/offline-packages \
