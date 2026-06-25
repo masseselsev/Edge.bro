@@ -74,13 +74,17 @@ def startup_db_init():
 
 def seed_superadmin(db: Session):
     """
-    Seeds the initial super administrator account if none exists.
+    Seeds the initial super administrator account if none exists,
+    and repairs invalid empty seeded superadmin accounts.
     """
     import bcrypt
+    
+    # Retrieve configured credentials, falling back if env variable is missing or empty string
+    username = os.getenv("SUPERADMIN_USERNAME") or "admin"
+    password = os.getenv("ADMIN_PASSWORD") or "q1w2e3r4"
+    
     superadmin = db.query(models.User).filter(models.User.is_superadmin == True).first()
     if not superadmin:
-        username = os.getenv("SUPERADMIN_USERNAME", "admin")
-        password = os.getenv("ADMIN_PASSWORD", "q1w2e3r4")
         pwd_bytes = password.encode('utf-8')
         salt = bcrypt.gensalt()
         hashed = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
@@ -94,6 +98,15 @@ def seed_superadmin(db: Session):
         db.add(db_user)
         db.commit()
         print(f"Superadmin user '{username}' seeded successfully.")
+    elif not superadmin.username or superadmin.username.strip() == "":
+        # Repair the invalid empty username
+        pwd_bytes = password.encode('utf-8')
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+        superadmin.username = username
+        superadmin.hashed_password = hashed
+        db.commit()
+        print(f"Repaired invalid empty superadmin username in database. Set to '{username}'.")
 
 
 def upgrade_settings(db: Session):
