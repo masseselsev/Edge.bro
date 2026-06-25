@@ -212,6 +212,8 @@ class KioskResponse(KioskBase):
     iso_size: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+    approved_at: Optional[datetime] = None
+
 
     class Config:
         from_attributes = True

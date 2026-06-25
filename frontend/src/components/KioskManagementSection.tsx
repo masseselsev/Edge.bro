@@ -12,6 +12,7 @@ interface Kiosk {
   ssh_pub_key: string | null;
   created_at: string;
   updated_at: string;
+  approved_at?: string | null;
   contact: string | null;
   comment: string | null;
   iso_exists?: boolean;
@@ -291,6 +292,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                   <th className="py-3 px-4">{t('kioskUuidLabel') || 'UUID'}</th>
                   <th className="py-3 px-4">{t('keyLabel') || 'Pairing Key'}</th>
                   <th className="py-3 px-4">{t('statusLabel') || 'Status'}</th>
+                  <th className="py-3 px-4">{t('kioskApprovedAtLabel') || 'Approval Date'}</th>
                   <th className="py-3 px-4">{t('ipAddressLabel') || 'IP Address'}</th>
                   <th className="py-3 px-4 text-right">{t('actionsLabel') || 'Actions'}</th>
                 </tr>
@@ -354,6 +356,9 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                           <RefreshCw size={10} className="animate-spin-slow" /> {t('kioskPending') || 'Pending Connection'}
                         </span>
                       )}
+                    </td>
+                    <td className="py-3.5 px-4 text-zinc-305 font-mono">
+                      {kiosk.approved_at ? new Date(kiosk.approved_at).toLocaleString() : <span className="text-zinc-650">—</span>}
                     </td>
                     <td className="py-3.5 px-4 text-zinc-300 font-mono">
                       {kiosk.ip_address || <span className="text-zinc-600">—</span>}

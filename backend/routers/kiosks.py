@@ -2,6 +2,7 @@ import random
 import secrets
 import os
 import logging
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
@@ -74,7 +75,8 @@ def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_ad
     server_name = settings.server_name if (settings and settings.server_name) else "Edge.bro"
     for k in kiosks:
         if k.auth_token:
-            iso_name = f"{server_name}-kiosk-{k.auth_token}.iso"
+            created_date = k.created_at.strftime("%Y%m%d") if k.created_at else "unknown"
+            iso_name = f"{server_name}-kiosk-{created_date}-{k.auth_token}.iso"
             iso_path = os.path.join(CACHE_DIR, "history", iso_name)
             exists = os.path.exists(iso_path)
             k.iso_exists = exists
@@ -175,6 +177,7 @@ def handshake(req: schemas.HandshakeRequest, request: Request = None, db: Sessio
         token = generate_kiosk_token()
         
     kiosk.status = "APPROVED"
+    kiosk.approved_at = datetime.utcnow()
     kiosk.ssh_pub_key = req.ssh_pub_key
     kiosk.auth_token = token
     db.commit()
@@ -296,6 +299,7 @@ def toggle_kiosk_active(id: int, request: Request = None, db: Session = Depends(
         kiosk.status = "DISABLED"
     elif kiosk.status in ["DISABLED", "PENDING"]:
         kiosk.status = "APPROVED"
+        kiosk.approved_at = datetime.utcnow()
     else:
         raise HTTPException(status_code=400, detail=f"Cannot toggle active state for status {kiosk.status}")
         

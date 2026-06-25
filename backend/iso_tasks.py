@@ -547,7 +547,8 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
         history_dir = os.path.join(CACHE_DIR, "history")
         os.makedirs(history_dir, exist_ok=True)
         server_name = settings.server_name if (settings and settings.server_name) else "Edge.bro"
-        output_kiosk_iso = os.path.join(history_dir, f"{server_name}-kiosk-{kiosk.auth_token}.iso")
+        created_date = kiosk.created_at.strftime("%Y%m%d") if kiosk.created_at else "unknown"
+        output_kiosk_iso = os.path.join(history_dir, f"{server_name}-kiosk-{created_date}-{kiosk.auth_token}.iso")
 
         work_dir = f"/tmp/repack_{kiosk_id}_{task_id}"
         iso_unpacked = os.path.join(work_dir, "iso_unpacked")

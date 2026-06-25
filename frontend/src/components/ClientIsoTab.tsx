@@ -648,16 +648,28 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                       {kiosk.iso_path && (
                         <div className="text-[10px] text-zinc-400 space-y-1 font-sans mt-2 border-t border-zinc-800/50 pt-2">
                           <div className="flex items-start gap-1">
-                            <span className="font-semibold text-zinc-500 shrink-0">{t('isoLocationLabel') || 'Location'}:</span>
-                            <code className="text-[9px] font-mono text-zinc-300 bg-zinc-900/60 px-1 py-0.5 rounded border border-zinc-800/30 break-all select-all">
-                              {kiosk.iso_path}
-                            </code>
+                            <span className="font-semibold text-zinc-500 shrink-0">File:</span>
+                            <span className="font-mono text-zinc-205 font-black bg-zinc-900/40 px-1 py-0.5 rounded border border-zinc-800/20">
+                              {kiosk.iso_path.split('/').pop()}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-zinc-500">{t('kioskCreatedAtLabel') || 'Creation Date'}:</span>{' '}
+                            <span className="text-zinc-300 font-mono">
+                              {kiosk.created_at ? new Date(kiosk.created_at).toLocaleString() : '—'}
+                            </span>
                           </div>
                           <div>
                             <span className="font-semibold text-zinc-500">{t('isoSizeLabel') || 'Size'}:</span>{' '}
                             <span className="text-emerald-400 font-bold font-mono">
                               {formatBytes(kiosk.iso_size)}
                             </span>
+                          </div>
+                          <div className="flex items-start gap-1 pt-1">
+                            <span className="font-semibold text-zinc-500 shrink-0">{t('isoLocationLabel') || 'Location'}:</span>
+                            <code className="text-[9px] font-mono text-zinc-400 bg-zinc-900/60 px-1 py-0.5 rounded border border-zinc-800/30 break-all select-all">
+                              {kiosk.iso_path}
+                            </code>
                           </div>
                         </div>
                       )}
