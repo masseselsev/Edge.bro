@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timedelta
-from typing import Union, List
+from typing import Union, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 import jwt
 import bcrypt
