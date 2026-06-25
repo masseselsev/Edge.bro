@@ -24,6 +24,8 @@ class Settings(Base):
     default_cpu_quota = Column(Integer, nullable=True)   # % of one core, NULL = no limit
     server_ips = Column(JSON, nullable=True)
     max_kiosk_isos = Column(Integer, default=5, nullable=False)
+    server_name = Column(String, default="orchestrator", nullable=False)
+
 
 
 
