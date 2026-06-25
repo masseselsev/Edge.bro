@@ -75,6 +75,7 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
         ("default_compression", "Compression"),
         ("default_cpu_quota", "CPU Quota"),
         ("server_ips", "Server IPs"),
+        ("server_name", "Server Name"),
     ]
     for attr, label in fields:
         old_val = getattr(settings, attr, None)
@@ -107,7 +108,9 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     settings.default_compression = payload.default_compression
     settings.default_cpu_quota = payload.default_cpu_quota
     settings.server_ips = payload.server_ips
+    settings.server_name = payload.server_name
     db.commit()
+
     from database import log_user_action
     details_str = f"Update Settings: {', '.join(changes)}" if changes else "Updated global orchestrator settings (no values changed)"
     log_user_action(db, current_user.username, "Update Settings", details_str, request)

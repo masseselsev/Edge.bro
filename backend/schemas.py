@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -27,6 +27,16 @@ class SettingsBase(BaseModel):
     default_cpu_quota: Optional[int] = Field(default=None, ge=0, le=400)
     server_ips: Optional[List[str]] = Field(default=[])
     max_kiosk_isos: int = Field(default=5, ge=1)
+    server_name: str = Field(default='orchestrator')
+
+    @field_validator('server_name')
+    @classmethod
+    def validate_server_name(cls, v: str) -> str:
+        import re
+        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
+            raise ValueError("Server name must contain only letters, numbers, hyphens, and underscores, without spaces.")
+        return v
+
 
 
 
