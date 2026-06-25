@@ -24,11 +24,11 @@ else
     fi
     
     echo "Parent USB disk is $PARENT_DISK. Creating partition..."
-    # Fix/relocate GPT backup headers
-    parted -s "$PARENT_DISK" print
+    # Relocate GPT backup headers to the physical end of the disk
+    echo "Fix" | parted "$PARENT_DISK" print || true
     
-    # Find end of last partition
-    LAST_END=$(parted -s "$PARENT_DISK" print | awk '/^[0-9]/ {end=$3} END {print end}')
+    # Find end of last partition in MB
+    LAST_END=$(parted -s "$PARENT_DISK" unit MB print | awk '/^[0-9]/ {end=$3} END {print end}')
     if [ -z "$LAST_END" ]; then
         LAST_END="4000MB"
     fi
