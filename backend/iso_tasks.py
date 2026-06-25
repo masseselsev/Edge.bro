@@ -546,7 +546,8 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
 
         history_dir = os.path.join(CACHE_DIR, "history")
         os.makedirs(history_dir, exist_ok=True)
-        output_kiosk_iso = os.path.join(history_dir, f"Edge.bro-kiosk-{kiosk.auth_token}.iso")
+        server_name = settings.server_name if (settings and settings.server_name) else "Edge.bro"
+        output_kiosk_iso = os.path.join(history_dir, f"{server_name}-kiosk-{kiosk.auth_token}.iso")
 
         work_dir = f"/tmp/repack_{kiosk_id}_{task_id}"
         iso_unpacked = os.path.join(work_dir, "iso_unpacked")
@@ -626,7 +627,7 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
         log_to_task(task_id, "[PROGRESS] 95:Pruning old repository ISOs...")
         iso_files = []
         for file in os.listdir(history_dir):
-            if file.endswith(".iso") and file.startswith("Edge.bro-kiosk-"):
+            if file.endswith(".iso") and "-kiosk-" in file:
                 filepath = os.path.join(history_dir, file)
                 iso_files.append((filepath, os.path.getmtime(filepath)))
                 

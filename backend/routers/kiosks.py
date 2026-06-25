@@ -70,14 +70,17 @@ def create_kiosk(req: schemas.KioskCreate, request: Request = None, db: Session 
 def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_admin)):
     kiosks = db.query(models.Kiosk).all()
     from iso_tasks import CACHE_DIR
+    settings = db.query(models.Settings).first()
+    server_name = settings.server_name if (settings and settings.server_name) else "Edge.bro"
     for k in kiosks:
         if k.auth_token:
-            iso_path = os.path.join(CACHE_DIR, "history", f"Edge.bro-kiosk-{k.auth_token}.iso")
+            iso_name = f"{server_name}-kiosk-{k.auth_token}.iso"
+            iso_path = os.path.join(CACHE_DIR, "history", iso_name)
             exists = os.path.exists(iso_path)
             k.iso_exists = exists
             if exists:
                 k.iso_path = iso_path
-                k.iso_name = f"Edge.bro-kiosk-{k.auth_token}.iso"
+                k.iso_name = iso_name
                 k.iso_size = os.path.getsize(iso_path)
             else:
                 k.iso_path = None

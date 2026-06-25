@@ -342,12 +342,15 @@ def download_kiosk_iso(id: int, request: Request = None, db: Session = Depends(g
     if not kiosk.auth_token:
         raise HTTPException(status_code=400, detail="Kiosk does not have a dynamic auth token")
         
+    settings = db.query(models.Settings).first()
+    server_name = settings.server_name if (settings and settings.server_name) else "Edge.bro"
+
     from iso_tasks import CACHE_DIR
-    iso_path = os.path.join(CACHE_DIR, "history", f"Edge.bro-kiosk-{kiosk.auth_token}.iso")
+    filename = f"{server_name}-kiosk-{kiosk.auth_token}.iso"
+    iso_path = os.path.join(CACHE_DIR, "history", filename)
     if not os.path.exists(iso_path):
         raise HTTPException(status_code=404, detail="ISO image has been pruned from cache. Re-create it first.")
-        
-    filename = f"Edge.bro-kiosk-{kiosk.auth_token}.iso"
+
     
     from database import log_user_action
     username = getattr(auth, "username", "test_admin")
