@@ -424,7 +424,7 @@ def test_checkpoint_calculation_and_command_builder():
         borg_repo_url="ssh://borg@192.168.1.1:12345/data/borg/fleet",
         archive_name="test-node-archive",
         exclude_str="--exclude '/proc/*'",
-        compression="lz4",
+        compression="zstd:3",
         rate_limit_kib=1000,
         checkpoint_secs=204,
         cpu_quota=85,
@@ -433,6 +433,7 @@ def test_checkpoint_calculation_and_command_builder():
     inner_bash_cmd_cpu = cmd_with_cpu[-1]
     assert "systemd-run --scope" in inner_bash_cmd_cpu
     assert "-p CPUQuota=85%" in inner_bash_cmd_cpu
+    assert "--compression zstd,3" in inner_bash_cmd_cpu
 
 
 def test_task_log_node_association(db_session):

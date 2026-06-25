@@ -55,9 +55,10 @@ def build_borg_create_cmd(
         f"-o ServerAliveInterval={interval} -o ServerAliveCountMax={count}"
     )
     borg_env = f"BORG_RSH='{borg_rsh}' BORG_PASSPHRASE='{borg_passphrase}'"
+    borg_compression = compression.replace(":", ",")
     borg_create = (
         f"borg create --json --stats "
-        f"--compression {compression} "
+        f"--compression {borg_compression} "
         f"--checkpoint-interval {checkpoint_secs} "
         f"--upload-ratelimit {rate_limit_kib} "
         f"{borg_repo_url}::{archive_name} / {exclude_str}"
