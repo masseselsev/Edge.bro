@@ -256,6 +256,12 @@ def revoke_ssh_key(pub_key: str):
 def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db)):
     # Check if UUID already registered
     existing = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid).first()
+    
+    # Generate unique auth token
+    token = generate_kiosk_token()
+    while db.query(models.Kiosk).filter(models.Kiosk.auth_token == token).first():
+        token = generate_kiosk_token()
+
     if existing:
         if existing.status == "APPROVED":
             raise HTTPException(status_code=400, detail="Kiosk is already approved")
@@ -266,10 +272,11 @@ def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db))
         existing.comment = req.comment
         existing.ssh_pub_key = req.ssh_pub_key
         existing.status = "PENDING"
+        existing.auth_token = token
         existing.key = generate_kiosk_key()
         db.commit()
         db.refresh(existing)
-        return {"status": "PENDING", "key": existing.key}
+        return {"status": "PENDING", "key": existing.key, "auth_token": existing.auth_token}
 
     key = generate_kiosk_key()
     while db.query(models.Kiosk).filter(models.Kiosk.key == key).first():
@@ -282,11 +289,13 @@ def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db))
         comment=req.comment,
         ssh_pub_key=req.ssh_pub_key,
         status="PENDING",
-        key=key
+        key=key,
+        auth_token=token
     )
     db.add(kiosk)
     db.commit()
-    return {"status": "PENDING", "key": key}
+    db.refresh(kiosk)
+    return {"status": "PENDING", "key": key, "auth_token": token}
 
 
 @router.post("/{id}/toggle-active")
@@ -297,9 +306,20 @@ def toggle_kiosk_active(id: int, request: Request = None, db: Session = Depends(
         
     if kiosk.status == "APPROVED":
         kiosk.status = "DISABLED"
+        if kiosk.ssh_pub_key:
+            try:
+                revoke_ssh_key(kiosk.ssh_pub_key)
+            except Exception as e:
+                logger.error(f"Failed to revoke kiosk SSH key during disable: {e}")
     elif kiosk.status in ["DISABLED", "PENDING"]:
         kiosk.status = "APPROVED"
         kiosk.approved_at = datetime.utcnow()
+        if kiosk.ssh_pub_key:
+            try:
+                authorize_ssh_key(kiosk.ssh_pub_key)
+            except Exception as e:
+                logger.error(f"Failed to authorize kiosk SSH key during approval: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to authorize SSH key: {str(e)}")
     else:
         raise HTTPException(status_code=400, detail=f"Cannot toggle active state for status {kiosk.status}")
         

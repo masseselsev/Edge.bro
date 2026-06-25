@@ -515,12 +515,32 @@ function AppContent() {
       if (!res.ok) {
         throw new Error(data.detail || 'Enrollment request failed');
       }
-      setEnrollMsg(t('enrollStatusPending') || 'Enrollment request sent. Please enter the pairing key shown on the server dashboard.');
-      setPairingMode('connect');
+      setEnrollMsg(t('enrollStatusPending') || 'Connection request submitted successfully! Waiting for server administrator approval.');
     } catch (err: any) {
       setPairingError(err.message);
     } finally {
       setPairingSubmitting(false);
+    }
+  };
+
+  const handleApproveKiosk = async (id: number) => {
+    try {
+      const res = await fetch(`/api/kiosks/${id}/toggle-active`, { method: 'POST' });
+      if (res.ok) {
+        const refreshRes = await fetch('/api/kiosks');
+        if (refreshRes.ok) {
+          const data = await refreshRes.json();
+          const pending = data.filter((k: any) => k.status === 'PENDING');
+          setPendingKiosks(pending);
+        }
+        setActiveReviewKiosk(null);
+        window.dispatchEvent(new CustomEvent('kiosks-updated'));
+      } else {
+        const data = await res.json();
+        alert(data.detail || 'Failed to approve kiosk');
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -536,6 +556,7 @@ function AppContent() {
             setPendingKiosks(pending);
           }
           setActiveReviewKiosk(null);
+          window.dispatchEvent(new CustomEvent('kiosks-updated'));
         } else {
           const data = await res.json();
           alert(data.detail || 'Failed to reject request');
@@ -1380,27 +1401,9 @@ function AppContent() {
               </div>
             </div>
 
-            <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-xl space-y-2 text-center">
-              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">
-                {t('pairKeyLabel') || 'Security Key'}
-              </span>
-              <div className="flex items-center justify-between max-w-[200px] mx-auto">
-                <span className="font-mono text-2xl font-bold tracking-widest text-amber-400 select-all mx-auto">
-                  {activeReviewKiosk.key}
-                </span>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(activeReviewKiosk.key);
-                    alert(t('copied') || 'Copied!');
-                  }}
-                  className="p-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-lg transition-colors cursor-pointer"
-                  title={t('copyToClipboard') || 'Copy to Clipboard'}
-                >
-                  <Copy size={13} />
-                </button>
-              </div>
-              <p className="text-[10px] text-zinc-550 leading-relaxed max-w-[260px] mx-auto mt-2">
-                {t('kioskProvideKeyHint') || 'Provide this key to the operator. They must enter it on their kiosk setup screen.'}
+            <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-xl space-y-2 text-center text-zinc-400">
+              <p className="text-xs">
+                {t('kioskApprovePrompt') || 'This kiosk is requesting connection. Click "Activate" to grant access.'}
               </p>
             </div>
 
@@ -1408,9 +1411,16 @@ function AppContent() {
               <button
                 type="button"
                 onClick={() => handleRejectKiosk(activeReviewKiosk.id)}
-                className="px-4 py-2 text-xs font-semibold text-rose-450 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/30 rounded-lg transition-colors cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-rose-400 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/30 rounded-lg transition-colors cursor-pointer"
               >
                 {t('rejectKiosk') || 'Reject Kiosk'}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApproveKiosk(activeReviewKiosk.id)}
+                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors cursor-pointer"
+              >
+                {t('kioskActionEnable') || 'Approve & Activate'}
               </button>
               <button
                 type="button"
@@ -1490,6 +1500,11 @@ function AppContent() {
 
             {pairingMode === 'enroll' ? (
               <form onSubmit={handleEnrollSubmit} className="space-y-4">
+                {enrollMsg && (
+                  <div className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg leading-relaxed">
+                    {enrollMsg}
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
                     {t('selectServerIp') || 'Select Server IP'}

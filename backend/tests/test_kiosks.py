@@ -152,6 +152,7 @@ def test_kiosk_enrollment_flow(db_session):
     res = enroll_kiosk(req_enroll, db=db_session)
     assert res["status"] == "PENDING"
     assert len(res["key"]) == 6
+    assert "auth_token" in res
     
     # Verify kiosk is saved in db
     db_session.expire_all()
@@ -273,7 +274,7 @@ def test_kiosks_activation_and_auto_handshake(mock_authorize, db_session):
     # 7. auto_handshake on approved kiosk should succeed and authorize SSH
     res_hs_ok = auto_handshake(req_handshake, mock_request, db=db_session)
     assert res_hs_ok["status"] == "APPROVED"
-    mock_authorize.assert_called_once()
+    assert mock_authorize.call_count == 2
 
 
 def test_generate_kiosk_uuid():

@@ -305,6 +305,41 @@ def enroll_client_kiosk(req: ClientEnrollRequest):
         )
         with urllib.request.urlopen(req_obj, timeout=10) as response:
             res_data = json.loads(response.read().decode())
+            
+        token = res_data.get("auth_token")
+        if token:
+            # Update current runtime state
+            global orchestrator_ip, auth_token, restore_mode, kiosk_status, autocheck_in_thread_started
+            orchestrator_ip = req.orchestrator_ip
+            auth_token = token
+            restore_mode = "offline"
+            kiosk_status = "PENDING"
+            
+            # Start auto check-in thread if not already running
+            if not autocheck_in_thread_started:
+                import threading
+                threading.Thread(target=auto_register_with_orchestrator, daemon=True).start()
+                autocheck_in_thread_started = True
+            
+            # Update config.json file
+            cfg_data = {}
+            if os.path.exists(CONFIG_PATH):
+                try:
+                    with open(CONFIG_PATH, "r") as f:
+                        cfg_data = json.load(f)
+                except Exception as e:
+                    logging.error(f"Failed to parse config.json for writing: {e}")
+            
+            cfg_data["orchestrator_ip"] = req.orchestrator_ip
+            cfg_data["auth_token"] = token
+            cfg_data["restore_mode"] = "offline"
+            
+            try:
+                with open(CONFIG_PATH, "w") as f:
+                    json.dump(cfg_data, f, indent=4)
+            except Exception as e:
+                logging.error(f"Failed to write config.json during connection enrollment: {e}")
+                
         return res_data
     except urllib.error.HTTPError as he:
         err_body = he.read().decode()

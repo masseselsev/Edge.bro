@@ -399,7 +399,7 @@ export const translations: Record<Language, Record<string, string>> = {
     noKiosksFound: 'No registered kiosks found',
     noMatchingKiosks: 'No matching kiosks found',
     searchKiosksPlaceholder: 'Search kiosks by name, ID, IP...',
-    registerKioskHint: 'Click "Register Kiosk" to generate a pairing key.',
+    registerKioskHint: 'Connect new kiosks by initiating a pairing request from the kiosk client screen.',
     kioskNameLabel: 'Friendly Name',
     kioskUuidLabel: 'Kiosk ID',
     keyLabel: 'Key / Token',
@@ -450,7 +450,8 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskContactPlaceholder: 'e.g. @username or email',
 
     kioskCommentPlaceholder: 'e.g. Backup kiosk for first floor',
-    enrollStatusPending: 'Enrollment request sent. Please enter the pairing key shown on the server dashboard.',
+    enrollStatusPending: 'Connection request submitted successfully! Waiting for server administrator approval.',
+    kioskApprovePrompt: 'This kiosk is requesting connection. Click "Activate" to grant access.',
 
     watchdogTitle: 'Watchdog Controller Detected',
     watchdogAlertText: 'A hardware watchdog timer has been detected. We recommend freezing the watchdog to prevent unexpected system reboots during backups or restores.',
@@ -950,7 +951,7 @@ export const translations: Record<Language, Record<string, string>> = {
     noKiosksFound: 'Зарегистрированные киоски не найдены',
     noMatchingKiosks: 'Совпадающих киосков не найдено',
     searchKiosksPlaceholder: 'Поиск киосков по имени, ID, IP...',
-    registerKioskHint: 'Нажмите "Зарегистрировать киоск", чтобы сгенерировать ключ сопряжения.',
+    registerKioskHint: 'Подключайте новые киоски, отправляя запрос на сопряжение с экрана клиента киоска.',
     kioskNameLabel: 'Понятное имя',
     kioskIdLabel: 'ID киоска',
     keyLabel: 'Ключ / Токен',
@@ -1001,7 +1002,8 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskContactPlaceholder: 'например, @username или email',
 
     kioskCommentPlaceholder: 'например, Киоск резервного копирования на первом этаже',
-    enrollStatusPending: 'Запрос на регистрацию отправлен. Пожалуйста, введите ключ сопряжения, показанный на панели сервера.',
+    enrollStatusPending: 'Запрос на подключение успешно отправлен! Ожидание одобрения администратором сервера.',
+    kioskApprovePrompt: 'Этот киоск запрашивает подключение. Нажмите «Активировать», чтобы предоставить доступ.',
 
     watchdogTitle: 'Обнаружен контроллер Watchdog',
     watchdogAlertText: 'Обнаружен аппаратный сторожевой таймер. Рекомендуется заморозить вочдог, чтобы предотвратить случайную перезагрузку материнской платы во время резервного копирования или восстановления.',
@@ -1501,7 +1503,7 @@ export const translations: Record<Language, Record<string, string>> = {
     noKiosksFound: 'Зареєстровані кіоски не знайдені',
     noMatchingKiosks: 'Співпадаючих кіосків не знайдено',
     searchKiosksPlaceholder: 'Пошук кіосків за ім\'ям, ID, IP...',
-    registerKioskHint: 'Натисніть "Зареєструвати кіоск", щоб згенерувати ключ сполучення.',
+    registerKioskHint: 'Підключайте нові кіоски, надсилаючи запит на сполучення з екрана клієнта кіоска.',
     kioskNameLabel: 'Зрозуміле ім\'я',
     kioskUuidLabel: 'ID кіоску',
     keyLabel: 'Ключ / Токен',
@@ -1549,7 +1551,8 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskContactPlaceholder: 'наприклад, @username або email',
 
     kioskCommentPlaceholder: 'наприклад, Кіоск резервного копіювання на першому поверсі',
-    enrollStatusPending: 'Запит на реєстрацію надіслано. Будь ласка, введіть ключ сполучення, що відображається на панелі сервера.',
+    enrollStatusPending: 'Запит на підключення успішно надіслано! Очікування схвалення адміністратором сервера.',
+    kioskApprovePrompt: 'Цей кіоск запитує підключення. Натисніть «Активувати», щоб надати доступ.',
 
     watchdogTitle: 'Виявлено контролер Watchdog',
     watchdogAlertText: 'Виявлено апаратний сторожовий таймер. Рекомендується заморозити вочдог, щоб запобігти раптовому перезавантаженню плати під час резервного копіювання або відновлення.',

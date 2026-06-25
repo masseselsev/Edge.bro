@@ -251,16 +251,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
             />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={14} />
           </div>
-          <button
-            onClick={() => {
-              setError('');
-              setShowAddModal(true);
-            }}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs shadow-lg transition-colors cursor-pointer shrink-0"
-          >
-            <Plus size={14} />
-            {t('registerKioskButton') || 'Register Kiosk'}
-          </button>
+
         </div>
       </div>
 
@@ -426,123 +417,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
         )}
       </div>
 
-      {/* Add Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4 animate-modal-in">
-            <div>
-              <h3 className="text-base font-bold text-zinc-50">{t('registerKioskTitle') || 'Register Kiosk'}</h3>
-              <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">{t('registerKioskSub') || 'Generate security key for dynamic сопряжения'}</p>
-            </div>
-            
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskNameLabel') || 'Friendly Name'}</label>
-                <input
-                  type="text"
-                  placeholder={t('kioskNamePlaceholder')}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
-                />
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskContact') || 'Contact'}</label>
-                <input
-                  type="text"
-                  placeholder={t('kioskContactPlaceholder') || 'e.g. @username or email'}
-                  value={contact}
-                  onChange={(e) => setContact(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskComment') || 'Comment'}</label>
-                <textarea
-                  rows={2}
-                  placeholder={t('kioskCommentPlaceholder') || 'e.g. Backup kiosk for first floor'}
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('kioskUuidLabel') || 'Kiosk UUID'}</label>
-                <input
-                  type="text"
-                  placeholder={t('kioskUuidPlaceholder') || 'e.g. AB1234'}
-                  value={uuid}
-                  onChange={(e) => setUuid(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors font-mono"
-                />
-                <p className="text-[10px] text-zinc-500 mt-1">{t('kioskIdHint') || 'Read this ID from the footer of the Kiosk client screen. Optional if pairing dynamically via key.'}</p>
-              </div>
-
-              {error && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{error}</div>}
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
-                >
-                  {t('cancel') || 'Cancel'}
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
-                >
-                  {submitting ? t('saving') : (t('registerKioskButton') || 'Register Kiosk')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Key Display Modal */}
-      {showKeyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4 animate-modal-in text-center">
-            <div className="flex justify-center">
-              <div className="p-3 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-full">
-                <Globe size={28} />
-              </div>
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-zinc-50">{t('pairKeyGenerated') || 'Pairing Key Generated'}</h3>
-              <p className="text-xs text-zinc-400 mt-1">{t('pairKeyGeneratedDesc') || 'Enter this key phrase on the kiosk client along with this orchestrator\'s IP address to complete pairing.'}</p>
-            </div>
-
-            <div className="flex items-center justify-between bg-zinc-950 p-4 border border-zinc-800 rounded-xl max-w-xs mx-auto">
-              <span className="font-mono text-xl font-bold tracking-widest text-amber-400 select-all mx-auto">{generatedKey}</span>
-              <button
-                onClick={copyKeyToClipboard}
-                className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-lg transition-colors cursor-pointer"
-                title={t('copyToClipboard') || 'Copy to clipboard'}
-              >
-                {copied ? <CheckCircle size={16} className="text-emerald-400" /> : <Copy size={16} />}
-              </button>
-            </div>
-
-            <div className="pt-2 border-t border-zinc-800">
-              <button
-                onClick={() => {
-                  setShowKeyModal(false);
-                  setGeneratedKey('');
-                }}
-                className="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors cursor-pointer"
-              >
-                {t('closeButton') || 'Close'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Edit Modal */}
       {showEditModal && editingKiosk && (

@@ -53,18 +53,29 @@ def startup_db_init():
     except Exception as e:
         print(f"Error ensuring repository permissions on startup: {str(e)}")
 
-    # Clear any stale download lock file and temp files from a previous crash/reboot
+    # Clear any stale download lock file on startup. If a download was in progress, auto-resume it.
     try:
         lock_path = "/opt/data/iso_cache/download.lock"
+        tmp_iso_path = "/opt/data/iso_cache/base.iso.tmp"
+        base_iso_path = "/opt/data/iso_cache/base.iso"
+        
+        # Clear lock first to reset any stale status
         if os.path.exists(lock_path):
             os.remove(lock_path)
             print("Cleared stale download lock on startup.")
-        tmp_iso_path = "/opt/data/iso_cache/base.iso.tmp"
-        if os.path.exists(tmp_iso_path):
-            os.remove(tmp_iso_path)
-            print("Cleared stale temporary base ISO file on startup.")
+            
+        # Check if we should auto-resume the download
+        if not os.path.exists(base_iso_path) and os.path.exists(tmp_iso_path):
+            print("Found partial base ISO download, scheduling automatic resume...")
+            # Recreate download.lock so UI shows it as downloading
+            with open(lock_path, "w") as f:
+                f.write("LOCKED")
+            
+            from iso_tasks import download_base_iso_task
+            download_base_iso_task.delay()
+            print("Triggered base ISO download task on startup.")
     except Exception as e:
-        print(f"Error clearing stale download lock/files on startup: {str(e)}")
+        print(f"Error managing base ISO download resume on startup: {str(e)}")
 
     db = next(get_db())
     upgrade_settings(db)
