@@ -262,3 +262,129 @@ def test_configure_wired_dhcp(mock_output, mock_call):
     assert ["nmcli", "connection", "modify", "Wired connection 2", "ipv4.dns", ""] in calls
     assert ["nmcli", "connection", "modify", "Wired connection 2", "ipv4.ignore-auto-dns", "no"] in calls
     assert ["nmcli", "connection", "up", "Wired connection 2"] in calls
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bandwidth endpoint tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+import json
+import time as time_module
+import routers.network as network_module
+from routers.network import get_network_bytes, get_bandwidth, _fallback_traffic_cache
+
+
+FAKE_PROC_NET_DEV = """\
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo:   1000     100    0    0    0     0          0         0     1000     100    0    0    0     0       0          0
+  eth0: 5000000    5000    0    0    0     0          0         0  3000000    4000    0    0    0     0       0          0
+docker0:    500      10    0    0    0     0          0         0      500      10    0    0    0     0       0          0
+br-abc:    200       5    0    0    0     0          0         0      200       5    0    0    0     0       0          0
+veth123:   100       2    0    0    0     0          0         0      100       2    0    0    0     0       0          0
+"""
+
+
+def test_get_network_bytes_excludes_virtual():
+    """get_network_bytes() should sum only eth0 and exclude lo, docker, br-, veth."""
+    m = __import__("unittest.mock", fromlist=["mock_open"])
+    mock_open = m.mock_open(read_data=FAKE_PROC_NET_DEV)
+    with __import__("unittest.mock", fromlist=["patch"]).patch("builtins.open", mock_open):
+        _, rx, tx = get_network_bytes()
+    assert rx == 5_000_000, f"Expected 5000000 rx, got {rx}"
+    assert tx == 3_000_000, f"Expected 3000000 tx, got {tx}"
+
+
+def test_bandwidth_first_call_returns_zero():
+    """First call with no cached snapshot must return rx_speed=0, tx_speed=0."""
+    from unittest.mock import patch, MagicMock
+
+    # Clear module fallback cache
+    _fallback_traffic_cache.clear()
+
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = None  # no previous snapshot
+
+    with patch.object(network_module, "_redis_client", mock_redis):
+        with patch("routers.network.get_network_bytes", return_value=(1000.0, 5_000_000, 3_000_000)):
+            result = get_bandwidth()
+
+    assert result.rx_speed == 0.0
+    assert result.tx_speed == 0.0
+
+
+def test_bandwidth_calculates_correct_speed():
+    """Second call 1 second later with 1 MB more should give ~1 MB/s speed."""
+    from unittest.mock import patch, MagicMock
+
+    _fallback_traffic_cache.clear()
+
+    prev_snapshot = {
+        "timestamp": 1000.0,
+        "rx_bytes": 5_000_000,
+        "tx_bytes": 3_000_000,
+        "rx_speed": 0.0,
+        "tx_speed": 0.0,
+    }
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = json.dumps(prev_snapshot).encode()
+
+    with patch.object(network_module, "_redis_client", mock_redis):
+        with patch("routers.network.get_network_bytes", return_value=(1001.0, 6_000_000, 3_500_000)):
+            result = get_bandwidth()
+
+    assert abs(result.rx_speed - 1_000_000.0) < 1, f"Unexpected rx_speed: {result.rx_speed}"
+    assert abs(result.tx_speed - 500_000.0) < 1, f"Unexpected tx_speed: {result.tx_speed}"
+
+
+def test_bandwidth_rate_limits_sub_half_second():
+    """When delta_time < 0.5s the endpoint must return the cached speed unchanged."""
+    from unittest.mock import patch, MagicMock
+
+    _fallback_traffic_cache.clear()
+
+    prev_snapshot = {
+        "timestamp": 1000.0,
+        "rx_bytes": 5_000_000,
+        "tx_bytes": 3_000_000,
+        "rx_speed": 12345.0,
+        "tx_speed": 67890.0,
+    }
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = json.dumps(prev_snapshot).encode()
+
+    # Only 0.1 s elapsed — below threshold
+    with patch.object(network_module, "_redis_client", mock_redis):
+        with patch("routers.network.get_network_bytes", return_value=(1000.1, 5_100_000, 3_100_000)):
+            result = get_bandwidth()
+
+    assert result.rx_speed == 12345.0
+    assert result.tx_speed == 67890.0
+
+
+def test_bandwidth_fallback_to_memory_on_redis_failure():
+    """When Redis raises an exception the endpoint should use in-process dict and return gracefully."""
+    from unittest.mock import patch, MagicMock
+
+    _fallback_traffic_cache.clear()
+
+    mock_redis = MagicMock()
+    mock_redis.get.side_effect = Exception("Redis connection refused")
+
+    with patch.object(network_module, "_redis_client", mock_redis):
+        with patch("routers.network.get_network_bytes", return_value=(1000.0, 5_000_000, 3_000_000)):
+            # First call — no fallback entry yet, should return zeros
+            result = get_bandwidth()
+
+    assert result.rx_speed == 0.0
+    assert result.tx_speed == 0.0
+    # Fallback cache should have been populated
+    assert network_module.BANDWIDTH_CACHE_KEY in _fallback_traffic_cache
+
+    # Second call — fallback cache has previous entry, 1s later with more bytes
+    with patch.object(network_module, "_redis_client", mock_redis):
+        with patch("routers.network.get_network_bytes", return_value=(1001.0, 6_000_000, 3_500_000)):
+            result2 = get_bandwidth()
+
+    assert result2.rx_speed > 0, "Should calculate non-zero speed on second call"
+

@@ -1,5 +1,9 @@
 import subprocess
 import re
+import os
+import time
+import json
+import redis
 from fastapi import APIRouter, Depends
 try:
     from routers.users import require_admin
@@ -9,6 +13,12 @@ except ImportError:
         pass
 from pydantic import BaseModel, Field
 from typing import Optional, List
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+_redis_client = redis.Redis.from_url(REDIS_URL)
+
+# Module-level fallback cache used when Redis is unavailable
+_fallback_traffic_cache: dict = {}
 
 router = APIRouter(prefix="/network", tags=["Network"], dependencies=[Depends(require_admin)])
 
@@ -56,6 +66,38 @@ class ActionResponse(BaseModel):
     status: str
     message: Optional[str] = None
     error: Optional[str] = None
+
+class BandwidthResponse(BaseModel):
+    rx_speed: float = Field(..., description="Download speed in bytes/sec")
+    tx_speed: float = Field(..., description="Upload speed in bytes/sec")
+
+
+def get_network_bytes() -> tuple[float, int, int]:
+    """Read cumulative Rx/Tx bytes from /proc/net/dev for physical interfaces.
+
+    Returns:
+        (timestamp, total_rx_bytes, total_tx_bytes)
+    """
+    rx_total = 0
+    tx_total = 0
+    try:
+        with open("/proc/net/dev", "r") as f:
+            lines = f.readlines()
+        for line in lines[2:]:
+            parts = line.split(":")
+            if len(parts) < 2:
+                continue
+            iface = parts[0].strip()
+            # Exclude loopback and virtual/container interfaces
+            if iface == "lo" or iface.startswith(("docker", "br-", "veth")):
+                continue
+            stats = parts[1].split()
+            if len(stats) >= 9:
+                rx_total += int(stats[0])
+                tx_total += int(stats[8])
+    except Exception:
+        pass
+    return time.monotonic(), rx_total, tx_total
 
 
 def prefix_to_mask(prefix: int) -> str:
@@ -307,3 +349,81 @@ def configure_wired(req: WiredConfigRequest):
         return ActionResponse(status="SUCCESS", message="Wired connection settings applied successfully")
     except Exception as e:
         return ActionResponse(status="FAILED", error=str(e))
+
+
+BANDWIDTH_CACHE_KEY = "orch_net_traffic"
+BANDWIDTH_CACHE_TTL = 60
+BANDWIDTH_MIN_INTERVAL = 0.5  # seconds; shorter intervals would spike the rate
+
+
+@router.get("/bandwidth", response_model=BandwidthResponse)
+def get_bandwidth() -> BandwidthResponse:
+    """Return the orchestrator server's real-time network Rx/Tx speeds in bytes/sec.
+
+    Uses a Redis snapshot cache to avoid blocking sleeps.  Falls back to an
+    in-process dict when Redis is unavailable so the endpoint never crashes.
+    """
+    current_time, current_rx, current_tx = get_network_bytes()
+
+    # ── Load previous snapshot ──────────────────────────────────────────────
+    prev: dict | None = None
+    use_redis = True
+    try:
+        raw = _redis_client.get(BANDWIDTH_CACHE_KEY)
+        if raw:
+            prev = json.loads(raw)
+    except Exception:
+        use_redis = False
+        prev = _fallback_traffic_cache.get(BANDWIDTH_CACHE_KEY)
+
+    # ── First call: baseline only ────────────────────────────────────────────
+    if prev is None:
+        snapshot = {
+            "timestamp": current_time,
+            "rx_bytes": current_rx,
+            "tx_bytes": current_tx,
+            "rx_speed": 0.0,
+            "tx_speed": 0.0,
+        }
+        _store_snapshot(snapshot, use_redis)
+        return BandwidthResponse(rx_speed=0.0, tx_speed=0.0)
+
+    delta_time = current_time - prev["timestamp"]
+
+    # ── Too soon since last measurement: return cached speed ─────────────────
+    if delta_time < BANDWIDTH_MIN_INTERVAL:
+        return BandwidthResponse(
+            rx_speed=float(prev.get("rx_speed", 0.0)),
+            tx_speed=float(prev.get("tx_speed", 0.0)),
+        )
+
+    # ── Compute derivative ────────────────────────────────────────────────────
+    rx_speed = max(0.0, (current_rx - prev["rx_bytes"]) / delta_time)
+    tx_speed = max(0.0, (current_tx - prev["tx_bytes"]) / delta_time)
+
+    snapshot = {
+        "timestamp": current_time,
+        "rx_bytes": current_rx,
+        "tx_bytes": current_tx,
+        "rx_speed": rx_speed,
+        "tx_speed": tx_speed,
+    }
+    _store_snapshot(snapshot, use_redis)
+    return BandwidthResponse(rx_speed=rx_speed, tx_speed=tx_speed)
+
+
+def _store_snapshot(snapshot: dict, use_redis: bool) -> None:
+    """Persist the traffic snapshot to Redis (preferred) or the process-level dict."""
+    try:
+        if use_redis:
+            _redis_client.setex(
+                BANDWIDTH_CACHE_KEY,
+                BANDWIDTH_CACHE_TTL,
+                json.dumps(snapshot),
+            )
+        else:
+            _fallback_traffic_cache[BANDWIDTH_CACHE_KEY] = snapshot
+    except Exception:
+        # Last-resort: always keep the fallback dict up to date
+        _fallback_traffic_cache[BANDWIDTH_CACHE_KEY] = snapshot
+
