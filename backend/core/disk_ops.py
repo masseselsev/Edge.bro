@@ -367,24 +367,28 @@ def format_and_restore(
                 if char == '\r' or char == '\n':
                     line = buffer.strip()
                     buffer = ""
-                    if "files" in line:
-                        parts = line.split()
-                        try:
-                            idx = parts.index("files")
-                            curr_files = int(parts[idx - 1].replace(",", ""))
-                            if total_files > 0:
-                                pct = int((curr_files / total_files) * 45)
-                                progress_val = 45 + pct
-                                if progress_val > last_logged_prog or curr_files - last_logged_files >= 1000:
-                                    emit_log(f"Extracting files ({curr_files}/{total_files})...", prog=progress_val)
-                                    last_logged_prog = progress_val
-                                    last_logged_files = curr_files
-                            else:
-                                if curr_files - last_logged_files >= 1000:
-                                    emit_log(f"Extracting files ({curr_files})...")
-                                    last_logged_files = curr_files
-                        except ValueError:
-                            pass
+                    parts = line.split()
+                    curr_files = None
+                    for idx, part in enumerate(parts):
+                        if part == "N" and idx > 0:
+                            try:
+                                curr_files = int(parts[idx - 1].replace(",", ""))
+                                break
+                            except ValueError:
+                                continue
+                    
+                    if curr_files is not None:
+                        if total_files > 0:
+                            pct = int((curr_files / total_files) * 45)
+                            progress_val = 45 + pct
+                            if progress_val > last_logged_prog or curr_files - last_logged_files >= 1000:
+                                emit_log(f"Extracting files ({curr_files}/{total_files})...", prog=progress_val)
+                                last_logged_prog = progress_val
+                                last_logged_files = curr_files
+                        else:
+                            if curr_files - last_logged_files >= 1000:
+                                emit_log(f"Extracting files ({curr_files})...")
+                                last_logged_files = curr_files
                 else:
                     buffer += char
             

@@ -222,8 +222,8 @@ def test_format_and_restore_borg_progress_parsing(
 
     # Mock Popen process
     mock_proc = MagicMock()
-    # Simulate stderr returning progressive file count outputs separated by \r
-    stderr_content = "1,000 files\r2,000 files\r2,500 files\r"
+    # Simulate stderr returning progressive file count outputs separated by \r in Borg's format (e.g. "1.23 MB 1,000 N")
+    stderr_content = "1.23 MB 1,000 N path/to/file1\r2.45 MB 2,000 N path/to/file2\r3.12 MB 2,500 N path/to/file3\r"
     import io
     mock_proc.stderr = io.StringIO(stderr_content)
     mock_proc.returncode = 0
