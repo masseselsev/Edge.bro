@@ -5,6 +5,97 @@ import json
 from typing import Dict, Any, List, Callable, Optional
 import pathlib
 
+def get_host_root_disk() -> Optional[str]:
+    """
+    Parses the host kernel command line at /proc/cmdline to detect the host's actual root disk.
+    This is extremely reliable inside Docker container environments where findmnt returns 'overlay'.
+    """
+    if os.path.exists("/proc/cmdline"):
+        try:
+            with open("/proc/cmdline", "r") as f:
+                content = f.read()
+            for arg in content.split():
+                if arg.startswith("root="):
+                    root_val = arg.split("=", 1)[1]
+                    dev_path = None
+                    if root_val.startswith("UUID="):
+                        uuid = root_val.split("=", 1)[1].strip('"\'')
+                        dev_path = f"/dev/disk/by-uuid/{uuid}"
+                    elif root_val.startswith("PARTUUID="):
+                        partuuid = root_val.split("=", 1)[1].strip('"\'')
+                        dev_path = f"/dev/disk/by-partuuid/{partuuid}"
+                    elif root_val.startswith("LABEL="):
+                        label = root_val.split("=", 1)[1].strip('"\'')
+                        dev_path = f"/dev/disk/by-label/{label}"
+                    elif root_val.startswith("/dev/"):
+                        dev_path = root_val.strip('"\'')
+
+                    if dev_path and os.path.exists(dev_path):
+                        real_path = os.path.realpath(dev_path)
+                        # Remove partition suffix (e.g. /dev/sda1 -> /dev/sda, /dev/nvme0n1p2 -> /dev/nvme0n1)
+                        import re
+                        m = re.match(r"^(/dev/nvme\d+n\d+)p\d+$", real_path)
+                        if m:
+                            return m.group(1)
+                        m_sd = re.match(r"^(/dev/sd[a-z]+)\d+$", real_path)
+                        if m_sd:
+                            return m_sd.group(1)
+                        # Fallback: remove trailing digits
+                        return real_path.rstrip("0123456789")
+        except Exception:
+            pass
+    return None
+
+def safe_unmount_target(target_mnt: str, log_callback: Optional[Callable[[str], None]] = None) -> None:
+    """
+    Safely unmounts all virtual filesystems (/dev/pts, /dev, /proc, /sys) and target partitions
+    under target_mnt, then unmounts target_mnt itself.
+    Avoids using 'umount -R' which propagates recursive unmounts back to the host in privileged containers.
+    """
+    def emit(msg: str):
+        if log_callback:
+            log_callback(msg)
+
+    # 1. Unmount virtual filesystems in reverse order of mounting
+    virtual_paths = [
+        f"{target_mnt}/dev/pts",
+        f"{target_mnt}/dev",
+        f"{target_mnt}/proc",
+        f"{target_mnt}/sys"
+    ]
+    for path in virtual_paths:
+        if os.path.exists(path):
+            try:
+                # We use lazy unmount (-l) to safely detach the mount point from the namespace tree
+                subprocess.run(["umount", "-l", path], stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+
+    # 2. Parse /proc/mounts to find and unmount target partitions mounted under target_mnt
+    try:
+        if os.path.exists("/proc/mounts"):
+            submounts = []
+            with open("/proc/mounts", "r") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        mnt_point = parts[1]
+                        if mnt_point.startswith(target_mnt) and mnt_point != target_mnt:
+                            submounts.append(mnt_point)
+            
+            # Sort from deepest path to shallowest path
+            submounts.sort(key=lambda x: len(pathlib.PurePosixPath(x).parts), reverse=True)
+            for mnt in submounts:
+                subprocess.run(["umount", "-l", mnt], stderr=subprocess.DEVNULL)
+    except Exception as e:
+        emit(f"Warning during nested mounts cleanup: {str(e)}")
+
+    # 3. Finally, unmount target_mnt itself
+    try:
+        subprocess.run(["umount", "-l", target_mnt], stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
 def format_and_restore(
     target_dev: str,
     partitions: List[Dict[str, Any]],
@@ -36,15 +127,23 @@ def format_and_restore(
             raise FileNotFoundError(f"Target device {target_dev} does not exist.")
 
         # Safety: avoid flashing host root drive
-        findmnt_out = subprocess.check_output("findmnt -n -o SOURCE /", shell=True, text=True).strip()
-        host_root_disk = findmnt_out
-        if "nvme" in host_root_disk:
-            host_root_disk = host_root_disk.split("p")[0]
-        else:
-            host_root_disk = "".join([c for c in host_root_disk if not c.isdigit()])
+        host_root_disk = get_host_root_disk()
+        if not host_root_disk:
+            try:
+                findmnt_out = subprocess.check_output("findmnt -n -o SOURCE /", shell=True, text=True).strip()
+                if findmnt_out and findmnt_out != "overlay":
+                    host_root_disk = findmnt_out
+            except Exception:
+                pass
 
-        if host_root_disk in target_dev:
-            raise PermissionError("PROTECTION SHIELD: Attempted to flash the orchestrator host's root drive. Blocked.")
+        if host_root_disk:
+            if "nvme" in host_root_disk:
+                host_root_disk_base = host_root_disk.split("p")[0]
+            else:
+                host_root_disk_base = "".join([c for c in host_root_disk if not c.isdigit()])
+
+            if host_root_disk_base in target_dev:
+                raise PermissionError(f"PROTECTION SHIELD: Attempted to flash the host's root drive ({host_root_disk_base}). Blocked.")
 
         # 1.5. Release active mount locks on target device & its partitions
         try:
@@ -157,7 +256,7 @@ def format_and_restore(
         # 5. Mounting partitions hierarchically
         target_mnt = "/mnt/target"
         if os.path.exists(target_mnt):
-            subprocess.run(["umount", "-R", target_mnt], stderr=subprocess.DEVNULL)
+            safe_unmount_target(target_mnt)
             shutil.rmtree(target_mnt, ignore_errors=True)
 
         os.makedirs(target_mnt, exist_ok=True)
@@ -202,22 +301,32 @@ def format_and_restore(
         )
 
         buffer = ""
+        last_logged_files = -1000
+        last_logged_prog = -1
         try:
             while True:
                 char = proc.stderr.read(1)
                 if not char:
                     break
-                if char == '\\r' or char == '\\n':
+                if char == '\r' or char == '\n':
                     line = buffer.strip()
                     buffer = ""
-                    if "files" in line and total_files > 0:
+                    if "files" in line:
                         parts = line.split()
                         try:
                             idx = parts.index("files")
                             curr_files = int(parts[idx - 1].replace(",", ""))
-                            pct = int((curr_files / total_files) * 45)
-                            progress_val = 45 + pct
-                            emit_log(f"Extracting files ({curr_files}/{total_files})...", prog=progress_val)
+                            if total_files > 0:
+                                pct = int((curr_files / total_files) * 45)
+                                progress_val = 45 + pct
+                                if progress_val > last_logged_prog or curr_files - last_logged_files >= 1000:
+                                    emit_log(f"Extracting files ({curr_files}/{total_files})...", prog=progress_val)
+                                    last_logged_prog = progress_val
+                                    last_logged_files = curr_files
+                            else:
+                                if curr_files - last_logged_files >= 1000:
+                                    emit_log(f"Extracting files ({curr_files})...")
+                                    last_logged_files = curr_files
                         except ValueError:
                             pass
                 else:
@@ -433,7 +542,7 @@ def format_and_restore(
 
         # Unmount virtual filesystems
         emit_log("Unmounting virtual filesystems...")
-        subprocess.check_call(["umount", "-R", target_mnt])
+        safe_unmount_target(target_mnt, log_callback=emit_log)
 
         emit_log("Restore completed successfully! Target device ready to boot.", prog=100, status="SUCCESS")
         return {"status": "SUCCESS"}
@@ -442,7 +551,7 @@ def format_and_restore(
         error_msg = f"Restore execution failed: {str(e)}"
         emit_log(error_msg, status="FAILED")
         try:
-            subprocess.run(["umount", "-R", "/mnt/target"], stderr=subprocess.DEVNULL)
+            safe_unmount_target("/mnt/target")
         except Exception:
             pass
         return {"status": "FAILED", "error": str(e)}
