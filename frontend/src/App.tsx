@@ -1693,6 +1693,7 @@ function AppContent() {
           title={logTaskTitle}
           timezone={settings?.timezone || 'Browser Local'}
           onClose={() => setLogTaskId(null)}
+          bandwidth={bandwidth}
         />
       )}
 

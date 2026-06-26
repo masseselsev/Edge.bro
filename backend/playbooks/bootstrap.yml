@@ -356,8 +356,11 @@
         rm -f /etc/apt/apt.conf.d/99orchestrator-proxy
         for path in /etc/apt/apt.conf /etc/apt/apt.conf.d; do
           if [ -e "$path" ]; then
-            find "$path" -type f -name "*.disabled" 2>/dev/null | while read -r f; do
-              mv "$f" "${f%.disabled}"
+            find "$path" -type f -name "*.disabled*" 2>/dev/null | while read -r f; do
+              new_name=$(echo "$f" | sed -E 's/(\.disabled)+$//')
+              if [ "$f" != "$new_name" ]; then
+                mv "$f" "$new_name"
+              fi
             done
           fi
         done

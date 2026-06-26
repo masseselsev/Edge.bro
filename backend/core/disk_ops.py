@@ -395,6 +395,7 @@ def format_and_restore(
         env = os.environ.copy()
         env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
         env["PYTHONUNBUFFERED"] = "1"
+        env["BORG_RELOCATED_REPO_ACCESS_IS_OK"] = "yes"
 
         if repo_path.startswith("ssh://"):
             kiosk_key = "/opt/offline-client/backend/id_ed25519"

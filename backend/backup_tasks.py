@@ -54,7 +54,7 @@ def build_borg_create_cmd(
         "-o StrictHostKeyChecking=no -o Compression=no "
         f"-o ServerAliveInterval={interval} -o ServerAliveCountMax={count}"
     )
-    borg_env = f"BORG_RSH='{borg_rsh}' BORG_PASSPHRASE='{borg_passphrase}'"
+    borg_env = f"BORG_RSH='{borg_rsh}' BORG_PASSPHRASE='{borg_passphrase}' BORG_RELOCATED_REPO_ACCESS_IS_OK=yes"
     borg_compression = compression.replace(":", ",")
     borg_create = (
         f"borg create --json --stats "
@@ -85,24 +85,19 @@ def build_borg_create_cmd(
     ]
 
 
-def cleanup_stale_borg_locks(
+def cleanup_locks_and_resolve_ip(
     task_id: str,
     node_ip: str,
     node_ssh_port: int,
     repo_path: str,
     borg_passphrase: str,
-) -> None:
+    configured_ip: Optional[str],
+    borg_ssh_port: int,
+) -> str:
     """
-    Best-effort cleanup of stale Borg locks before starting a backup.
-
-    Runs three steps (all non-fatal on failure):
-    1. Kill any lingering `borg create` processes on the remote node.
-    2. Remove Borg cache locks on the remote node.
-    3. Break the exclusive repo lock on the server-side repository.
-
-    This is safe to call unconditionally because run_backup_task already
-    guards concurrent execution with a Redis key, so any existing lock
-    must belong to a previously crashed/killed task.
+    Cleans up stale Borg locks on the node and server, and resolves the correct
+    orchestrator IP to use by verifying configured IP reachability or falling back
+    to the incoming SSH connection IP.
     """
     from tasks import log_to_task  # local import to avoid circular deps
 
@@ -119,29 +114,47 @@ def cleanup_stale_borg_locks(
         f"root@{node_ip}",
     ]
 
-    # Step 1 — kill orphaned borg processes on the node
+    test_ip = configured_ip.strip() if configured_ip else ""
+    remote_cmd = (
+        f"echo \"$SSH_CONNECTION\"; "
+        f"if [ -n \"{test_ip}\" ] && timeout 2 bash -c \"cat < /dev/null > /dev/tcp/{test_ip}/{borg_ssh_port}\" 2>/dev/null; then "
+        f"  echo \"REACHABLE:yes\"; "
+        f"else "
+        f"  echo \"REACHABLE:no\"; "
+        f"fi; "
+        f"pkill -f '[b]org create' || true; "
+        f"find /root/.cache/borg -name 'lock*' -delete 2>/dev/null; "
+        f"echo OK"
+    )
+
+    detected_ip = None
+    is_reachable = False
+
     try:
         res = subprocess.run(
-            ssh_base + ["pkill -f 'borg create' || true"],
+            ssh_base + [remote_cmd],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, timeout=15,
+            text=True, timeout=30,
         )
-        log_to_task(task_id, "[Lock cleanup] Killed orphaned borg processes on node (if any).")
+        if res.returncode == 0:
+            lines = res.stdout.splitlines()
+            if lines:
+                ssh_conn = lines[0].strip()
+                parts = ssh_conn.split()
+                if len(parts) >= 1:
+                    detected_ip = parts[0]
+                
+                for line in lines[1:]:
+                    if line.startswith("REACHABLE:"):
+                        is_reachable = line.split(":")[1].strip() == "yes"
+                        break
+            log_to_task(task_id, "[Lock cleanup] Killed orphaned borg processes on node (if any).")
+            log_to_task(task_id, "[Lock cleanup] Cleared Borg cache locks on node.")
+        else:
+            log_to_task(task_id, f"[Lock cleanup] WARNING: Pre-backup check failed: {res.stderr.strip()}")
     except Exception as e:
-        log_to_task(task_id, f"[Lock cleanup] WARNING: Could not kill borg processes on node: {e}")
+        log_to_task(task_id, f"[Lock cleanup] WARNING: Pre-backup check exception: {e}")
 
-    # Step 2 — remove cache locks on the node
-    try:
-        res = subprocess.run(
-            ssh_base + ["find /root/.cache/borg -name 'lock*' -delete 2>/dev/null; echo OK"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, timeout=15,
-        )
-        log_to_task(task_id, "[Lock cleanup] Cleared Borg cache locks on node.")
-    except Exception as e:
-        log_to_task(task_id, f"[Lock cleanup] WARNING: Could not clear cache locks on node: {e}")
-
-    # Step 3 — break repo lock on the server side
     try:
         env = os.environ.copy()
         env["BORG_PASSPHRASE"] = borg_passphrase
@@ -154,9 +167,26 @@ def cleanup_stale_borg_locks(
         if res.returncode == 0:
             log_to_task(task_id, "[Lock cleanup] Repo lock check passed (no stale lock, or lock broken).")
         else:
-            log_to_task(task_id, f"[Lock cleanup] WARNING: borg break-lock stderr: {res.stderr.strip()}")
+            log_to_task(task_id, f"[Lock cleanup] WARNING: Repo break-lock failed: {res.stderr.strip()}")
     except Exception as e:
-        log_to_task(task_id, f"[Lock cleanup] WARNING: Could not break repo lock: {e}")
+        log_to_task(task_id, f"[Lock cleanup] WARNING: Server-side lock check exception: {e}")
+
+    resolved_ip = None
+    if is_reachable and test_ip:
+        resolved_ip = test_ip
+        log_to_task(task_id, f"Using configured orchestrator IP: {resolved_ip}")
+    elif detected_ip:
+        resolved_ip = detected_ip
+        if test_ip:
+            log_to_task(task_id, f"Configured IP {test_ip} is unreachable from node. Falling back to SSH connection IP: {resolved_ip}")
+        else:
+            log_to_task(task_id, f"Using auto-detected orchestrator IP from SSH connection: {resolved_ip}")
+    else:
+        resolved_ip = test_ip or os.getenv("ORCHESTRATOR_IP") or "127.0.0.1"
+        log_to_task(task_id, f"Fallbacks exhausted. Using default/configured orchestrator IP: {resolved_ip}")
+
+    return resolved_ip
+
 
 
 @celery_app.task(bind=True)
@@ -256,14 +286,16 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
 
     log_to_task(task_id, f"Initiating Borg backup for {node.hostname}...")
 
-    orchestrator_ip = settings.orchestrator_ip or os.getenv("ORCHESTRATOR_IP")
-    if not orchestrator_ip:
-        try:
-            route_cmd = f"ip route get {node.ip_address}"
-            route_out = subprocess.check_output(route_cmd, shell=True, text=True)
-            orchestrator_ip = route_out.split("src")[1].split()[0]
-        except Exception:
-            orchestrator_ip = "127.0.0.1"
+    # --- Pre-backup check: resolve orchestrator IP and clean locks ---
+    orchestrator_ip = cleanup_locks_and_resolve_ip(
+        task_id=task_id,
+        node_ip=node.ip_address,
+        node_ssh_port=node.ssh_port,
+        repo_path="/data/borg/fleet",
+        borg_passphrase=os.getenv("BORG_PASSPHRASE", ""),
+        configured_ip=settings.orchestrator_ip,
+        borg_ssh_port=settings.borg_ssh_port,
+    )
 
     archive_name = f"{node.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     borg_repo_url = f"ssh://borg@{orchestrator_ip}:{settings.borg_ssh_port}/data/borg/fleet"
@@ -281,7 +313,7 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         "-p", str(node.ssh_port),
         "-i", "/root/.ssh/id_ed25519",
         f"root@{node.ip_address}",
-        f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ServerAliveInterval={interval} -o ServerAliveCountMax={count}' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' borg init --encryption=repokey {borg_repo_url}"
+        f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ServerAliveInterval={interval} -o ServerAliveCountMax={count}' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' BORG_RELOCATED_REPO_ACCESS_IS_OK=yes borg init --encryption=repokey {borg_repo_url}"
     ]
     log_to_task(task_id, "Checking/Initializing Borg repository...")
     try:
@@ -348,14 +380,7 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
 
     log_to_task(task_id, f"Running remote command on node: {' '.join(ssh_cmd[:6])} [COMMAND MASKED]")
 
-    # --- Auto-cleanup stale Borg locks before starting ---
-    cleanup_stale_borg_locks(
-        task_id=task_id,
-        node_ip=node.ip_address,
-        node_ssh_port=node.ssh_port,
-        repo_path="/data/borg/fleet",
-        borg_passphrase=os.getenv("BORG_PASSPHRASE", ""),
-    )
+    # Locks have been cleaned up and IP resolved at the start of the task
 
     try:
         process = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

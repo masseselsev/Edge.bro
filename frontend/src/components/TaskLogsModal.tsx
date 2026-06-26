@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Terminal as TermIcon, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { X, Terminal as TermIcon, CheckCircle, AlertCircle, Loader, ArrowDown, ArrowUp } from 'lucide-react';
 import { formatDate } from './dateUtils';
 import { useTranslation } from '../context/TranslationContext';
 
@@ -8,9 +8,18 @@ interface TaskLogsModalProps {
   title: string;
   timezone?: string;
   onClose: () => void;
+  bandwidth?: { rx_speed: number; tx_speed: number } | null;
 }
 
-export default function TaskLogsModal({ taskId, title, timezone, onClose }: TaskLogsModalProps) {
+const formatSpeed = (bytesPerSec: number): string => {
+  if (bytesPerSec === 0) return '0 B/s';
+  const k = 1024;
+  const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+  const i = Math.floor(Math.log(bytesPerSec) / Math.log(k));
+  return parseFloat((bytesPerSec / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
+
+export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwidth }: TaskLogsModalProps) {
   const { t } = useTranslation();
   const [status, setStatus] = useState('PENDING');
   const [logs, setLogs] = useState('');
@@ -111,11 +120,33 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose }: Task
       <div className="w-full max-w-3xl h-[80vh] flex flex-col bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-modal-in">
         {/* Modal Header */}
         <div className="p-4 bg-zinc-900 border-b border-zinc-800 flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <TermIcon className="text-zinc-400" size={18} />
-            <span className="font-bold text-zinc-50 text-sm">{title}</span>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <TermIcon className="text-zinc-400 flex-shrink-0" size={18} />
+            <span className="font-bold text-zinc-50 text-sm truncate">{title}</span>
             {getStatusIndicator()}
           </div>
+
+          {/* Bandwidth Widget */}
+          {bandwidth && (
+            <div className="flex-shrink-0 flex items-center gap-3 bg-zinc-950/40 border border-zinc-800/60 rounded-xl px-3 py-1 shadow-inner mr-4">
+              <div className="flex items-center gap-1.5" title={t('bandwidthDownload') || 'Download'}>
+                <ArrowDown size={11} className={bandwidth.rx_speed > 1024 ? 'text-emerald-400 animate-pulse' : 'text-zinc-600'} />
+                <span className="text-[9px] text-zinc-500 font-bold font-mono">RX</span>
+                <span className={`text-[10px] font-mono font-semibold transition-colors duration-500 ${bandwidth.rx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                  {formatSpeed(bandwidth.rx_speed)}
+                </span>
+              </div>
+              <div className="w-px h-2.5 bg-zinc-800" />
+              <div className="flex items-center gap-1.5" title={t('bandwidthUpload') || 'Upload'}>
+                <ArrowUp size={11} className={bandwidth.tx_speed > 1024 ? 'text-indigo-400 animate-pulse' : 'text-zinc-600'} />
+                <span className="text-[9px] text-zinc-500 font-bold font-mono">TX</span>
+                <span className={`text-[10px] font-mono font-semibold transition-colors duration-500 ${bandwidth.tx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                  {formatSpeed(bandwidth.tx_speed)}
+                </span>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={onClose}
             className="p-1 text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800 rounded transition-colors"

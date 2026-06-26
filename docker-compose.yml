@@ -45,6 +45,9 @@ services:
     depends_on:
       - db
       - redis
+    dns:
+      - 8.8.8.8
+      - 10.102.1.21
 
   worker:
     build:
@@ -73,6 +76,9 @@ services:
     depends_on:
       - db
       - redis
+    dns:
+      - 8.8.8.8
+      - 10.102.1.21
 
   beat:
     build:
@@ -131,6 +137,9 @@ services:
       - "3142:3142"
     volumes:
       - apt-cache:/var/cache/apt-cacher-ng
+    dns:
+      - 8.8.8.8
+      - 10.102.1.21
 
 volumes:
   pg-data:
