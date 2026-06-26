@@ -77,8 +77,12 @@ def test_trigger_restore_mismatch(mock_flash, db_session):
 @patch("subprocess.call")
 @patch("subprocess.check_call")
 @patch("subprocess.check_output")
-def test_format_and_restore_unmounts_busy_partitions(mock_check_output, mock_check_call, mock_call, mock_exists, mock_open):
+@patch("subprocess.run")
+def test_format_and_restore_unmounts_busy_partitions(mock_run, mock_check_output, mock_check_call, mock_call, mock_exists, mock_open):
     from core.disk_ops import format_and_restore
+
+    # Mock subprocess.run to avoid running real commands
+    mock_run.return_value = MagicMock(returncode=0)
 
     # Mock filesystem checks
     mock_exists.side_effect = lambda path: path == "/proc/mounts" or path == "/dev/sdb"
@@ -197,10 +201,14 @@ def test_safe_unmount_target(mock_run, mock_exists, mock_open):
 @patch("os.makedirs")
 @patch("shutil.rmtree")
 @patch("os.path.realpath")
+@patch("subprocess.run")
 def test_format_and_restore_borg_progress_parsing(
-    mock_realpath, mock_rmtree, mock_makedirs, mock_check_output, mock_check_call, mock_popen, mock_exists, mock_open
+    mock_run, mock_realpath, mock_rmtree, mock_makedirs, mock_check_output, mock_check_call, mock_popen, mock_exists, mock_open
 ):
     from core.disk_ops import format_and_restore
+
+    # Mock subprocess.run to avoid calling real format/unmount commands
+    mock_run.return_value = MagicMock(returncode=0)
 
     # Mock all host & target checks
     mock_exists.side_effect = lambda path: path in ["/dev/sdb", "/proc/cmdline"] or "disk/by-uuid" in path
@@ -243,5 +251,65 @@ def test_format_and_restore_borg_progress_parsing(
     log_callback.assert_any_call("Extracting files (1000/5000)...", 54, None)
     # 2000 files / 5000 total = 40% of 45 = 18%. So 45 + 18 = 63% progress logged.
     log_callback.assert_any_call("Extracting files (2000/5000)...", 63, None)
+
+
+@patch("time.sleep")
+@patch("subprocess.run")
+def test_format_partition_with_retry_success(mock_run, mock_sleep):
+    from core.disk_ops import run_format_command_with_retry
+    
+    # Simulate first two format runs failing with returncode=1, and the third succeeding.
+    # Note that each iteration runs: umount (fails/succeeds), umount -l (fails/succeeds), then format cmd.
+    # So we mock a sequence of results:
+    mock_run.side_effect = [
+        # Attempt 1
+        MagicMock(returncode=1), # umount
+        MagicMock(returncode=1), # umount -l
+        MagicMock(returncode=1, stderr="Device or resource busy"), # format cmd (fails)
+        # Attempt 2
+        MagicMock(returncode=1), # umount
+        MagicMock(returncode=1), # umount -l
+        MagicMock(returncode=1, stderr="Device or resource busy"), # format cmd (fails)
+        # Attempt 3
+        MagicMock(returncode=0), # umount
+        MagicMock(returncode=0), # umount -l
+        MagicMock(returncode=0)  # format cmd (succeeds!)
+    ]
+    
+    log_callback = MagicMock()
+    run_format_command_with_retry(["mkfs.vfat", "/dev/sdb1"], "/dev/sdb1", log_callback, max_retries=3, delay=0.1)
+    
+    # Assert it slept twice
+    assert mock_sleep.call_count == 2
+    log_callback.assert_any_call("WARNING: Format attempt 1/3 failed for /dev/sdb1: Device or resource busy. Retrying in 0.1s...", None, None)
+    log_callback.assert_any_call("WARNING: Format attempt 2/3 failed for /dev/sdb1: Device or resource busy. Retrying in 0.1s...", None, None)
+
+
+@patch("time.sleep")
+@patch("subprocess.run")
+def test_format_partition_with_retry_failure(mock_run, mock_sleep):
+    from core.disk_ops import run_format_command_with_retry
+    import subprocess
+    
+    # All format attempts fail, and the final check_call with check=True raises CalledProcessError
+    def run_side_effect(*args, **kwargs):
+        if "mkfs.vfat" in args[0]:
+            if kwargs.get("check"):
+                raise subprocess.CalledProcessError(1, args[0], stderr="Device or resource busy")
+            return MagicMock(returncode=1, stderr="Device or resource busy")
+        return MagicMock(returncode=1)
+        
+    mock_run.side_effect = run_side_effect
+    
+    log_callback = MagicMock()
+    with pytest.raises(RuntimeError) as exc_info:
+        run_format_command_with_retry(["mkfs.vfat", "/dev/sdb1"], "/dev/sdb1", log_callback, max_retries=3, delay=0.1)
+        
+    assert "failed with exit status 1" in str(exc_info.value)
+    assert "stderr: Device or resource busy" in str(exc_info.value)
+    assert mock_sleep.call_count == 2
+    log_callback.assert_any_call("WARNING: Format attempt 1/3 failed for /dev/sdb1: Device or resource busy. Retrying in 0.1s...", None, None)
+    log_callback.assert_any_call("WARNING: Format attempt 2/3 failed for /dev/sdb1: Device or resource busy. Retrying in 0.1s...", None, None)
+    log_callback.assert_any_call("WARNING: Format attempt 3/3 failed for /dev/sdb1: Device or resource busy. Retrying in 0.1s...", None, None)
 
 

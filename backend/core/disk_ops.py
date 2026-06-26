@@ -46,6 +46,52 @@ def get_host_root_disk() -> Optional[str]:
             pass
     return None
 
+def run_format_command_with_retry(
+    cmd: List[str],
+    part_dev: str,
+    emit_log: Callable[[str, Optional[int], Optional[str]], None],
+    max_retries: int = 5,
+    delay: float = 1.0
+) -> None:
+    """
+    Runs a partition formatting command, retrying if the device is busy due to
+    udev/systemd probing or host automount locks.
+    """
+    import time
+    for attempt in range(1, max_retries + 1):
+        # Attempt to release any automount locks before formatting
+        try:
+            subprocess.run(["umount", part_dev], stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+        try:
+            subprocess.run(["umount", "-l", part_dev], stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+        
+        # Run format command and capture output to diagnose failures
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            return
+        
+        stderr_msg = res.stderr.strip() if res.stderr else "Unknown error"
+        emit_log(
+            f"WARNING: Format attempt {attempt}/{max_retries} failed for {part_dev}: {stderr_msg}. Retrying in {delay}s...",
+            None,
+            None
+        )
+        if attempt < max_retries:
+            time.sleep(delay)
+            
+    # Final attempt to run and raise exception with output if all retries failed
+    emit_log(f"ERROR: All format attempts failed for {part_dev}. Executing final attempt...", None, None)
+    try:
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        detailed_err = f"Command {cmd} failed with exit status {e.returncode}. stderr: {e.stderr.strip()}"
+        emit_log(f"CRITICAL ERROR: {detailed_err}", None, None)
+        raise RuntimeError(detailed_err) from e
+
 def safe_unmount_target(target_mnt: str, log_callback: Optional[Callable[[str], None]] = None) -> None:
     """
     Safely unmounts all virtual filesystems (/dev/pts, /dev, /proc, /sys) and target partitions
@@ -237,31 +283,29 @@ def format_and_restore(
 
             if fstype == "vfat":
                 clean_efi_uuid = (uuid or efi_uuid or "458C-37BB").replace("-", "")[:8]
-                subprocess.check_call(["mkfs.vfat", "-F32", "-i", clean_efi_uuid, "-n", label, part_dev])
+                cmd = ["mkfs.vfat", "-F32", "-i", clean_efi_uuid, "-n", label, part_dev]
             elif fstype == "ext2":
                 cmd = ["mkfs.ext2", "-F", "-L", label]
                 if uuid:
                     cmd += ["-U", uuid]
                 cmd.append(part_dev)
-                subprocess.check_call(cmd)
             elif fstype == "ext4":
                 cmd = ["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-O", "^orphan_file", "-F", "-L", label]
                 if uuid:
                     cmd += ["-U", uuid]
                 cmd.append(part_dev)
-                subprocess.check_call(cmd)
             elif fstype == "xfs":
                 cmd = ["mkfs.xfs", "-f", "-L", label]
                 if uuid:
                     cmd += ["-m", f"uuid={uuid}"]
                 cmd.append(part_dev)
-                subprocess.check_call(cmd)
             else:
                 cmd = ["mkfs.ext4", "-E", "lazy_itable_init=1,lazy_journal_init=1", "-O", "^orphan_file", "-F", "-L", label]
                 if uuid:
                     cmd += ["-U", uuid]
                 cmd.append(part_dev)
-                subprocess.check_call(cmd)
+
+            run_format_command_with_retry(cmd, part_dev, emit_log)
 
         # 5. Mounting partitions hierarchically
         target_mnt = "/mnt/target"
