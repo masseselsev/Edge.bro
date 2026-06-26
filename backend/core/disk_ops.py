@@ -445,15 +445,15 @@ def format_and_restore(
                                     new_parts.append(f"auto {' '.join(lo_ifaces)}")
                                 for iface in non_lo_ifaces:
                                     new_parts.append(f"allow-hotplug {iface}")
-                                new_lines.append("\\n".join(new_parts))
+                                new_lines.append("\n".join(new_parts))
                                 modified = True
                             else:
-                                new_lines.append(line.rstrip("\\r\\n"))
+                                new_lines.append(line.rstrip("\r\n"))
                         else:
-                            new_lines.append(line.rstrip("\\r\\n"))
+                            new_lines.append(line.rstrip("\r\n"))
                     if modified:
                         with open(path, "w") as f:
-                            f.write("\\n".join(new_lines) + "\\n")
+                            f.write("\n".join(new_lines) + "\n")
                         emit_log(f"Successfully converted auto to allow-hotplug in {os.path.basename(path)}")
                 except Exception as e:
                     emit_log(f"WARNING: Failed to patch network file {path}: {str(e)}")
@@ -487,7 +487,7 @@ def format_and_restore(
             if os.path.exists(interfaces_file) or os.path.exists(f"{target_mnt}/etc/network"):
                 os.makedirs(f"{target_mnt}/etc/network/interfaces.d", exist_ok=True)
                 with open(interfaces_file, "w") as f:
-                    f.write("auto lo\\niface lo inet loopback\\nsource /etc/network/interfaces.d/*\\n")
+                    f.write("auto lo\niface lo inet loopback\nsource /etc/network/interfaces.d/*\n")
 
                 ifaces_to_configure = ["eth0", "enp1s0", "enp2s0", "enp3s0"]
                 if network_iface and network_iface not in ifaces_to_configure:
@@ -495,7 +495,7 @@ def format_and_restore(
 
                 with open(f"{target_mnt}/etc/network/interfaces.d/orchestrator-dhcp", "w") as f:
                     for iface in ifaces_to_configure:
-                        f.write(f"allow-hotplug {iface}\\niface {iface} inet dhcp\\n\\n")
+                        f.write(f"allow-hotplug {iface}\niface {iface} inet dhcp\n\n")
                 emit_log(f"Injected /etc/network/interfaces.d config mapping: {', '.join(ifaces_to_configure)}")
 
         # 8. Rewrite target /etc/fstab dynamically
@@ -521,7 +521,7 @@ def format_and_restore(
                     fstab_lines.append(f"UUID={uuid}   {mount}           {fstype}    {options}                  0       {pass_num}")
 
         with open(fstab_path, "w") as f:
-            f.write("\\n".join(fstab_lines) + "\\n")
+            f.write("\n".join(fstab_lines) + "\n")
         emit_log("Dynamic /etc/fstab successfully written.")
 
         # 9. Chroot, Grub setup
