@@ -80,7 +80,14 @@ def get_network_bytes() -> tuple[float, int, int]:
     """
     rx_total = 0
     tx_total = 0
-    path = "/host/proc/net/dev" if os.path.exists("/host/proc/net/dev") else "/proc/net/dev"
+    
+    # Prioritize host PID 1's network namespace (since /proc/net/dev is namespaced to the reading process)
+    path = "/proc/net/dev"
+    for p in ["/host/proc/1/net/dev", "/host/proc/net/dev", "/proc/net/dev"]:
+        if os.path.exists(p):
+            path = p
+            break
+
     try:
         with open(path, "r") as f:
             lines = f.readlines()

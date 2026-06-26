@@ -40,7 +40,7 @@ services:
       - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/root/.ssh
       - iso-cache:/opt/data/iso_cache
-      - /proc/net/dev:/host/proc/net/dev:ro
+      - /proc:/host/proc:ro
     ports:
       - "8000:8000"
     depends_on:
