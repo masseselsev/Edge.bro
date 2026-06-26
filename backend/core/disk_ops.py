@@ -210,6 +210,10 @@ def format_and_restore(
                     emit_log(f"WARNING: Failed to restore PARTUUID for partition {i+1}: {str(e)}")
 
         # Determine partition device paths and format them
+        try:
+            subprocess.run(["partprobe", target_dev], stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
         subprocess.check_call(["udevadm", "settle"])
 
         part_devices = {}
@@ -221,6 +225,12 @@ def format_and_restore(
             fstype = part.get("fstype", "ext4")
             label = part.get("label") or f"part{i+1}"
             uuid = part.get("uuid")
+
+            # Release any active automount locks on this specific partition before formatting
+            try:
+                subprocess.run(["umount", "-l", part_dev], stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
 
             progress_val = 20 + int((i / len(partitions)) * 20)
             emit_log(f"Formatting partition {part_dev} ({part.get('mount')}) as {fstype} with label: {label}...", prog=progress_val)
