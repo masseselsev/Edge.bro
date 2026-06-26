@@ -952,7 +952,7 @@ function AppContent() {
   // Render main app layout unconditionally once appReady is true.
 
   return (
-    <div className="min-h-full flex flex-col font-sans select-none">
+    <div className={`min-h-full flex flex-col font-sans ${isKiosk ? 'select-none' : ''}`}>
       {/* Boot Loading Overlay */}
       {!appReady && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950/95 backdrop-blur-xl transition-opacity duration-500">
