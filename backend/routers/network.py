@@ -80,8 +80,9 @@ def get_network_bytes() -> tuple[float, int, int]:
     """
     rx_total = 0
     tx_total = 0
+    path = "/host/proc/net/dev" if os.path.exists("/host/proc/net/dev") else "/proc/net/dev"
     try:
-        with open("/proc/net/dev", "r") as f:
+        with open(path, "r") as f:
             lines = f.readlines()
         for line in lines[2:]:
             parts = line.split(":")
