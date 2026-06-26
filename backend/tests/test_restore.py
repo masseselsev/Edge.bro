@@ -313,3 +313,115 @@ def test_format_partition_with_retry_failure(mock_run, mock_sleep):
     log_callback.assert_any_call("WARNING: Format attempt 3/3 failed for /dev/sdb1: Device or resource busy. Retrying in 0.1s...", None, None)
 
 
+@patch("builtins.open")
+@patch("os.path.exists")
+@patch("os.listdir")
+@patch("subprocess.run")
+@patch("subprocess.call")
+@patch("subprocess.check_call")
+@patch("subprocess.check_output")
+@patch("subprocess.Popen")
+@patch("os.makedirs")
+@patch("shutil.rmtree")
+@patch("os.path.realpath")
+def test_patch_network_configs_preserves_static_and_aliases(
+    mock_realpath, mock_rmtree, mock_makedirs, mock_popen, mock_check_output, mock_check_call, mock_call, mock_run, mock_listdir, mock_exists, mock_open
+):
+    from core.disk_ops import format_and_restore
+
+    # 1. Mock path existence
+    def exists_side_effect(path):
+        if "/etc/network/interfaces.d" in path:
+            return True
+        if "/etc/network/interfaces" in path:
+            return True
+        if "/proc/cmdline" in path:
+            return True
+        if "/dev/sdb" in path:
+            return True
+        return False
+    mock_exists.side_effect = exists_side_effect
+    
+    # 2. Mock listdir
+    mock_listdir.return_value = ["primary.conf"]
+    
+    # 3. Mock file contents for open
+    mock_cmdline = MagicMock()
+    mock_cmdline.read.return_value = "root=/dev/sda1"
+    
+    mock_interfaces = MagicMock()
+    original_config = (
+        "auto lo\n"
+        "iface lo inet loopback\n"
+        "auto eno1\n"
+        "iface eno1 inet dhcp\n"
+        "auto eno1:1\n"
+        "iface eno1:1 inet static\n"
+        "    address 192.168.222.33\n"
+        "auto enp1s0\n"
+        "iface enp1s0 inet static\n"
+        "    address 192.168.14.1\n"
+    )
+    mock_interfaces.readlines.return_value = original_config.splitlines(keepends=True)
+    
+    # Track written contents
+    written_data = {}
+    def open_side_effect(path, mode="r", *args, **kwargs):
+        if "cmdline" in path:
+            mock_cmdline.__enter__.return_value = mock_cmdline
+            return mock_cmdline
+        if "primary.conf" in path:
+            if "w" in mode:
+                write_mock = MagicMock()
+                write_mock.__enter__.return_value = write_mock
+                def write_sub(data):
+                    written_data[path] = data
+                write_mock.write.side_effect = write_sub
+                return write_mock
+            mock_interfaces.__enter__.return_value = mock_interfaces
+            return mock_interfaces
+        default_mock = MagicMock()
+        default_mock.__enter__.return_value = default_mock
+        return default_mock
+        
+    mock_open.side_effect = open_side_effect
+    
+    mock_realpath.return_value = "/dev/sda"
+    mock_check_output.return_value = "/dev/sda1"
+    mock_run.return_value = MagicMock(returncode=0)
+    mock_check_call.return_value = 0
+    
+    mock_proc = MagicMock()
+    import io
+    mock_proc.stderr = io.StringIO("")
+    mock_proc.returncode = 0
+    mock_popen.return_value = mock_proc
+    
+    with patch("os.path.isfile", return_value=True):
+        format_and_restore(
+            target_dev="/dev/sdb",
+            partitions=[{"name": "root", "mount": "/", "fstype": "ext4", "label": "root", "uuid": "", "size_bytes": 0}],
+            efi_uuid="1234-5678",
+            archive_name="test.tar",
+            repo_path="/repo",
+            keep_network_configs=True,
+            wipe_mac_bindings=False,
+            network_iface="eth0",
+            total_files=0,
+            log_callback=MagicMock()
+        )
+    
+    # Assert that primary.conf was modified and written correctly
+    assert len(written_data) > 0
+    written_content = list(written_data.values())[0]
+    
+    # eno1 (DHCP) should be allow-hotplug
+    assert "allow-hotplug eno1" in written_content
+    # eno1:1 (static alias) should remain auto
+    assert "auto eno1:1" in written_content
+    # enp1s0 (static) should remain auto
+    assert "auto enp1s0" in written_content
+    # lo should remain auto
+    assert "auto lo" in written_content
+
+

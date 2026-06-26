@@ -429,6 +429,19 @@ def format_and_restore(
                 try:
                     with open(path, "r") as f:
                         lines = f.readlines()
+                    
+                    # Pre-scan the file to find interfaces configured as static or manual
+                    static_or_manual = set()
+                    for line in lines:
+                        stripped_line = line.strip()
+                        if stripped_line.startswith("iface "):
+                            parts = stripped_line.split()
+                            if len(parts) >= 4:
+                                iface_name = parts[1]
+                                method = parts[3]
+                                if method in ["static", "manual"]:
+                                    static_or_manual.add(iface_name)
+                    
                     modified = False
                     new_lines = []
                     for line in lines:
@@ -443,8 +456,21 @@ def format_and_restore(
                                 new_parts = []
                                 if lo_ifaces:
                                     new_parts.append(f"auto {' '.join(lo_ifaces)}")
+                                
+                                auto_ifaces = []
+                                hotplug_ifaces = []
                                 for iface in non_lo_ifaces:
+                                    # Keep aliases (e.g. eno1:1) and static/manual interfaces as 'auto'
+                                    if ":" in iface or iface in static_or_manual:
+                                        auto_ifaces.append(iface)
+                                    else:
+                                        hotplug_ifaces.append(iface)
+                                
+                                if auto_ifaces:
+                                    new_parts.append(f"auto {' '.join(auto_ifaces)}")
+                                for iface in hotplug_ifaces:
                                     new_parts.append(f"allow-hotplug {iface}")
+                                
                                 new_lines.append("\n".join(new_parts))
                                 modified = True
                             else:
@@ -454,7 +480,7 @@ def format_and_restore(
                     if modified:
                         with open(path, "w") as f:
                             f.write("\n".join(new_lines) + "\n")
-                        emit_log(f"Successfully converted auto to allow-hotplug in {os.path.basename(path)}")
+                        emit_log(f"Successfully patched auto to allow-hotplug in {os.path.basename(path)}")
                 except Exception as e:
                     emit_log(f"WARNING: Failed to patch network file {path}: {str(e)}")
 
