@@ -191,22 +191,84 @@ def format_and_restore(
             if host_root_disk_base in target_dev:
                 raise PermissionError(f"PROTECTION SHIELD: Attempted to flash the host's root drive ({host_root_disk_base}). Blocked.")
 
-        # 1.5. Release active mount locks on target device & its partitions
+        # 1.5. Release active mount and device-mapper (LVM/LUKS) locks on target device & its partitions
         try:
             import re
+            import errno
+            
+            target_name = os.path.basename(target_dev)
+            holders = set()
+            sys_block_path = f"/sys/block/{target_name}"
+            
+            if os.path.exists(sys_block_path):
+                # Initialize queue with root holders and partition holders directories
+                queue = ["holders"]
+                for item in os.listdir(sys_block_path):
+                    if item.startswith(target_name):
+                        queue.append(f"{item}/holders")
+                
+                # Recursively discover nested device-mapper holders (e.g. LVM on LUKS or vice versa)
+                processed = set()
+                while queue:
+                    sub_path = queue.pop(0)
+                    if sub_path in processed:
+                        continue
+                    processed.add(sub_path)
+                    
+                    full_h_path = os.path.join(sys_block_path, sub_path) if not sub_path.startswith("/") else sub_path
+                    if os.path.exists(full_h_path):
+                        for h in os.listdir(full_h_path):
+                            if h.startswith("dm-"):
+                                holders.add(h)
+                                queue.append(f"/sys/block/{h}/holders")
+                                
+            # Resolve mapper names for each holder
+            dm_names = set()
+            for holder in holders:
+                dm_names.add(holder)
+                dm_sys_name_path = f"/sys/block/{holder}/dm/name"
+                if os.path.exists(dm_sys_name_path):
+                    try:
+                        with open(dm_sys_name_path, "r") as fh:
+                            dm_name = fh.read().strip()
+                            if dm_name:
+                                dm_names.add(dm_name)
+                    except Exception:
+                        pass
+
+            # Unmount target partitions and resolved device-mapper holder devices
             if os.path.exists("/proc/mounts"):
-                part_pattern = re.compile(r"^" + re.escape(target_dev) + r"(p?\d+)?$")
+                patterns = [re.escape(target_dev) + r"(p?\d+)?$"]
+                for dm_name in dm_names:
+                    patterns.append(r"/dev/mapper/" + re.escape(dm_name) + r"$")
+                    patterns.append(r"/dev/" + re.escape(dm_name) + r"$")
+                
+                combined_pattern = re.compile(r"^(" + "|".join(patterns) + r")$")
+                
                 with open("/proc/mounts", "r") as f:
                     for line in f:
                         parts = line.strip().split()
                         if len(parts) >= 2:
                             dev_src = parts[0]
-                            if part_pattern.match(dev_src):
+                            # Match if matches partition pattern or mapper name directly
+                            if combined_pattern.match(dev_src) or any(dm in dev_src for dm in dm_names):
                                 mount_point = parts[1]
                                 emit_log(f"Releasing mount lock: unmounting {dev_src} from {mount_point}...", prog=8)
                                 subprocess.call(["umount", "-l", mount_point])
+
+            # Force-remove device-mapper mappings in a retry loop (to resolve hierarchy/dependencies)
+            for attempt in range(3):
+                still_have_dm = False
+                for dm_name in list(dm_names):
+                    if os.path.exists(f"/sys/block/{dm_name}") or os.path.exists(f"/dev/mapper/{dm_name}"):
+                        still_have_dm = True
+                        emit_log(f"Releasing device-mapper lock: removing {dm_name} (attempt {attempt+1})...", prog=9)
+                        subprocess.call(["dmsetup", "remove", "-f", dm_name])
+                if not still_have_dm:
+                    break
+                    
         except Exception as ue:
-            emit_log(f"Warning: Failed to release mount locks: {str(ue)}")
+            emit_log(f"Warning: Failed to release mount/device-mapper locks: {str(ue)}")
 
         # 2. Wipe target signature
         emit_log(f"Wiping signatures on {target_dev}...", prog=10)
