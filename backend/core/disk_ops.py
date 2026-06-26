@@ -347,21 +347,42 @@ def format_and_restore(
             f"{repo_path}::{archive_name}"
         ]
         
+        try:
+            import pty
+            import errno
+            master, slave = pty.openpty()
+            stderr_fd = slave
+            has_pty = True
+        except (ImportError, OSError):
+            stderr_fd = subprocess.PIPE
+            has_pty = False
+
         proc = subprocess.Popen(
             extract_cmd, 
             cwd=target_mnt, 
             env=env, 
-            stderr=subprocess.PIPE, 
+            stderr=stderr_fd, 
             text=True, 
             bufsize=1
         )
+
+        if has_pty:
+            os.close(slave)
+            stderr_stream = os.fdopen(master, "r", encoding="utf-8", errors="ignore")
+        else:
+            stderr_stream = proc.stderr
 
         buffer = ""
         last_logged_files = -1000
         last_logged_prog = -1
         try:
             while True:
-                char = proc.stderr.read(1)
+                try:
+                    char = stderr_stream.read(1)
+                except OSError as e:
+                    if has_pty and e.errno == errno.EIO:
+                        break
+                    raise
                 if not char:
                     break
                 if char == '\r' or char == '\n':
@@ -392,6 +413,11 @@ def format_and_restore(
                 else:
                     buffer += char
             
+            if has_pty:
+                try:
+                    stderr_stream.close()
+                except Exception:
+                    pass
             proc.wait()
             if proc.returncode != 0:
                 raise subprocess.CalledProcessError(proc.returncode, extract_cmd)

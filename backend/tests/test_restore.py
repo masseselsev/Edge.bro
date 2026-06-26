@@ -231,21 +231,22 @@ def test_format_and_restore_borg_progress_parsing(
 
     log_callback = MagicMock()
 
-    format_and_restore(
-        target_dev="/dev/sdb",
-        partitions=[
-            {"name": "ESP", "mount": "/boot/efi", "fstype": "vfat", "label": "EFI", "uuid": "", "size_bytes": 512 * 1024 * 1024},
-            {"name": "root", "mount": "/", "fstype": "ext4", "label": "edgeroot", "uuid": "", "size_bytes": 0}
-        ],
-        efi_uuid="1234-5678",
-        archive_name="test.tar",
-        repo_path="/repo",
-        keep_network_configs=True,
-        wipe_mac_bindings=False,
-        network_iface="eth0",
-        total_files=5000,
-        log_callback=log_callback
-    )
+    with patch("pty.openpty", side_effect=OSError("PTY disabled in tests")):
+        format_and_restore(
+            target_dev="/dev/sdb",
+            partitions=[
+                {"name": "ESP", "mount": "/boot/efi", "fstype": "vfat", "label": "EFI", "uuid": "", "size_bytes": 512 * 1024 * 1024},
+                {"name": "root", "mount": "/", "fstype": "ext4", "label": "edgeroot", "uuid": "", "size_bytes": 0}
+            ],
+            efi_uuid="1234-5678",
+            archive_name="test.tar",
+            repo_path="/repo",
+            keep_network_configs=True,
+            wipe_mac_bindings=False,
+            network_iface="eth0",
+            total_files=5000,
+            log_callback=log_callback
+        )
 
     # 1000 files / 5000 total = 20% of 45 = 9% progress. So 45 + 9 = 54% progress logged.
     log_callback.assert_any_call("Extracting files (1000/5000)...", 54, None)
@@ -397,7 +398,7 @@ def test_patch_network_configs_preserves_static_and_aliases(
     mock_proc.returncode = 0
     mock_popen.return_value = mock_proc
     
-    with patch("os.path.isfile", return_value=True):
+    with patch("os.path.isfile", return_value=True), patch("pty.openpty", side_effect=OSError("PTY disabled in tests")):
         format_and_restore(
             target_dev="/dev/sdb",
             partitions=[{"name": "root", "mount": "/", "fstype": "ext4", "label": "root", "uuid": "", "size_bytes": 0}],
