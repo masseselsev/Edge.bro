@@ -49,7 +49,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             ]
 
         total_files = get_archive_total_files(db, archive_name)
-        repo_path = "/data/borg/fleet"
+        repo_path = f"/data/borg/fleet/{node.hostname}"
 
         def logger_callback(msg: str, prog: int = None, status: str = None):
             if prog is not None:
