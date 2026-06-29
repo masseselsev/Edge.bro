@@ -517,3 +517,25 @@ def test_node_response_backup_fields():
     assert resp.backup_task_id == "test-task-id-123"
 
 
+def test_upgrade_settings_cpu_quota():
+    from database import SessionLocal
+    from main import upgrade_settings
+    import models
+
+    db = SessionLocal()
+    try:
+        settings = db.query(models.Settings).first()
+        if not settings:
+            settings = models.Settings()
+            db.add(settings)
+        settings.default_cpu_quota = 10
+        db.commit()
+
+        upgrade_settings(db)
+
+        db.refresh(settings)
+        assert settings.default_cpu_quota == 30
+    finally:
+        db.close()
+
+

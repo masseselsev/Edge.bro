@@ -130,6 +130,10 @@ def upgrade_settings(db: Session):
         db.add(settings)
         db.commit()
     else:
+        if settings.default_cpu_quota == 10:
+            settings.default_cpu_quota = 30
+            db.commit()
+            print("Upgraded default_cpu_quota setting from 10% to 30%.")
         old_defaults = [
             '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*',
             '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*',
