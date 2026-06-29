@@ -126,6 +126,22 @@ def mask_to_prefix(mask: str) -> int:
         return 24
 
 
+def run_nmcli(args: List[str], timeout: int = 5) -> str:
+    """Run nmcli with English locale enforced to ensure robust output parsing."""
+    import os
+    env = os.environ.copy()
+    env["LC_ALL"] = "C"
+    return subprocess.check_output(args, env=env, timeout=timeout).decode()
+
+
+def call_nmcli(args: List[str], timeout: int = 5) -> int:
+    """Execute nmcli with English locale enforced."""
+    import os
+    env = os.environ.copy()
+    env["LC_ALL"] = "C"
+    return subprocess.check_call(args, env=env, timeout=timeout)
+
+
 @router.get("/status", response_model=NetworkStatusResponse)
 def get_network_status():
     wired_conn = {
@@ -147,7 +163,7 @@ def get_network_status():
 
     try:
         # Get devices state
-        dev_out = subprocess.check_output(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device"], timeout=5).decode()
+        dev_out = run_nmcli(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device"], timeout=5)
         for line in dev_out.splitlines():
             parts = line.split(":")
             if len(parts) >= 3:
@@ -163,10 +179,10 @@ def get_network_status():
 
         # Get active connection properties for wired device
         if wired_conn["connected"]:
-            ip_out = subprocess.check_output(
+            ip_out = run_nmcli(
                 ["nmcli", "-t", "-f", "IP4.ADDRESS,IP4.GATEWAY,IP4.DNS", "device", "show", wired_conn["device"]],
                 timeout=5
-            ).decode()
+            )
             dns_list = []
             for line in ip_out.splitlines():
                 if line.startswith("IP4.ADDRESS[1]:"):
@@ -184,10 +200,10 @@ def get_network_status():
             wired_conn["dns_servers"] = dns_list
 
             # Find connection name to check configuration method (DHCP or Static)
-            con_out = subprocess.check_output(
+            con_out = run_nmcli(
                 ["nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active"],
                 timeout=5
-            ).decode()
+            )
             conn_name = None
             for line in con_out.splitlines():
                 parts = line.split(":")
@@ -196,10 +212,10 @@ def get_network_status():
                     break
 
             if conn_name:
-                method_out = subprocess.check_output(
+                method_out = run_nmcli(
                     ["nmcli", "-t", "-f", "ipv4.method,ipv4.dns", "connection", "show", conn_name],
                     timeout=5
-                ).decode()
+                )
                 for line in method_out.splitlines():
                     if line.startswith("ipv4.method:"):
                         val = line.split(":", 1)[1].strip()
@@ -216,10 +232,10 @@ def get_network_status():
 
         # Get connected Wi-Fi SSID and signal details
         if wifi_conn["connected"]:
-            wifi_out = subprocess.check_output(
+            wifi_out = run_nmcli(
                 ["nmcli", "-t", "-f", "ACTIVE,SSID,SIGNAL,DEVICE", "device", "wifi", "list"],
                 timeout=5
-            ).decode()
+            )
             for line in wifi_out.splitlines():
                 parts = re.split(r"(?<!\\):", line)
                 if len(parts) >= 4 and parts[0].strip().lower() == "yes":
@@ -254,10 +270,20 @@ def get_network_status():
 @router.get("/wifi/scan", response_model=List[WifiNetworkInfo])
 def scan_wifi():
     try:
-        out = subprocess.check_output(
+        # Trigger a wifi rescan in NetworkManager (asynchronously/ignore failures)
+        try:
+            call_nmcli(["nmcli", "device", "wifi", "rescan"], timeout=3)
+        except Exception:
+            pass
+
+        out = run_nmcli(
             ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY,ACTIVE", "device", "wifi", "list"],
             timeout=10
-        ).decode()
+        )
+        
+        if not out.strip():
+            print("WARNING: nmcli device wifi list returned empty output.")
+
         networks = []
         seen_ssids = set()
         for line in out.splitlines():
@@ -276,7 +302,8 @@ def scan_wifi():
                         active=active
                     ))
         return sorted(networks, key=lambda x: x.signal, reverse=True)
-    except Exception:
+    except Exception as e:
+        print(f"ERROR: Wifi scan failed, returning mock networks: {e}")
         # Fallback for dev environment
         return [
             WifiNetworkInfo(ssid="Office_5G", signal=95, security="WPA2", active=False),
@@ -292,7 +319,7 @@ def connect_wifi(req: WifiConnectRequest):
             cmd += ["password", req.password]
         if req.hidden:
             cmd += ["hidden", "yes"]
-        subprocess.check_call(cmd, timeout=30)
+        call_nmcli(cmd, timeout=30)
         return ActionResponse(status="SUCCESS", message=f"Connected to {req.ssid} successfully")
     except Exception as e:
         return ActionResponse(status="FAILED", error=str(e))
@@ -302,10 +329,10 @@ def connect_wifi(req: WifiConnectRequest):
 def configure_wired(req: WiredConfigRequest):
     try:
         # Get first active ethernet connection name
-        con_out = subprocess.check_output(
+        con_out = run_nmcli(
             ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show", "--active"],
             timeout=5
-        ).decode()
+        )
         conn_name = None
         for line in con_out.splitlines():
             parts = line.split(":")
@@ -315,10 +342,10 @@ def configure_wired(req: WiredConfigRequest):
 
         if not conn_name:
             # Check all ethernet connections (active or inactive)
-            con_all_out = subprocess.check_output(
+            con_all_out = run_nmcli(
                 ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
                 timeout=5
-            ).decode()
+            )
             for line in con_all_out.splitlines():
                 parts = line.split(":")
                 if len(parts) >= 2 and parts[1] == "802-3-ethernet":
@@ -334,26 +361,26 @@ def configure_wired(req: WiredConfigRequest):
                 return ActionResponse(status="FAILED", error="IP address and netmask are required for manual mode")
             prefix = mask_to_prefix(req.netmask)
             ip_cidr = f"{req.ip_address}/{prefix}"
-            subprocess.check_call(["nmcli", "connection", "modify", conn_name, "ipv4.method", "manual", "ipv4.addresses", ip_cidr], timeout=5)
+            call_nmcli(["nmcli", "connection", "modify", conn_name, "ipv4.method", "manual", "ipv4.addresses", ip_cidr], timeout=5)
             if req.gateway:
-                subprocess.check_call(["nmcli", "connection", "modify", conn_name, "ipv4.gateway", req.gateway], timeout=5)
+                call_nmcli(["nmcli", "connection", "modify", conn_name, "ipv4.gateway", req.gateway], timeout=5)
             else:
-                subprocess.check_call(["nmcli", "connection", "modify", conn_name, "ipv4.gateway", ""], timeout=5)
+                call_nmcli(["nmcli", "connection", "modify", conn_name, "ipv4.gateway", ""], timeout=5)
         else:
             # DHCP mode
-            subprocess.check_call(["nmcli", "connection", "modify", conn_name, "ipv4.method", "auto", "ipv4.addresses", "", "ipv4.gateway", ""], timeout=5)
+            call_nmcli(["nmcli", "connection", "modify", conn_name, "ipv4.method", "auto", "ipv4.addresses", "", "ipv4.gateway", ""], timeout=5)
 
         # 2. DNS Settings
         if req.dns_mode == "manual" and req.dns_servers:
             dns_str = " ".join(req.dns_servers)
-            subprocess.check_call(["nmcli", "connection", "modify", conn_name, "ipv4.dns", dns_str], timeout=5)
-            subprocess.check_call(["nmcli", "connection", "modify", conn_name, "ipv4.ignore-auto-dns", "yes"], timeout=5)
+            call_nmcli(["nmcli", "connection", "modify", conn_name, "ipv4.dns", dns_str], timeout=5)
+            call_nmcli(["nmcli", "connection", "modify", conn_name, "ipv4.ignore-auto-dns", "yes"], timeout=5)
         else:
-            subprocess.check_call(["nmcli", "connection", "modify", conn_name, "ipv4.dns", ""], timeout=5)
-            subprocess.check_call(["nmcli", "connection", "modify", conn_name, "ipv4.ignore-auto-dns", "no"], timeout=5)
+            call_nmcli(["nmcli", "connection", "modify", conn_name, "ipv4.dns", ""], timeout=5)
+            call_nmcli(["nmcli", "connection", "modify", conn_name, "ipv4.ignore-auto-dns", "no"], timeout=5)
 
         # Re-activate connection to apply
-        subprocess.check_call(["nmcli", "connection", "up", conn_name], timeout=15)
+        call_nmcli(["nmcli", "connection", "up", conn_name], timeout=15)
         return ActionResponse(status="SUCCESS", message="Wired connection settings applied successfully")
     except Exception as e:
         return ActionResponse(status="FAILED", error=str(e))

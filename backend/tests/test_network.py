@@ -100,10 +100,10 @@ def test_connect_wifi_success(mock_call):
     req = WifiConnectRequest(ssid="Office_5G", password="super_password", hidden=True)
     res = connect_wifi(req)
     assert res.status == "SUCCESS"
-    mock_call.assert_called_once_with(
-        ["nmcli", "device", "wifi", "connect", "Office_5G", "password", "super_password", "hidden", "yes"],
-        timeout=30
-    )
+    assert mock_call.call_count == 1
+    args, kwargs = mock_call.call_args
+    assert args[0] == ["nmcli", "device", "wifi", "connect", "Office_5G", "password", "super_password", "hidden", "yes"]
+    assert kwargs.get("timeout") == 30
 
 
 @patch("subprocess.check_call")
