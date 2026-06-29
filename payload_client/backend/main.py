@@ -150,6 +150,8 @@ except ImportError:
 task_logs: Dict[str, str] = {}
 task_status: Dict[str, str] = {}
 task_progress: Dict[str, int] = {}
+task_download_speed: Dict[str, str] = {}
+task_eta: Dict[str, str] = {}
 
 class RestoreRequest(BaseModel):
     node_id: int
@@ -743,7 +745,9 @@ def get_task_status(task_id: str):
             "task_id": task_id,
             "status": task_status[task_id],
             "progress": task_progress.get(task_id, 0),
-            "logs": task_logs.get(task_id, "")
+            "logs": task_logs.get(task_id, ""),
+            "download_speed": task_download_speed.get(task_id, ""),
+            "eta": task_eta.get(task_id, "")
         }
     global restore_mode
     if restore_mode == "online":
@@ -813,12 +817,46 @@ def run_kiosk_sync(task_id: str, hostname: str):
             bytes_downloaded = 0
             last_reported_pct = -1
             
+            import time
+            start_time = time.time()
+            last_time = start_time
+            last_bytes = 0
+            
             while True:
                 chunk = response.read(65536)
                 if not chunk:
                     break
                 bytes_downloaded += len(chunk)
                 tar_proc.stdin.write(chunk)
+
+                current_time = time.time()
+                elapsed_since_last = current_time - last_time
+                if elapsed_since_last >= 1.0 or bytes_downloaded == total_size:
+                    speed = (bytes_downloaded - last_bytes) / (elapsed_since_last or 0.001)  # bytes / sec
+                    if speed >= 1024 * 1024:
+                        speed_str = f"{speed / (1024 * 1024):.2f} MB/s"
+                    elif speed >= 1024:
+                        speed_str = f"{speed / 1024:.2f} KB/s"
+                    else:
+                        speed_str = f"{speed:.2f} B/s"
+                    task_download_speed[task_id] = speed_str
+                    
+                    if total_size > 0:
+                        remaining_bytes = total_size - bytes_downloaded
+                        if speed > 0:
+                            eta_sec = int(remaining_bytes / speed)
+                            if eta_sec >= 60:
+                                eta_str = f"{eta_sec // 60}m {eta_sec % 60}s"
+                            else:
+                                eta_str = f"{eta_sec}s"
+                        else:
+                            eta_str = "--"
+                        task_eta[task_id] = eta_str
+                    else:
+                        task_eta[task_id] = "--"
+                        
+                    last_time = current_time
+                    last_bytes = bytes_downloaded
 
                 if total_size > 0:
                     pct = int((bytes_downloaded / total_size) * 100)

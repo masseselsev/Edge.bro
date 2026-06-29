@@ -64,6 +64,8 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   const [syncing, setSyncing] = useState(false);
   const [syncTaskId, setSyncTaskId] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState(0);
+  const [syncSpeed, setSyncSpeed] = useState<string | null>(null);
+  const [syncEta, setSyncEta] = useState<string | null>(null);
 
   // Storage partition capacity state
   const [storageInfo, setStorageInfo] = useState<{
@@ -82,6 +84,8 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     
     setSyncing(true);
     setSyncProgress(0);
+    setSyncSpeed(null);
+    setSyncEta(null);
     try {
       const res = await fetch(`/api/kiosk/sync/${node.hostname}`, { method: 'POST' });
       if (!res.ok) throw new Error("Failed to start sync");
@@ -106,6 +110,16 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
         const data = await res.json();
         if (data.progress) {
           setSyncProgress(data.progress);
+        }
+        if (data.download_speed) {
+          setSyncSpeed(data.download_speed);
+        } else {
+          setSyncSpeed(null);
+        }
+        if (data.eta) {
+          setSyncEta(data.eta);
+        } else {
+          setSyncEta(null);
         }
         if (data.status === 'SUCCESS') {
           clearInterval(intervalId);
@@ -392,7 +406,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
                 {syncing && (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
-                      <span>Syncing files...</span>
+                      <span>Syncing files... {syncSpeed ? `(${syncSpeed}, ETA: ${syncEta})` : ''}</span>
                       <span>{syncProgress}%</span>
                     </div>
                     <div className="w-full bg-zinc-950 h-1.5 rounded-full overflow-hidden border border-zinc-800">
