@@ -803,6 +803,14 @@ def run_kiosk_sync(task_id: str, hostname: str):
             task_logs[task_id] += f"Total repository size: {total_size} bytes\n"
 
             target_dir = os.path.join(local_storage_path, "borg", "fleet", hostname)
+            if os.path.exists(target_dir):
+                import shutil
+                task_logs[task_id] += f"Cleaning up existing repository cache for {hostname}...\n"
+                try:
+                    shutil.rmtree(target_dir)
+                except Exception as ex:
+                    task_logs[task_id] += f"WARNING: Failed to clean directory {target_dir}: {ex}\n"
+
             os.makedirs(target_dir, exist_ok=True)
 
             fleet_dir = os.path.join(local_storage_path, "borg", "fleet")
