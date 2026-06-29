@@ -3,7 +3,10 @@ import re
 import os
 import time
 import json
-import redis
+try:
+    import redis
+except ImportError:
+    redis = None
 from fastapi import APIRouter, Depends
 try:
     from routers.users import require_admin
@@ -14,8 +17,13 @@ except ImportError:
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-_redis_client = redis.Redis.from_url(REDIS_URL)
+_redis_client = None
+if redis:
+    try:
+        REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        _redis_client = redis.Redis.from_url(REDIS_URL)
+    except Exception:
+        pass
 
 # Module-level fallback cache used when Redis is unavailable
 _fallback_traffic_cache: dict = {}
@@ -402,13 +410,16 @@ def get_bandwidth() -> BandwidthResponse:
 
     # ── Load previous snapshot ──────────────────────────────────────────────
     prev: dict | None = None
-    use_redis = True
-    try:
-        raw = _redis_client.get(BANDWIDTH_CACHE_KEY)
-        if raw:
-            prev = json.loads(raw)
-    except Exception:
-        use_redis = False
+    use_redis = True if _redis_client else False
+    if use_redis:
+        try:
+            raw = _redis_client.get(BANDWIDTH_CACHE_KEY)
+            if raw:
+                prev = json.loads(raw)
+        except Exception:
+            use_redis = False
+            prev = _fallback_traffic_cache.get(BANDWIDTH_CACHE_KEY)
+    else:
         prev = _fallback_traffic_cache.get(BANDWIDTH_CACHE_KEY)
 
     # ── First call: baseline only ────────────────────────────────────────────
@@ -450,7 +461,7 @@ def get_bandwidth() -> BandwidthResponse:
 def _store_snapshot(snapshot: dict, use_redis: bool) -> None:
     """Persist the traffic snapshot to Redis (preferred) or the process-level dict."""
     try:
-        if use_redis:
+        if use_redis and _redis_client:
             _redis_client.setex(
                 BANDWIDTH_CACHE_KEY,
                 BANDWIDTH_CACHE_TTL,
