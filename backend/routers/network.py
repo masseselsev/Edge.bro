@@ -93,7 +93,7 @@ class BandwidthResponse(BaseModel):
 
 
 def get_network_bytes() -> tuple[float, int, int]:
-    """Read cumulative Rx/Tx bytes from /proc/net/dev for physical interfaces.
+    """Read cumulative Rx/Tx bytes from /proc/net/dev for the default routing interface.
 
     Returns:
         (timestamp, total_rx_bytes, total_tx_bytes)
@@ -102,29 +102,63 @@ def get_network_bytes() -> tuple[float, int, int]:
     tx_total = 0
     
     # Prioritize host PID 1's network namespace (since /proc/net/dev is namespaced to the reading process)
-    path = "/proc/net/dev"
-    for p in ["/host/proc/1/net/dev", "/host/proc/net/dev", "/proc/net/dev"]:
-        if os.path.exists(p):
-            path = p
+    base_dir = "/proc"
+    for p in ["/host/proc/1", "/host/proc", "/proc"]:
+        if os.path.exists(f"{p}/net/dev"):
+            base_dir = p
             break
 
+    dev_path = f"{base_dir}/net/dev"
+    route_path = f"{base_dir}/net/route"
+
+    # Find the default gateway interface
+    default_iface = None
+    if os.path.exists(route_path):
+        try:
+            min_metric = 999999
+            with open(route_path, "r") as f:
+                lines = f.readlines()
+            for line in lines[1:]:
+                parts = line.split()
+                if len(parts) >= 7:
+                    iface = parts[0]
+                    dest = parts[1]
+                    try:
+                        metric = int(parts[6])
+                    except ValueError:
+                        metric = 0
+                    if dest == "00000000":
+                        if default_iface is None or metric < min_metric:
+                            default_iface = iface
+                            min_metric = metric
+        except Exception:
+            pass
+
     try:
-        with open(path, "r") as f:
+        with open(dev_path, "r") as f:
             lines = f.readlines()
         for line in lines[2:]:
             parts = line.split(":")
             if len(parts) < 2:
                 continue
             iface = parts[0].strip()
-            # Exclude loopback and virtual/container interfaces
-            if iface == "lo" or iface.startswith(("docker", "br-", "veth")):
-                continue
+            
+            # If we found a default gateway interface, only count that interface
+            if default_iface:
+                if iface != default_iface:
+                    continue
+            else:
+                # Fallback: sum all physical-looking interfaces if default interface is not detected
+                if iface == "lo" or iface.startswith(("docker", "br-", "veth")):
+                    continue
+            
             stats = parts[1].split()
             if len(stats) >= 9:
                 rx_total += int(stats[0])
                 tx_total += int(stats[8])
     except Exception:
         pass
+        
     return time.monotonic(), rx_total, tx_total
 
 
