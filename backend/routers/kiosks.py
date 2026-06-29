@@ -75,10 +75,18 @@ def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_ad
     server_name = settings.server_name if (settings and settings.server_name) else "Edge.bro"
     for k in kiosks:
         if k.auth_token:
-            created_date = k.created_at.strftime("%Y%m%d") if k.created_at else "unknown"
-            iso_name = f"{server_name}-kiosk-{created_date}-{k.auth_token}.iso"
-            iso_path = os.path.join(CACHE_DIR, "history", iso_name)
-            exists = os.path.exists(iso_path)
+            iso_name = None
+            iso_path = None
+            exists = False
+            history_dir = os.path.join(CACHE_DIR, "history")
+            if os.path.exists(history_dir):
+                suffix = f"-{k.auth_token}.iso"
+                for file in os.listdir(history_dir):
+                    if file.endswith(suffix) and "-kiosk-" in file:
+                        iso_name = file
+                        iso_path = os.path.join(history_dir, file)
+                        exists = True
+                        break
             k.iso_exists = exists
             if exists:
                 k.iso_path = iso_path

@@ -567,7 +567,17 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
         history_dir = os.path.join(CACHE_DIR, "history")
         os.makedirs(history_dir, exist_ok=True)
         server_name = settings.server_name if (settings and settings.server_name) else "Edge.bro"
-        created_date = kiosk.created_at.strftime("%Y%m%d") if kiosk.created_at else "unknown"
+        
+        # Clean up any existing ISO files for this kiosk token first to ensure clean generation and save space
+        for file in os.listdir(history_dir):
+            if file.endswith(f"-{kiosk.auth_token}.iso") and "-kiosk-" in file:
+                try:
+                    os.remove(os.path.join(history_dir, file))
+                except Exception:
+                    pass
+                    
+        from datetime import datetime
+        created_date = datetime.now().strftime("%Y%m%d")
         output_kiosk_iso = os.path.join(history_dir, f"{server_name}-kiosk-{created_date}-{kiosk.auth_token}.iso")
 
         work_dir = f"/tmp/repack_{kiosk_id}_{task_id}"

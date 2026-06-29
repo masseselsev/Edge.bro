@@ -363,5 +363,87 @@ def test_update_kiosk(db_session):
     assert kiosk_db.comment == "new comment"
 
 
+def test_kiosk_iso_dynamic_naming_and_download(db_session):
+    import os
+    import shutil
+    from fastapi.testclient import TestClient
+    from main import app
+    import models
+
+    client = TestClient(app)
+    
+    # Mock base settings and kiosk
+    settings = db_session.query(models.Settings).first()
+    if not settings:
+        settings = models.Settings(server_name="Edge.bro")
+        db_session.add(settings)
+    else:
+        settings.server_name = "Edge.bro"
+    
+    # Delete any existing test kiosk to avoid integrity errors
+    db_session.query(models.Kiosk).filter(
+        (models.Kiosk.uuid == "KS8888") | 
+        (models.Kiosk.auth_token == "TEST88") |
+        (models.Kiosk.key == "8888KS")
+    ).delete()
+    db_session.commit()
+
+    kiosk = models.Kiosk(
+        name="Test Dynamic Kiosk",
+        uuid="KS8888",
+        key="8888KS",
+        auth_token="TEST88",
+        status="APPROVED"
+    )
+    db_session.add(kiosk)
+    db_session.commit()
+
+    # Create workspace-local temp directory for CACHE_DIR
+    workspace_test_cache = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "test_iso_cache"))
+    os.makedirs(workspace_test_cache, exist_ok=True)
+    
+    import routers.kiosks
+    import routers.iso
+    import iso_tasks
+    
+    orig_kiosks_cache = getattr(routers.kiosks, "CACHE_DIR", None)
+    orig_iso_cache = getattr(routers.iso, "CACHE_DIR", None)
+    orig_tasks_cache = getattr(iso_tasks, "CACHE_DIR", None)
+    
+    routers.kiosks.CACHE_DIR = workspace_test_cache
+    routers.iso.CACHE_DIR = workspace_test_cache
+    iso_tasks.CACHE_DIR = workspace_test_cache
+
+    # 1. Create a dummy file in the history cache matching today's date
+    history_dir = os.path.join(workspace_test_cache, "history")
+    os.makedirs(history_dir, exist_ok=True)
+    
+    dummy_filename = "Edge.bro-kiosk-20260629-TEST88.iso"
+    dummy_path = os.path.join(history_dir, dummy_filename)
+    with open(dummy_path, "w") as f:
+        f.write("mock iso content")
+
+    try:
+        # Verify list_kiosks dynamically locates the file
+        from routers.kiosks import list_kiosks
+        kiosks_list = list_kiosks(db=db_session)
+        target = next(k for k in kiosks_list if k.id == kiosk.id)
+        assert target.iso_exists is True
+        assert target.iso_name == dummy_filename
+        assert target.iso_size == len("mock iso content")
+        
+        # Verify download_kiosk_iso serves the dynamically matched file
+        from routers.iso import download_kiosk_iso
+        resp = download_kiosk_iso(id=kiosk.id, db=db_session)
+        assert resp.path == dummy_path
+        assert resp.filename == dummy_filename
+    finally:
+        # Restore original CACHE_DIR variables
+        routers.kiosks.CACHE_DIR = orig_kiosks_cache
+        routers.iso.CACHE_DIR = orig_iso_cache
+        iso_tasks.CACHE_DIR = orig_tasks_cache
+        shutil.rmtree(workspace_test_cache, ignore_errors=True)
+
+
 
 

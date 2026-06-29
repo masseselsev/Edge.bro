@@ -349,11 +349,17 @@ def download_kiosk_iso(id: int, request: Request = None, db: Session = Depends(g
     server_name = settings.server_name if (settings and settings.server_name) else "Edge.bro"
 
     from iso_tasks import CACHE_DIR
-    created_date = kiosk.created_at.strftime("%Y%m%d") if kiosk.created_at else "unknown"
-    filename = f"{server_name}-kiosk-{created_date}-{kiosk.auth_token}.iso"
-    iso_path = os.path.join(CACHE_DIR, "history", filename)
-    if not os.path.exists(iso_path):
+    filename = None
+    history_dir = os.path.join(CACHE_DIR, "history")
+    if os.path.exists(history_dir):
+        suffix = f"-{kiosk.auth_token}.iso"
+        for file in os.listdir(history_dir):
+            if file.endswith(suffix) and "-kiosk-" in file:
+                filename = file
+                break
+    if not filename:
         raise HTTPException(status_code=404, detail="ISO image has been pruned from cache. Re-create it first.")
+    iso_path = os.path.join(history_dir, filename)
 
     
     from database import log_user_action
