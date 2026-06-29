@@ -70,19 +70,21 @@ def get_nodes(db: Session = Depends(get_db), current_user = Depends(require_kios
     Retrieves lists of all nodes.
     """
     nodes = db.query(models.Node).all()
+    # Calculate shared repository size once
+    shared_repo_size = 0
+    repo_dir = "/data/borg/fleet"
+    if os.path.exists(repo_dir):
+        try:
+            for root, dirs, files in os.walk(repo_dir):
+                for file in files:
+                    shared_repo_size += os.path.getsize(os.path.join(root, file))
+        except Exception:
+            shared_repo_size = 0
+
     results = []
     for node in nodes:
         # Calculate repository size on disk
-        repo_size = None
-        repo_dir = f"/data/borg/fleet/{node.hostname}"
-        if os.path.exists(repo_dir):
-            try:
-                repo_size = 0
-                for root, dirs, files in os.walk(repo_dir):
-                    for file in files:
-                        repo_size += os.path.getsize(os.path.join(root, file))
-            except Exception:
-                repo_size = None
+        repo_size = shared_repo_size if node.last_backup else 0
 
         # Check if backup is running
         is_running = False
