@@ -208,18 +208,6 @@ def download_repo(
     db: Session = Depends(get_db),
     auth = Depends(require_kiosk_or_admin)
 ):
-    token_path = os.path.join(CACHE_DIR, "auth_token.txt")
-    expected_token = "offline-token-1234"
-    if os.path.exists(token_path):
-        try:
-            with open(token_path, "r") as f:
-                expected_token = f.read().strip()
-        except:
-            pass
-    
-    if token.strip().upper() != expected_token.strip().upper():
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
     repo_dir = f"/data/borg/fleet/{hostname}"
     if not os.path.exists(repo_dir):
         raise HTTPException(status_code=404, detail="Repository not found")
