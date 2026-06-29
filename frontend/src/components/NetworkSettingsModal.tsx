@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ShieldAlert, RefreshCw, Wifi, Globe, Key, Settings, X, Globe2 } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
+import jsQR from 'jsqr';
 
 interface NetworkSettingsModalProps {
   onClose: () => void;
@@ -37,15 +38,37 @@ interface WifiNetwork {
   active: boolean;
 }
 
+interface VpnStatus {
+  connected: boolean;
+  ip: string | null;
+  endpoint: string | null;
+  allowed_ips: string | null;
+  received_bytes: number;
+  sent_bytes: number;
+  last_handshake: number;
+}
+
 export default function NetworkSettingsModal({ onClose, initialStatus = null }: NetworkSettingsModalProps) {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'wired' | 'wifi'>('wired');
+  const [activeTab, setActiveTab] = useState<'wired' | 'wifi' | 'vpn'>('wired');
   const [status, setStatus] = useState<NetworkStatus | null>(initialStatus);
   const [wifiNetworks, setWifiNetworks] = useState<WifiNetwork[]>([]);
   const [scanning, setScanning] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [hasInitialized, setHasInitialized] = useState(!!initialStatus);
+
+  // VPN Form & Scanner States
+  const [vpnStatus, setVpnStatus] = useState<VpnStatus | null>(null);
+  const [isScanningQr, setIsScanningQr] = useState(false);
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [manualConfigText, setManualConfigText] = useState('');
+  const [vpnConnecting, setVpnConnecting] = useState(false);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   
   // Wired Form States
   const [wiredMode, setWiredMode] = useState<'auto' | 'manual'>(initialStatus?.wired?.mode || 'auto');
@@ -66,8 +89,20 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
   useEffect(() => {
     fetchStatus();
     scanWifi();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
+    fetchVpnStatus();
+    const interval = setInterval(() => {
+      fetchStatus();
+      fetchVpnStatus();
+    }, 5000);
+    return () => {
+      clearInterval(interval);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
   }, []);
 
   const fetchStatus = async () => {
@@ -104,6 +139,134 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
       console.error('Failed to scan Wi-Fi:', err);
     } finally {
       setScanning(false);
+    }
+  };
+
+  const fetchVpnStatus = async () => {
+    try {
+      const res = await fetch('/api/network/vpn/status');
+      if (res.ok) {
+        const data = await res.json();
+        setVpnStatus(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch VPN status:', err);
+    }
+  };
+
+  const startScanner = async () => {
+    setConnectError(null);
+    setIsScanningQr(true);
+    setShowManualInput(false);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute("playsinline", "true");
+        videoRef.current.play();
+        animationFrameRef.current = requestAnimationFrame(scanTick);
+      }
+    } catch (err: any) {
+      setConnectError("Failed to access camera: " + err.message);
+      setIsScanningQr(false);
+    }
+  };
+
+  const stopScanner = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    setIsScanningQr(false);
+  };
+
+  const scanTick = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: "dontInvert",
+        });
+        if (code) {
+          stopScanner();
+          handleSaveVpnConfig(code.data);
+          return;
+        }
+      }
+    }
+    animationFrameRef.current = requestAnimationFrame(scanTick);
+  };
+
+  const handleSaveVpnConfig = async (configText: string) => {
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const res = await fetch('/api/network/vpn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config_text: configText })
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'SUCCESS') {
+        await fetchVpnStatus();
+      } else {
+        setConnectError(data.detail || data.error || 'Failed to save VPN configuration');
+      }
+    } catch (err: any) {
+      setConnectError(err.message || 'Network error occurred');
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleToggleVpn = async (connect: boolean) => {
+    setVpnConnecting(true);
+    setConnectError(null);
+    try {
+      const endpoint = connect ? '/api/network/vpn/connect' : '/api/network/vpn/disconnect';
+      const res = await fetch(endpoint, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.status === 'SUCCESS') {
+        await fetchVpnStatus();
+      } else {
+        setConnectError(data.detail || data.error || 'Failed to toggle VPN connection');
+      }
+    } catch (err: any) {
+      setConnectError(err.message || 'Network error occurred');
+    } finally {
+      setVpnConnecting(false);
+    }
+  };
+
+  const handleDeleteVpn = async () => {
+    if (!window.confirm("Are you sure you want to delete this VPN configuration profile?")) return;
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const res = await fetch('/api/network/vpn', { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok && data.status === 'SUCCESS') {
+        setVpnStatus(null);
+        await fetchVpnStatus();
+      } else {
+        setConnectError(data.detail || data.error || 'Failed to delete VPN configuration');
+      }
+    } catch (err: any) {
+      setConnectError(err.message || 'Network error occurred');
+    } finally {
+      setConnecting(false);
     }
   };
 
@@ -188,7 +351,7 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
         {/* Navigation Tabs */}
         <div className="flex bg-zinc-950/80 p-1 border-b border-zinc-800">
           <button
-            onClick={() => setActiveTab('wired')}
+            onClick={() => { setActiveTab('wired'); stopScanner(); }}
             className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${
               activeTab === 'wired'
                 ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800/80'
@@ -198,7 +361,7 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
             <Globe size={14} /> {t('wiredEthernet')}
           </button>
           <button
-            onClick={() => { setActiveTab('wifi'); scanWifi(); }}
+            onClick={() => { setActiveTab('wifi'); scanWifi(); stopScanner(); }}
             className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${
               activeTab === 'wifi'
                 ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800/80'
@@ -206,6 +369,16 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
             }`}
           >
             <Wifi size={14} /> {t('wifiConnections')}
+          </button>
+          <button
+            onClick={() => { setActiveTab('vpn'); stopScanner(); }}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${
+              activeTab === 'vpn'
+                ? 'bg-zinc-900 text-white shadow-sm border border-zinc-800/80'
+                : 'text-zinc-400 hover:text-zinc-100'
+            }`}
+          >
+            <Key size={14} /> {t('vpnWireguard')}
           </button>
         </div>
 
@@ -441,6 +614,153 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
                 </button>
               </div>
             </form>
+          )}
+
+          {activeTab === 'vpn' && (
+            <div className="space-y-4">
+              {vpnStatus ? (
+                /* Active VPN status view */
+                <div className="space-y-4">
+                  <div className="bg-zinc-950/50 border border-zinc-800/50 p-3.5 rounded-xl flex items-center justify-between animate-fade-in">
+                    <div>
+                      <span className="text-xs font-bold text-zinc-50 block">wg0.conf (WireGuard)</span>
+                      <span className="text-[10px] text-zinc-400 mt-1 block">
+                        {vpnStatus.connected ? `Connected • IP: ${vpnStatus.ip || 'No IP'}` : 'Disconnected'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={vpnConnecting}
+                      onClick={() => handleToggleVpn(!vpnStatus.connected)}
+                      className={`text-[10px] font-bold px-3 py-1 rounded-lg uppercase transition-colors cursor-pointer ${
+                        vpnStatus.connected 
+                          ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20' 
+                          : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-md'
+                      }`}
+                    >
+                      {vpnConnecting ? '...' : (vpnStatus.connected ? 'Disconnect' : 'Connect')}
+                    </button>
+                  </div>
+
+                  <div className="border border-zinc-800/80 rounded-xl p-4 bg-zinc-950/20 space-y-3 font-mono text-[10px] text-zinc-400 animate-fade-in">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>Peer Endpoint:</div>
+                      <div className="text-zinc-200 text-right overflow-hidden text-ellipsis whitespace-nowrap">{vpnStatus.endpoint || 'N/A'}</div>
+                      <div>Allowed IPs:</div>
+                      <div className="text-zinc-200 text-right overflow-hidden text-ellipsis whitespace-nowrap">{vpnStatus.allowed_ips || 'N/A'}</div>
+                      <div>Bytes Received:</div>
+                      <div className="text-emerald-400 text-right font-bold">{(vpnStatus.received_bytes / (1024 * 1024)).toFixed(2)} MB</div>
+                      <div>Bytes Sent:</div>
+                      <div className="text-emerald-400 text-right font-bold">{(vpnStatus.sent_bytes / (1024 * 1024)).toFixed(2)} MB</div>
+                      <div>Last Handshake:</div>
+                      <div className="text-zinc-200 text-right">
+                        {vpnStatus.last_handshake > 0 ? `${vpnStatus.last_handshake} seconds ago` : 'Never'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={handleDeleteVpn}
+                      className="px-3 py-1.5 text-xs font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Delete Profile
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="px-4 py-1.5 text-xs font-bold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Scanner / Config input selector */
+                <div className="space-y-4">
+                  {isScanningQr ? (
+                    /* Video scanner feed */
+                    <div className="space-y-3 text-center">
+                      <div className="relative aspect-video w-full bg-black rounded-xl overflow-hidden border border-zinc-800">
+                        <video ref={videoRef} className="w-full h-full object-cover" />
+                        <canvas ref={canvasRef} className="hidden" />
+                        <div className="absolute inset-0 border-2 border-dashed border-indigo-500/50 pointer-events-none rounded-xl m-8"></div>
+                      </div>
+                      <div className="flex justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={stopScanner}
+                          className="px-4 py-1.5 text-xs font-bold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                        >
+                          Cancel Scan
+                        </button>
+                      </div>
+                    </div>
+                  ) : showManualInput ? (
+                    /* Textarea manually paste config */
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] text-zinc-400 font-bold mb-1.5 block">Paste wg0.conf Contents</label>
+                        <textarea
+                          rows={10}
+                          value={manualConfigText}
+                          onChange={e => setManualConfigText(e.target.value)}
+                          placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = ...&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = ..."
+                          className="w-full p-2.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2 pt-3 border-t border-zinc-800">
+                        <button
+                          type="button"
+                          onClick={() => setShowManualInput(false)}
+                          className="px-3 py-1.5 text-xs font-bold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors"
+                        >
+                          Back
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!manualConfigText.trim()}
+                          onClick={() => {
+                            setShowManualInput(false);
+                            handleSaveVpnConfig(manualConfigText);
+                          }}
+                          className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
+                        >
+                          Save Connection
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Initial missing profile chooser buttons */
+                    <div className="border border-zinc-800/80 border-dashed rounded-xl p-8 text-center space-y-4 bg-zinc-950/20">
+                      <div>
+                        <span className="text-xs font-bold text-zinc-100 block">No VPN Profile Configured</span>
+                        <span className="text-[10px] text-zinc-400 mt-1 block max-w-[280px] mx-auto leading-relaxed">
+                          Scan a WireGuard QR code or paste standard configuration file text manually.
+                        </span>
+                      </div>
+                      <div className="flex justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={startScanner}
+                          className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors shadow-md cursor-pointer"
+                        >
+                          📷 Scan QR Code
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowManualInput(true)}
+                          className="px-4 py-2 text-xs font-bold text-zinc-300 bg-zinc-800 hover:bg-zinc-700 rounded-lg border border-zinc-700 transition-colors cursor-pointer"
+                        >
+                          📝 Paste Config
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
