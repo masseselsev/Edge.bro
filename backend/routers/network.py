@@ -93,7 +93,7 @@ class BandwidthResponse(BaseModel):
 
 
 def get_network_bytes() -> tuple[float, int, int]:
-    """Read cumulative Rx/Tx bytes from /proc/net/dev for the default routing interface.
+    """Read cumulative Rx/Tx bytes from /proc/net/dev for physical interfaces.
 
     Returns:
         (timestamp, total_rx_bytes, total_tx_bytes)
@@ -109,30 +109,9 @@ def get_network_bytes() -> tuple[float, int, int]:
             break
 
     dev_path = f"{base_dir}/net/dev"
-    route_path = f"{base_dir}/net/route"
 
-    # Find the default gateway interface
-    default_iface = None
-    if os.path.exists(route_path):
-        try:
-            min_metric = 999999
-            with open(route_path, "r") as f:
-                lines = f.readlines()
-            for line in lines[1:]:
-                parts = line.split()
-                if len(parts) >= 7:
-                    iface = parts[0]
-                    dest = parts[1]
-                    try:
-                        metric = int(parts[6])
-                    except ValueError:
-                        metric = 0
-                    if dest == "00000000":
-                        if default_iface is None or metric < min_metric:
-                            default_iface = iface
-                            min_metric = metric
-        except Exception:
-            pass
+    # Whitelist of physical interface name prefixes
+    physical_prefixes = ("eth", "en", "wl", "ib", "ppp")
 
     try:
         with open(dev_path, "r") as f:
@@ -143,14 +122,9 @@ def get_network_bytes() -> tuple[float, int, int]:
                 continue
             iface = parts[0].strip()
             
-            # If we found a default gateway interface, only count that interface
-            if default_iface:
-                if iface != default_iface:
-                    continue
-            else:
-                # Fallback: sum all physical-looking interfaces if default interface is not detected
-                if iface == "lo" or iface.startswith(("docker", "br-", "veth")):
-                    continue
+            # Only sum interfaces matching our physical whitelist
+            if not iface.startswith(physical_prefixes):
+                continue
             
             stats = parts[1].split()
             if len(stats) >= 9:
@@ -365,6 +339,24 @@ def scan_wifi():
         ]
 
 
+def backup_network_profiles():
+    usb_dir = "/media/usb-data/system-connections"
+    nm_dir = "/etc/NetworkManager/system-connections"
+    if not os.path.exists("/media/usb-data"):
+        return
+    try:
+        os.makedirs(usb_dir, exist_ok=True)
+        if os.path.exists(nm_dir):
+            for file in os.listdir(nm_dir):
+                if file.endswith(".nmconnection"):
+                    src = os.path.join(nm_dir, file)
+                    dst = os.path.join(usb_dir, file)
+                    import shutil
+                    shutil.copy2(src, dst)
+    except Exception as e:
+        print(f"Failed to backup network profiles: {e}")
+
+
 @router.post("/wifi/connect", response_model=ActionResponse)
 def connect_wifi(req: WifiConnectRequest):
     try:
@@ -374,6 +366,7 @@ def connect_wifi(req: WifiConnectRequest):
         if req.hidden:
             cmd += ["hidden", "yes"]
         call_nmcli(cmd, timeout=30)
+        backup_network_profiles()
         return ActionResponse(status="SUCCESS", message=f"Connected to {req.ssid} successfully")
     except Exception as e:
         return ActionResponse(status="FAILED", error=str(e))
@@ -435,6 +428,7 @@ def configure_wired(req: WiredConfigRequest):
 
         # Re-activate connection to apply
         call_nmcli(["nmcli", "connection", "up", conn_name], timeout=15)
+        backup_network_profiles()
         return ActionResponse(status="SUCCESS", message="Wired connection settings applied successfully")
     except Exception as e:
         return ActionResponse(status="FAILED", error=str(e))

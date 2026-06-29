@@ -391,7 +391,7 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
             </div>
           )}
 
-          {activeTab === 'wired' ? (
+          {activeTab === 'wired' && (
             <form onSubmit={handleApplyWired} className="space-y-4">
               <div className="bg-zinc-950/50 border border-zinc-800/50 p-3.5 rounded-xl flex items-center justify-between">
                 <div>
@@ -509,7 +509,9 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
                 <button type="submit" className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">{t('applyWiredConfig')}</button>
               </div>
             </form>
-          ) : (
+          )}
+
+          {activeTab === 'wifi' && (
             <form onSubmit={handleConnectWifi} className="space-y-4">
               {!showHiddenForm ? (
                 <>

@@ -39,10 +39,8 @@ GEMINI.md
 
 # Superpowers
 .superpowers/
-docs/*
-!docs/superpowers/
-!docs/superpowers/specs/
-!docs/superpowers/plans/
+docs/
+*.db
 .worktrees/
 
 # Celery Beat

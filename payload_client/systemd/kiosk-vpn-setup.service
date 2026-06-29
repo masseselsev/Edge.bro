@@ -1,11 +1,26 @@
 [Unit]
-Description=Restore WireGuard VPN Connection
-After=kiosk-storage-setup.service
+Description=Restore Network and WireGuard VPN Connections
+After=kiosk-storage-setup.service network-pre.target
+Before=network.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'if [ -f /media/usb-data/wg0.conf ]; then cp /media/usb-data/wg0.conf /etc/wireguard/wg0.conf && wg-quick up wg0; fi'
+ExecStart=/bin/sh -c '\
+  if [ -d /media/usb-data/system-connections ]; then \
+    mkdir -p /etc/NetworkManager/system-connections; \
+    cp /media/usb-data/system-connections/*.nmconnection /etc/NetworkManager/system-connections/ 2>/dev/null || true; \
+    chmod 600 /etc/NetworkManager/system-connections/*.nmconnection 2>/dev/null || true; \
+    chown root:root /etc/NetworkManager/system-connections/*.nmconnection 2>/dev/null || true; \
+    nmcli connection reload 2>/dev/null || true; \
+  fi; \
+  if [ -f /media/usb-data/wg0.conf ]; then \
+    mkdir -p /etc/wireguard; \
+    cp /media/usb-data/wg0.conf /etc/wireguard/wg0.conf; \
+    chmod 600 /etc/wireguard/wg0.conf; \
+    wg-quick down wg0 2>/dev/null || true; \
+    wg-quick up wg0 || true; \
+  fi'
 
 [Install]
 WantedBy=multi-user.target
