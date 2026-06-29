@@ -335,7 +335,7 @@ def test_resource_limits_settings_and_group(db_session):
         db_session.refresh(settings)
 
     assert settings.default_compression == "zstd:3"
-    assert settings.default_cpu_quota is None
+    assert settings.default_cpu_quota == 30
 
     # Update global settings
     settings.default_compression = "lz4"
