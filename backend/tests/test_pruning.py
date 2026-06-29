@@ -75,7 +75,7 @@ def test_prune_legacy_fallback(mock_exists, mock_run, mock_session, session_fact
     
     # Second call: compact
     compact_args = mock_run.call_args_list[1][0][0]
-    assert compact_args == ["borg", "compact", "/data/borg/fleet/node-legacy"]
+    assert compact_args == ["borg", "compact", "/data/borg/fleet"]
 
 @patch('backup_tasks.SessionLocal')
 @patch('backup_tasks.subprocess.run')

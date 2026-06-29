@@ -2,6 +2,9 @@ import os
 import json
 import time
 import redis
+import uuid
+import shutil
+import subprocess
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Depends, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -212,36 +215,116 @@ def download_repo(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
 
-    repo_dir = "/data/borg/fleet"
-    if not os.path.exists(repo_dir) or not os.path.exists(os.path.join(repo_dir, "config")):
+    shared_repo = "/data/borg/fleet"
+    if not os.path.exists(shared_repo) or not os.path.exists(os.path.join(shared_repo, "config")):
         raise HTTPException(status_code=404, detail="Shared repository not found")
-        
-    # Get total size of repository directory to send in X-Total-Size header
+
+    # Get the list of archives for this node from the shared repository
+    env = os.environ.copy()
+    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+    env["BORG_RELOCATED_REPO_ACCESS_IS_OK"] = "yes"
+    
+    try:
+        list_res = subprocess.run(
+            ["borg", "list", "--json", shared_repo],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        all_archives = json.loads(list_res.stdout).get("archives", [])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to query shared repository: {str(e)}")
+
+    node_archives = [a["name"] for a in all_archives if a["name"].startswith(f"{hostname}-")]
+    if not node_archives:
+        raise HTTPException(status_code=404, detail="No backups found for this node")
+
+    # Create isolated temporary repository path on NVMe disk under /data/borg/tmp
+    temp_uuid = uuid.uuid4().hex
+    temp_parent = f"/data/borg/tmp/download_{temp_uuid}"
+    temp_repo_dir = os.path.join(temp_parent, hostname)
+    os.makedirs(temp_repo_dir, exist_ok=True)
+    
+    # Use distinct temporary HOME directory to avoid cache and security history lockups/conflicts
+    temp_home = f"/tmp/borg_home_{temp_uuid}"
+    env["HOME"] = temp_home
+
+    # Initialize the temporary repository
+    try:
+        subprocess.run(
+            ["borg", "init", "--encryption=repokey", temp_repo_dir],
+            env=env,
+            check=True,
+            capture_output=True
+        )
+    except subprocess.CalledProcessError as e:
+        shutil.rmtree(temp_parent, ignore_errors=True)
+        shutil.rmtree(temp_home, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"Failed to initialize temporary repository: {e.stderr.decode()}")
+
+    # Transfer only the node's archives from shared repository to temporary repository
+    try:
+        for archive in node_archives:
+            export_proc = subprocess.Popen(
+                ["borg", "export-tar", f"{shared_repo}::{archive}", "-"],
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            import_proc = subprocess.Popen(
+                ["borg", "import-tar", f"{temp_repo_dir}::{archive}", "-"],
+                env=env,
+                stdin=export_proc.stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            
+            # Allow export_proc to receive SIGPIPE if import_proc exits early
+            export_proc.stdout.close()
+            
+            _, import_err = import_proc.communicate()
+            _, export_err = export_proc.communicate()
+            
+            if export_proc.returncode != 0 or import_proc.returncode != 0:
+                err_msg = (
+                    f"Archive copy failed for {archive}. "
+                    f"Export status: {export_proc.returncode}, Import status: {import_proc.returncode}. "
+                    f"Export error: {export_err.decode()}, Import error: {import_err.decode()}"
+                )
+                raise Exception(err_msg)
+    except Exception as e:
+        shutil.rmtree(temp_parent, ignore_errors=True)
+        shutil.rmtree(temp_home, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=f"Failed to construct repository download: {str(e)}")
+
+    # Calculate total size of the compiled temporary repository
     total_size = 0
     try:
-        du_out = subprocess.check_output(["du", "-sb", repo_dir]).decode().strip()
+        du_out = subprocess.check_output(["du", "-sb", temp_repo_dir]).decode().strip()
         total_size = int(du_out.split()[0])
-    except Exception as e:
-        for root, dirs, files in os.walk(repo_dir):
+    except Exception:
+        for root, dirs, files in os.walk(temp_repo_dir):
             for file in files:
                 total_size += os.path.getsize(os.path.join(root, file))
-                
+
     def tar_generator():
-        proc = subprocess.Popen(
-            ["tar", "-cf", "-", "-C", "/data/borg/fleet", "--transform", f"s|^\\.|{hostname}|", "."],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL
-        )
         try:
+            proc = subprocess.Popen(
+                ["tar", "-cf", "-", "-C", temp_parent, hostname],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL
+            )
             while True:
                 chunk = proc.stdout.read(65536)
                 if not chunk:
                     break
                 yield chunk
-        finally:
-            proc.terminate()
             proc.wait()
-            
+        finally:
+            shutil.rmtree(temp_parent, ignore_errors=True)
+            shutil.rmtree(temp_home, ignore_errors=True)
+
     # Format size
     def get_format_size(size_bytes):
         if size_bytes == 0: return "0 B"

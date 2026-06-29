@@ -287,19 +287,18 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
     log_to_task(task_id, f"Initiating Borg backup for {node.hostname}...")
 
     # --- Pre-backup check: resolve orchestrator IP and clean locks ---
-    repo_path = f"/data/borg/fleet/{node.hostname}"
     orchestrator_ip = cleanup_locks_and_resolve_ip(
         task_id=task_id,
         node_ip=node.ip_address,
         node_ssh_port=node.ssh_port,
-        repo_path=repo_path,
+        repo_path="/data/borg/fleet",
         borg_passphrase=os.getenv("BORG_PASSPHRASE", ""),
         configured_ip=settings.orchestrator_ip,
         borg_ssh_port=settings.borg_ssh_port,
     )
 
     archive_name = f"{node.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-    borg_repo_url = f"ssh://borg@{orchestrator_ip}:{settings.borg_ssh_port}{repo_path}"
+    borg_repo_url = f"ssh://borg@{orchestrator_ip}:{settings.borg_ssh_port}/data/borg/fleet"
 
     fix_repo_permissions("/data/borg/fleet")
 
@@ -459,7 +458,12 @@ def global_daily_prune() -> Dict[str, Any]:
         settings = Settings()
 
     nodes = db.query(Node).all()
-    results = {"prunes": {}, "compact": "SUCCESS"}
+    results = {"prunes": {}, "compact": "PENDING"}
+
+    repo_path = "/data/borg/fleet"
+    if not os.path.exists(repo_path):
+        db.close()
+        return {"error": "Repository path not found"}
 
     env = os.environ.copy()
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
@@ -468,10 +472,6 @@ def global_daily_prune() -> Dict[str, Any]:
     groups = {g.id: g for g in db.query(BackupGroup).all()}
 
     for node in nodes:
-        node_repo_path = f"/data/borg/fleet/{node.hostname}"
-        if not os.path.exists(node_repo_path):
-            continue
-
         # Resolve policy
         policy = None
         group = groups.get(node.group_id) if node.group_id else None
@@ -509,7 +509,7 @@ def global_daily_prune() -> Dict[str, Any]:
                 "--keep-monthly", str(settings.keep_monthly)
             ])
 
-        prune_cmd.append(node_repo_path)
+        prune_cmd.append(repo_path)
 
         try:
             logger.info(f"Executing Borg prune for node {node.hostname}...")
@@ -523,17 +523,21 @@ def global_daily_prune() -> Dict[str, Any]:
             logger.error(f"Exception pruning node {node.hostname}: {str(e)}")
             results["prunes"][node.hostname] = f"ERROR: {str(e)}"
 
-        # Compact node repo immediately after pruning
-        try:
-            logger.info(f"Starting Borg repository compaction for node {node.hostname}...")
-            compact_cmd = ["borg", "compact", node_repo_path]
-            res_compact = subprocess.run(compact_cmd, env=env, capture_output=True, text=True)
-            if res_compact.returncode != 0:
-                logger.error(f"Failed to compact Borg repository for {node.hostname}: {res_compact.stderr}")
-        except Exception as e:
-            logger.error(f"Exception compacting Borg repository for {node.hostname}: {str(e)}")
+    # Compaction
+    try:
+        logger.info("Starting Borg repository compaction after daily prunes...")
+        compact_cmd = ["borg", "compact", repo_path]
+        res_compact = subprocess.run(compact_cmd, env=env, capture_output=True, text=True)
+        if res_compact.returncode == 0:
+            logger.info("Successfully compacted Borg repository.")
+            results["compact"] = "SUCCESS"
+        else:
+            logger.error(f"Failed to compact Borg repository: {res_compact.stderr}")
+            results["compact"] = f"FAILED: {res_compact.stderr}"
+    except Exception as e:
+        logger.error(f"Exception compacting Borg repository: {str(e)}")
+        results["compact"] = f"ERROR: {str(e)}"
 
-        fix_repo_permissions(node_repo_path)
-
+    fix_repo_permissions(repo_path)
     db.close()
     return results

@@ -39,7 +39,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
     db.add(task_log)
     db.commit()
 
-    repo_path = f"/data/borg/fleet/{node.hostname}"
+    repo_path = "/data/borg/fleet"
     log_to_task(task_id, f"Starting archive purge for node {node.hostname}...")
 
     env = os.environ.copy()
