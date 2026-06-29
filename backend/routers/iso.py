@@ -208,9 +208,13 @@ def download_repo(
     db: Session = Depends(get_db),
     auth = Depends(require_kiosk_or_admin)
 ):
-    repo_dir = f"/data/borg/fleet/{hostname}"
-    if not os.path.exists(repo_dir):
-        raise HTTPException(status_code=404, detail="Repository not found")
+    node = db.query(models.Node).filter(models.Node.hostname == hostname).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    repo_dir = "/data/borg/fleet"
+    if not os.path.exists(repo_dir) or not os.path.exists(os.path.join(repo_dir, "config")):
+        raise HTTPException(status_code=404, detail="Shared repository not found")
         
     # Get total size of repository directory to send in X-Total-Size header
     total_size = 0
@@ -224,7 +228,7 @@ def download_repo(
                 
     def tar_generator():
         proc = subprocess.Popen(
-            ["tar", "-cf", "-", "-C", "/data/borg/fleet", hostname],
+            ["tar", "-cf", "-", "-C", "/data/borg/fleet", "--transform", f"s|^\\.|{hostname}|", "."],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL
         )
