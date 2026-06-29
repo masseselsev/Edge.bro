@@ -28,8 +28,17 @@ class BaseIsoDownloadRequest(BaseModel):
     url: Optional[str] = None
 
 @router.post("/generate")
-def generate_iso(req: GenerateIsoRequest, auth = Depends(require_admin)):
+def generate_iso(req: GenerateIsoRequest, db: Session = Depends(get_db), auth = Depends(require_admin)):
     try:
+        # Save the orchestrator_ip in the settings database so it is preserved
+        settings = db.query(models.Settings).first()
+        if not settings:
+            settings = models.Settings(orchestrator_ip=req.target_ip)
+            db.add(settings)
+        else:
+            settings.orchestrator_ip = req.target_ip
+        db.commit()
+
         task = generate_client_iso_task.delay(req.target_ip, req.auth_token)
         return {"task_id": task.id, "message": "ISO generation task started."}
     except Exception as e:
