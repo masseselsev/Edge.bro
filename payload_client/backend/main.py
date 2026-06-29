@@ -763,10 +763,13 @@ def get_task_status(task_id: str):
             raise HTTPException(status_code=502, detail=f"Failed to contact orchestrator: {str(e)}")
     raise HTTPException(status_code=404, detail="Task not found")
 
-def run_kiosk_sync(task_id: str, hostname: str):
+def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
     task_status[task_id] = "RUNNING"
     task_progress[task_id] = 0
-    task_logs[task_id] = f"Starting USB Cache Sync for node {hostname} from http://{orchestrator_ip}:{orchestrator_api_port}\n"
+    sync_desc = f"USB Cache Sync for node {hostname}"
+    if archive:
+        sync_desc += f" (Archive: {archive})"
+    task_logs[task_id] = f"Starting {sync_desc} from http://{orchestrator_ip}:{orchestrator_api_port}\n"
 
     try:
         # Step A: Cache partition layout from orchestrator
@@ -793,7 +796,10 @@ def run_kiosk_sync(task_id: str, hostname: str):
             task_logs[task_id] += f"WARNING: Failed to fetch and cache partition layout: {e}\n"
 
         # Step B: Download tar stream
+        import urllib.parse
         url = f"http://{orchestrator_ip}:{orchestrator_api_port}/api/iso/repos/{hostname}/download?token={auth_token}"
+        if archive:
+            url += f"&archives={urllib.parse.quote(archive)}"
         task_logs[task_id] += f"Connecting to download stream: {url}\n"
         
         req = urllib.request.Request(url)
@@ -995,10 +1001,10 @@ def set_kiosk_storage_path(req: StoragePathRequest):
     return get_kiosk_storage()
 
 @app.post("/api/kiosk/sync/{hostname}")
-def trigger_kiosk_sync(hostname: str, background_tasks: BackgroundTasks):
+def trigger_kiosk_sync(hostname: str, background_tasks: BackgroundTasks, archive: Optional[str] = None):
     import uuid
     task_id = f"task-{uuid.uuid4().hex[:8]}"
-    background_tasks.add_task(run_kiosk_sync, task_id, hostname)
+    background_tasks.add_task(run_kiosk_sync, task_id, hostname, archive)
     return {"task_id": task_id}
 
 

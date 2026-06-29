@@ -78,8 +78,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   } | null>(null);
 
   const handleSyncToUsb = async () => {
-    if (!selectedNodeId) return;
-    const node = nodes.find(n => n.id === selectedNodeId);
+    const node = nodes.find(n => n.id === Number(selectedNodeId));
     if (!node) return;
     
     setSyncing(true);
@@ -87,7 +86,10 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     setSyncSpeed(null);
     setSyncEta(null);
     try {
-      const res = await fetch(`/api/kiosk/sync/${node.hostname}`, { method: 'POST' });
+      const url = selectedSnapshot
+        ? `/api/kiosk/sync/${node.hostname}?archive=${encodeURIComponent(selectedSnapshot)}`
+        : `/api/kiosk/sync/${node.hostname}`;
+      const res = await fetch(url, { method: 'POST' });
       if (!res.ok) throw new Error("Failed to start sync");
       const data = await res.json();
       if (data.task_id) {

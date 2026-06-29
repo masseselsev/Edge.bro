@@ -207,6 +207,7 @@ from fastapi.responses import StreamingResponse
 def download_repo(
     hostname: str,
     token: str,
+    archives: Optional[str] = None,
     request: Request = None,
     db: Session = Depends(get_db),
     auth = Depends(require_kiosk_or_admin)
@@ -237,8 +238,12 @@ def download_repo(
         raise HTTPException(status_code=500, detail=f"Failed to query shared repository: {str(e)}")
 
     node_archives = [a["name"] for a in all_archives if a["name"].startswith(f"{hostname}-")]
+    if archives:
+        allowed_archives = [a.strip() for a in archives.split(",") if a.strip()]
+        node_archives = [a for a in node_archives if a in allowed_archives]
+
     if not node_archives:
-        raise HTTPException(status_code=404, detail="No backups found for this node")
+        raise HTTPException(status_code=404, detail="No backups found for this node matching selection")
 
     # Create isolated temporary repository path on NVMe disk under /data/borg/tmp
     temp_uuid = uuid.uuid4().hex
