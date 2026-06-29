@@ -287,6 +287,12 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         shutil.copy2(ssh_svc_src, ssh_svc_dst)
         os.symlink("/etc/systemd/system/offline-ssh-install.service", os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants", "offline-ssh-install.service"))
 
+        # Inject VPN Setup Service
+        vpn_svc_src = "/payload_client/systemd/kiosk-vpn-setup.service"
+        vpn_svc_dst = os.path.join(payload_dir, "etc", "systemd", "system", "kiosk-vpn-setup.service")
+        shutil.copy2(vpn_svc_src, vpn_svc_dst)
+        os.symlink("/etc/systemd/system/kiosk-vpn-setup.service", os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants", "kiosk-vpn-setup.service"))
+
         # Copy Offline SSH Packages (.deb files)
         pkg_dst = os.path.join(payload_dir, "opt", "offline-client", "packages")
         os.makedirs(pkg_dst, exist_ok=True)

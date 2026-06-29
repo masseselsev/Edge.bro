@@ -1,0 +1,11 @@
+[Unit]
+Description=Restore WireGuard VPN Connection
+After=kiosk-storage-setup.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'if [ -f /media/usb-data/wg0.conf ]; then cp /media/usb-data/wg0.conf /etc/wireguard/wg0.conf && wg-quick up wg0; fi'
+
+[Install]
+WantedBy=multi-user.target

@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y \
     gcc libpq-dev \
     && mkdir -p /opt/offline-packages \
     && cd /opt/offline-packages \
-    && apt-get download openssh-server openssh-client openssh-sftp-server runit-helper libwtmpdb0 \
+    && apt-get download openssh-server openssh-client openssh-sftp-server runit-helper libwtmpdb0 wireguard-tools openresolv \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY requirements.txt .
