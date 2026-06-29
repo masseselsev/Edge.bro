@@ -23,24 +23,37 @@ else
         exit 0
     fi
     
-    echo "Parent USB disk is $PARENT_DISK. Creating partition..."
-    # Relocate GPT backup headers to the physical end of the disk
-    echo "Fix" | parted "$PARENT_DISK" print || true
-    
-    # Find end of last partition in MB
-    LAST_END=$(parted -s "$PARENT_DISK" unit MB print | awk '/^[0-9]/ {end=$3} END {print end}')
-    if [ -z "$LAST_END" ]; then
-        LAST_END="4000MB"
+    # Relocate GPT backup headers to the physical end of the disk if using GPT
+    if parted -s "$PARENT_DISK" print 2>&1 | grep -q "Fix/Ignore"; then
+        echo "Fix" | parted "$PARENT_DISK" print || true
     fi
 
-    parted -s "$PARENT_DISK" mkpart primary ext4 "$LAST_END" 100%
-    partprobe "$PARENT_DISK" || true
+    # Determine partition number to append
+    PART_COUNT=$(lsblk -o TYPE -n -l "$PARENT_DISK" | grep -c part || true)
+    NEXT_PART_NUM=$((PART_COUNT + 1))
+    
+    echo "Creating partition $NEXT_PART_NUM on $PARENT_DISK using all remaining free space..."
+    # Create the partition using sfdisk
+    echo ", +" | sfdisk --force --no-reread "$PARENT_DISK" -N "$NEXT_PART_NUM"
+    
+    # Force the kernel to register the new partition
+    partx -v -a "$PARENT_DISK" || true
     udevadm settle || true
     
-    # Find new partition
-    NEW_PART=$(lsblk -o NAME,TYPE -n -l "$PARENT_DISK" | grep part | tail -n 1 | awk '{print "/dev/"$1}')
+    # Construct the partition device path
+    if [[ "$PARENT_DISK" == *"/dev/nvme"* ]] || [[ "$PARENT_DISK" == *"/dev/mmcblk"* ]]; then
+        NEW_PART="${PARENT_DISK}p${NEXT_PART_NUM}"
+    else
+        NEW_PART="${PARENT_DISK}${NEXT_PART_NUM}"
+    fi
+
+    if [ ! -b "$NEW_PART" ]; then
+        # Fallback to scanning if dev path doesn't exist immediately
+        NEW_PART=$(lsblk -o NAME,TYPE -n -l "$PARENT_DISK" | grep part | tail -n 1 | awk '{print "/dev/"$1}')
+    fi
+
     if [ -z "$NEW_PART" ] || [ ! -b "$NEW_PART" ]; then
-        echo "ERROR: New partition not found"
+        echo "ERROR: New partition $NEW_PART not found or not a block device"
         exit 0
     fi
     
