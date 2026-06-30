@@ -32,7 +32,7 @@ orchestrator_api_port = 8000
 orchestrator_ssh_port = 12345
 auth_token = ""
 language = "en"
-kiosk_uuid = ""
+kiosk_id = ""
 kiosk_status = "PENDING"
 restore_mode = "offline"
 local_storage_path = "/media/usb-data"
@@ -48,7 +48,7 @@ if os.path.exists(CONFIG_PATH):
             orchestrator_ssh_port = cfg.get("orchestrator_ssh_port", 12345)
             auth_token = cfg.get("auth_token", "")
             language = cfg.get("language", "en")
-            kiosk_uuid = cfg.get("kiosk_uuid", "")
+            kiosk_id = cfg.get("kiosk_id", "")
             restore_mode = cfg.get("restore_mode", "online" if auth_token else "offline")
             local_storage_path = cfg.get("local_storage_path", "/media/usb-data")
             available_server_ips = cfg.get("available_server_ips", [])
@@ -64,19 +64,19 @@ def generate_kiosk_id() -> str:
     digits = "".join(random.choices(string.digits, k=4))
     return f"{letters}{digits}"
 
-# Generate persistent UUID if not present
-if not kiosk_uuid:
-    kiosk_uuid = generate_kiosk_id()
+# Generate persistent Kiosk ID if not present
+if not kiosk_id:
+    kiosk_id = generate_kiosk_id()
     try:
         cfg_data = {}
         if os.path.exists(CONFIG_PATH):
             with open(CONFIG_PATH, "r") as f:
                 cfg_data = json.load(f)
-        cfg_data["kiosk_uuid"] = kiosk_uuid
+        cfg_data["kiosk_id"] = kiosk_id
         with open(CONFIG_PATH, "w") as f:
             json.dump(cfg_data, f, indent=4)
     except Exception as e:
-        logging.error(f"Failed to save kiosk_uuid to config.json: {e}")
+        logging.error(f"Failed to save kiosk_id to config.json: {e}")
 
 # SSH keypair path (generated lazily to avoid race with offline-ssh-install.service)
 SSH_KEY_PATH = os.path.join(os.path.dirname(__file__), "id_ed25519")
@@ -264,7 +264,7 @@ def get_version():
         "available_server_ips": available_server_ips,
         "auth_token": auth_token,
         "language": language,
-        "kiosk_uuid": kiosk_uuid,
+        "kiosk_id": kiosk_id,
         "kiosk_status": kiosk_status
     }
 
@@ -291,7 +291,7 @@ def enroll_client_kiosk(req: ClientEnrollRequest):
         
     url = f"http://{req.orchestrator_ip}:8000/api/kiosks/enroll"
     payload = {
-        "uuid": kiosk_uuid,
+        "kiosk_id": kiosk_id,
         "name": req.name.strip(),
         "contact": req.contact.strip(),
         "comment": req.comment.strip(),
@@ -374,7 +374,7 @@ def connect_to_orchestrator(req: ConnectRequest):
     # Perform HTTP request to orchestrator handshake API
     handshake_url = f"http://{req.orchestrator_ip}:8000/api/kiosks/handshake"
     payload = {
-        "uuid": kiosk_uuid,
+        "kiosk_id": kiosk_id,
         "key": req.key.strip(),
         "ssh_pub_key": pub_key_data
     }
@@ -574,7 +574,65 @@ def get_mock_stats():
 
 @app.get("/api/nodes/history")
 def get_all_history():
-    return get_local_history(node_id=1)
+    global restore_mode
+    if restore_mode == "online":
+        try:
+            req = urllib.request.Request(
+                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes/history",
+                headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                return json.loads(response.read().decode())
+        except Exception as e:
+            logging.error(f"Failed to fetch all history from orchestrator: {e}")
+            raise HTTPException(status_code=502, detail=f"Failed to contact orchestrator: {str(e)}")
+            
+    # Offline mode: scan and aggregate history for all nodes
+    nodes = get_kiosk_nodes()
+    all_snapshots = []
+    for n in nodes:
+        node_id = n["id"]
+        # Skip dummy Offline/No cache node
+        if "No local cache" in n["hostname"]:
+            continue
+        node_snapshots = get_local_history(node_id=node_id)
+        for s in node_snapshots:
+            s["id"] = len(all_snapshots) + 1
+            all_snapshots.append(s)
+    return all_snapshots
+
+@app.get("/api/kiosk/local-history")
+def get_kiosk_local_history():
+    nodes = get_kiosk_nodes()
+    all_snapshots = []
+    for n in nodes:
+        node_id = n["id"]
+        hostname = n["hostname"].split(" (")[0]
+        if "No local cache" in hostname:
+            continue
+        repo_path = os.path.join(local_storage_path, "borg", "fleet", hostname)
+        if not os.path.exists(repo_path):
+            continue
+        env = os.environ.copy()
+        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+        try:
+            out = subprocess.check_output(["borg", "list", "--json", repo_path], env=env, text=True)
+            data = json.loads(out)
+            archives = data.get("archives", [])
+            for i, a in enumerate(archives):
+                all_snapshots.append({
+                    "id": len(all_snapshots) + 1,
+                    "node_id": node_id,
+                    "archive_name": a["name"],
+                    "timestamp": a["start"],
+                    "original_size": a.get("stats", {}).get("original_size", 0),
+                    "deduplicated_size": a.get("stats", {}).get("deduplicated_size", 0),
+                    "comment": a.get("comment", ""),
+                    "status": "SUCCESS"
+                })
+        except Exception:
+            pass
+    return all_snapshots
 
 @app.get("/api/nodes/{node_id}/history")
 def get_local_history(node_id: int):
@@ -764,6 +822,7 @@ def get_task_status(task_id: str):
     raise HTTPException(status_code=404, detail="Task not found")
 
 def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
+    import urllib.request, urllib.parse
     task_status[task_id] = "RUNNING"
     task_progress[task_id] = 0
     sync_desc = f"USB Cache Sync for node {hostname}"
@@ -796,14 +855,13 @@ def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
             task_logs[task_id] += f"WARNING: Failed to fetch and cache partition layout: {e}\n"
 
         # Step B: Download tar stream
-        import urllib.parse
         url = f"http://{orchestrator_ip}:{orchestrator_api_port}/api/iso/repos/{hostname}/download?token={auth_token}"
         if archive:
             url += f"&archives={urllib.parse.quote(archive)}"
         task_logs[task_id] += f"Connecting to download stream: {url}\n"
         
         req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with urllib.request.urlopen(req, timeout=300) as response:
             total_size_header = response.headers.get("X-Total-Size")
             total_size = int(total_size_header) if total_size_header else 0
             task_logs[task_id] += f"Total repository size: {total_size} bytes\n"
@@ -1029,7 +1087,7 @@ def auto_register_with_orchestrator():
         try:
             url = f"http://{orchestrator_ip}:{orchestrator_api_port}/api/kiosks/auto-handshake"
             payload = {
-                "uuid": kiosk_uuid,
+                "kiosk_id": kiosk_id,
                 "ssh_pub_key": pub_key_data
             }
             post_data = json.dumps(payload).encode("utf-8")

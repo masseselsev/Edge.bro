@@ -129,13 +129,13 @@ function BlockedKioskScreen({
   onActivationRequested, 
   onPairingSuccess,
   appVersion,
-  kioskUuid
+  kioskId
 }: { 
   status: string; 
   onActivationRequested: () => void; 
   onPairingSuccess: () => void;
   appVersion: string;
-  kioskUuid: string;
+  kioskId: string;
 }) {
   const { t, language } = useTranslation();
   const [requesting, setRequesting] = useState(false);
@@ -332,7 +332,7 @@ function BlockedKioskScreen({
             {t('kioskBlockedThisId')}
           </span>
           <span className="font-mono text-xs font-black text-indigo-400 bg-indigo-500/5 border border-indigo-500/10 px-3 py-1 rounded-lg inline-block">
-            {kioskUuid || 'UNKNOWN'}
+            {kioskId || 'UNKNOWN'}
           </span>
         </div>
       </div>
@@ -389,7 +389,7 @@ function AppContent() {
   const [watchdogActionLoading, setWatchdogActionLoading] = useState(false);
 
   // Pairing states
-  const [kioskUuid, setKioskUuid] = useState('');
+  const [kioskId, setKioskId] = useState('');
   const [kioskStatus, setKioskStatus] = useState('APPROVED');
   const [showPairingModal, setShowPairingModal] = useState(false);
   const [pairingIp, setPairingIp] = useState('');
@@ -754,7 +754,7 @@ function AppContent() {
             setActiveTab('flasher');
             setKioskOrchestratorIp(data.orchestrator_ip || '');
             setConnectionKeyphrase(data.auth_token || '');
-            setKioskUuid(data.kiosk_uuid || '');
+            setKioskId(data.kiosk_id || '');
             setAvailableServerIps(data.available_server_ips || []);
             if (data.kiosk_status) {
               setKioskStatus(data.kiosk_status);
@@ -932,7 +932,7 @@ function AppContent() {
       case 'clientiso':
         return <ClientIsoTab onViewLogs={handleViewLogs} />;
       case 'history':
-        return <HistoryTab onViewLogs={handleViewLogs} timezone={tz} />;
+        return <HistoryTab onViewLogs={handleViewLogs} timezone={tz} isKiosk={isKiosk} />;
       case 'logs':
         return <LogsTab onViewLogs={handleViewLogs} timezone={tz} isKiosk={isKiosk} />;
       case 'settings':
@@ -1320,10 +1320,10 @@ function AppContent() {
           <div className="py-3 text-center text-xs text-zinc-500 flex flex-wrap items-center justify-center gap-4">
             <span>{t('kioskTitle')}</span>
             <span className="h-4 w-px bg-zinc-800" />
-            <span>UUID: <span className="font-mono text-zinc-400 select-all font-bold">{kioskUuid || 'Generating...'}</span></span>
+            <span>{t('kioskUuidLabel')}: <span className="font-mono text-zinc-400 select-all font-bold">{kioskId || 'Generating...'}</span></span>
             <span className="h-4 w-px bg-zinc-800" />
           <div className="relative group flex items-center gap-1">
-            <span>{t('configuredServer')}</span>
+            <span>{t('selectedServer')}</span>
             <span className="text-indigo-400 font-bold border-b border-dashed border-indigo-400/50 cursor-help pb-[1px] hover:text-indigo-300 hover:border-indigo-300 transition-colors">
               {kioskOrchestratorIp || '127.0.0.1'}
             </span>
@@ -1502,11 +1502,11 @@ function AppContent() {
             <div className="bg-zinc-950 border border-zinc-800/80 p-3 rounded-xl flex items-center justify-between">
               <div>
                 <span className="text-[9px] text-zinc-500 font-bold uppercase block mb-0.5">{t('thisKioskId') || 'This Kiosk ID'}</span>
-                <span className="font-mono text-xs text-zinc-300 font-semibold select-all">{kioskUuid || 'Generating...'}</span>
+                <span className="font-mono text-xs text-zinc-300 font-semibold select-all">{kioskId || 'Generating...'}</span>
               </div>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(kioskUuid);
+                  navigator.clipboard.writeText(kioskId);
                   alert(t('copied') || 'Copied!');
                 }}
                 className="p-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-lg transition-colors cursor-pointer"

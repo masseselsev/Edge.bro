@@ -408,7 +408,12 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
                 {syncing && (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
-                      <span>Syncing files... {syncSpeed ? `(${syncSpeed}, ETA: ${syncEta})` : ''}</span>
+                      <span>
+                        {syncProgress === 0 && !syncSpeed
+                          ? t('syncPreparing')
+                          : `${t('syncingText')} ${syncSpeed ? `(${syncSpeed}, ETA: ${syncEta})` : ''}`
+                        }
+                      </span>
                       <span>{syncProgress}%</span>
                     </div>
                     <div className="w-full bg-zinc-950 h-1.5 rounded-full overflow-hidden border border-zinc-800">

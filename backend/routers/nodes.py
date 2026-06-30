@@ -147,7 +147,7 @@ def get_nodes(db: Session = Depends(get_db), current_user = Depends(require_kios
 
 
 @router.get("/history", response_model=List[schemas.BackupHistoryResponse])
-def get_all_history(db: Session = Depends(get_db), current_user = Depends(require_admin)):
+def get_all_history(db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
     """
     Retrieves backup snapshot history records for all nodes.
     """

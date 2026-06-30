@@ -192,7 +192,7 @@ class SchedulerLoadResponse(BaseModel):
 
 class KioskBase(BaseModel):
     name: Optional[str] = None
-    uuid: Optional[str] = None
+    kiosk_id: Optional[str] = None
     contact: Optional[str] = None
     comment: Optional[str] = None
 
@@ -223,7 +223,7 @@ class KioskResponse(KioskBase):
 
 
 class HandshakeRequest(BaseModel):
-    uuid: str
+    kiosk_id: str
     key: str
     ssh_pub_key: str
 
@@ -273,7 +273,7 @@ class LoginPayload(BaseModel):
 
 
 class KioskEnrollRequest(BaseModel):
-    uuid: str
+    kiosk_id: str
     name: str
     contact: str
     comment: str
@@ -293,7 +293,7 @@ class KioskUpdate(BaseModel):
 
 
 class AutoHandshakeRequest(BaseModel):
-    uuid: str
+    kiosk_id: str
     ssh_pub_key: str
 
 

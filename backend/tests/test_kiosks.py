@@ -16,7 +16,7 @@ from routers.kiosks import (
     revoke_kiosk,
     handshake,
     enroll_kiosk,
-    generate_kiosk_uuid,
+    generate_kiosk_id,
     update_kiosk
 )
 from routers.iso import issue_kiosk
@@ -64,23 +64,23 @@ def test_kiosks_crud_and_handshake(mock_revoke, mock_authorize, db_session):
     """
     Test CRUD actions and handshake by calling route handler functions directly.
     """
-    kiosk_uuid = "TK1234"
+    kiosk_id_val = "TK1234"
     kiosk_name = "Room A Test Kiosk"
     
     # 1. Register Kiosk
-    req_create = schemas.KioskCreate(name=kiosk_name, uuid=kiosk_uuid)
+    req_create = schemas.KioskCreate(name=kiosk_name, kiosk_id=kiosk_id_val)
     kiosk = create_kiosk(req_create, db=db_session)
     
     assert kiosk.name == kiosk_name
-    assert kiosk.uuid == kiosk_uuid
+    assert kiosk.kiosk_id == kiosk_id_val
     assert kiosk.status == "PENDING"
     assert len(kiosk.key) == 6
 
     
     key = kiosk.key
-    kiosk_id = kiosk.id
+    kiosk_db_id = kiosk.id
     
-    # Check duplicate UUID registration fails
+    # Check duplicate ID registration fails
     with pytest.raises(HTTPException) as exc_info:
         create_kiosk(req_create, db=db_session)
     assert exc_info.value.status_code == 400
@@ -88,14 +88,14 @@ def test_kiosks_crud_and_handshake(mock_revoke, mock_authorize, db_session):
     # 2. Get list of kiosks
     kiosks = list_kiosks(db=db_session)
     assert len(kiosks) >= 1
-    found = [k for k in kiosks if k.uuid == kiosk_uuid]
+    found = [k for k in kiosks if k.kiosk_id == kiosk_id_val]
     assert len(found) == 1
     assert found[0].name == kiosk_name
     
     # 3. Trigger handshake
     fake_ssh_pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPqgXgGf18V... KioskSSHKey"
     req_handshake = schemas.HandshakeRequest(
-        uuid=kiosk_uuid,
+        kiosk_id=kiosk_id_val,
         key=key.lower(), # Test case insensitivity
         ssh_pub_key=fake_ssh_pub
     )
@@ -108,7 +108,7 @@ def test_kiosks_crud_and_handshake(mock_revoke, mock_authorize, db_session):
     
     # Verify DB record updated
     db_session.expire_all()
-    kiosk_record = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
+    kiosk_record = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk_db_id).first()
     assert kiosk_record.status == "APPROVED"
     assert kiosk_record.ssh_pub_key == fake_ssh_pub
     assert kiosk_record.auth_token == hs_data["auth_token"]
@@ -121,29 +121,29 @@ def test_kiosks_crud_and_handshake(mock_revoke, mock_authorize, db_session):
     assert exc_info.value.status_code == 400
     
     # 4. Revoke Kiosk Access
-    revoke_data = revoke_kiosk(kiosk_id, db=db_session)
+    revoke_data = revoke_kiosk(kiosk_db_id, db=db_session)
     assert revoke_data["kiosk_status"] == "REVOKED"
     
     mock_revoke.assert_called_once_with(fake_ssh_pub)
     
     # Verify status in DB
     db_session.expire_all()
-    kiosk_record = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
+    kiosk_record = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk_db_id).first()
     assert kiosk_record.status == "REVOKED"
     
     # 5. Delete Kiosk
-    delete_data = delete_kiosk(kiosk_id, db=db_session)
+    delete_data = delete_kiosk(kiosk_db_id, db=db_session)
     assert delete_data["status"] == "SUCCESS"
     
     # Verify Kiosk deleted from DB
     db_session.expire_all()
-    deleted_record = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
+    deleted_record = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk_db_id).first()
     assert deleted_record is None
 
 def test_kiosk_enrollment_flow(db_session):
     # Test first-time enrollment
     req_enroll = schemas.KioskEnrollRequest(
-        uuid="NEW_KIOSK_123",
+        kiosk_id="NEW_KIOSK_123",
         name="Dynamic Test Kiosk",
         contact="555-1234",
         comment="Testing dynamic registration flow",
@@ -156,7 +156,7 @@ def test_kiosk_enrollment_flow(db_session):
     
     # Verify kiosk is saved in db
     db_session.expire_all()
-    kiosk = db_session.query(models.Kiosk).filter(models.Kiosk.uuid == "NEW_KIOSK_123").first()
+    kiosk = db_session.query(models.Kiosk).filter(models.Kiosk.kiosk_id == "NEW_KIOSK_123").first()
     assert kiosk is not None
     assert kiosk.name == "Dynamic Test Kiosk"
     assert kiosk.contact == "555-1234"
@@ -165,43 +165,43 @@ def test_kiosk_enrollment_flow(db_session):
 
 @patch("routers.kiosks.authorize_ssh_key")
 def test_pre_registered_kiosk_handshake(mock_authorize, db_session):
-    # 1. Pre-register kiosk without UUID
+    # 1. Pre-register kiosk without Kiosk ID
     req_create = schemas.KioskCreate(
         name="Pre-registered Kiosk",
         contact="111-2222",
         comment="Test pre-registration",
-        uuid=None
+        kiosk_id=None
     )
     kiosk = create_kiosk(req_create, db=db_session)
-    assert kiosk.uuid.startswith("PENDING-")
+    assert kiosk.kiosk_id.startswith("PENDING-")
     assert kiosk.status == "PENDING"
     
-    # 2. Perform handshake with actual client UUID
-    client_uuid = "HW_UUID_999"
+    # 2. Perform handshake with actual client Kiosk ID
+    client_kiosk_id = "HW_UUID_999"
     req_handshake = schemas.HandshakeRequest(
-        uuid=client_uuid,
+        kiosk_id=client_kiosk_id,
         key=kiosk.key,
         ssh_pub_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPqgXgGf18V... KioskSSHKey"
     )
     res = handshake(req_handshake, db=db_session)
     assert res["status"] == "SUCCESS"
     
-    # Verify kiosk record updated with actual UUID and APPROVED status
+    # Verify kiosk record updated with actual KioskID and APPROVED status
     db_session.expire_all()
     updated_kiosk = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk.id).first()
-    assert updated_kiosk.uuid == client_uuid
+    assert updated_kiosk.kiosk_id == client_kiosk_id
     assert updated_kiosk.status == "APPROVED"
 
     # 3. Create another pre-registered kiosk
     req_create_2 = schemas.KioskCreate(
         name="Second Pre-registered Kiosk",
-        uuid=None
+        kiosk_id=None
     )
     kiosk_2 = create_kiosk(req_create_2, db=db_session)
     
-    # Attempting to handshake with the duplicate client UUID should fail
+    # Attempting to handshake with the duplicate client Kiosk ID should fail
     req_handshake_dup = schemas.HandshakeRequest(
-        uuid=client_uuid,
+        kiosk_id=client_kiosk_id,
         key=kiosk_2.key,
         ssh_pub_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPqgXgGf18V... KioskSSHKey"
     )
@@ -218,7 +218,7 @@ def test_kiosks_activation_and_auto_handshake(mock_authorize, db_session):
     # 1. Create an approved kiosk record
     kiosk = models.Kiosk(
         name="Test Kiosk Active",
-        uuid="TEST_KIOSK_UUID_111",
+        kiosk_id="TEST_KIOSK_UUID_111",
         key="1234AB",
         status="APPROVED",
         auth_token="token-active-123"
@@ -240,7 +240,7 @@ def test_kiosks_activation_and_auto_handshake(mock_authorize, db_session):
     mock_request = MagicMock()
     mock_request.headers = {"Authorization": "Bearer token-active-123"}
     req_handshake = schemas.AutoHandshakeRequest(
-        uuid="TEST_KIOSK_UUID_111",
+        kiosk_id="TEST_KIOSK_UUID_111",
         ssh_pub_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPqgXgGf18V... KioskSSHKey"
     )
     with pytest.raises(HTTPException) as exc_info:
@@ -277,24 +277,24 @@ def test_kiosks_activation_and_auto_handshake(mock_authorize, db_session):
     assert mock_authorize.call_count == 2
 
 
-def test_generate_kiosk_uuid():
+def test_generate_kiosk_id():
     """
     Test format of generated memorable kiosk IDs (starts with 'KS' + 4 digits).
     """
-    uuid_val = generate_kiosk_uuid()
-    assert len(uuid_val) == 6
-    assert uuid_val.startswith("KS")
-    assert uuid_val[2:].isdigit()
+    kiosk_id_val = generate_kiosk_id()
+    assert len(kiosk_id_val) == 6
+    assert kiosk_id_val.startswith("KS")
+    assert kiosk_id_val[2:].isdigit()
     # No ambiguous characters (0, 1, 2)
     ambiguous = ["0", "1", "2"]
     for char in ambiguous:
-        assert char not in uuid_val
+        assert char not in kiosk_id_val
 
 
 @patch("iso_tasks.repack_kiosk_iso_task.delay")
 def test_issue_kiosk_flow(mock_repack_task, db_session):
     """
-    Test issuing a kiosk (pre-baked ISO) generates a memorable UUID directly.
+    Test issuing a kiosk (pre-baked ISO) generates a memorable Kiosk ID directly.
     """
     mock_repack_task.return_value = MagicMock(id="test-task-123")
 
@@ -312,8 +312,8 @@ def test_issue_kiosk_flow(mock_repack_task, db_session):
     
     kiosk = res["kiosk"]
     assert kiosk.name == "Pre-baked Kiosk Vasya"
-    assert kiosk.uuid.startswith("KS")
-    assert len(kiosk.uuid) == 6
+    assert kiosk.kiosk_id.startswith("KS")
+    assert len(kiosk.kiosk_id) == 6
     assert kiosk.status == "APPROVED"
     assert kiosk.auth_token is not None
     assert len(kiosk.auth_token) == 6
@@ -322,7 +322,7 @@ def test_issue_kiosk_flow(mock_repack_task, db_session):
     db_session.expire_all()
     kiosk_db = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk.id).first()
     assert kiosk_db is not None
-    assert kiosk_db.uuid == kiosk.uuid
+    assert kiosk_db.kiosk_id == kiosk.kiosk_id
     assert kiosk_db.status == "APPROVED"
     assert kiosk_db.auth_token == kiosk.auth_token
 
@@ -334,7 +334,7 @@ def test_update_kiosk(db_session):
     # 1. Create a kiosk
     kiosk = models.Kiosk(
         name="Old Name",
-        uuid="KS8888",
+        kiosk_id="KS8888",
         key="8888KS",
         contact="old@contact.com",
         comment="old comment",
@@ -382,7 +382,7 @@ def test_kiosk_iso_dynamic_naming_and_download(db_session):
     
     # Delete any existing test kiosk to avoid integrity errors
     db_session.query(models.Kiosk).filter(
-        (models.Kiosk.uuid == "KS8888") | 
+        (models.Kiosk.kiosk_id == "KS8888") | 
         (models.Kiosk.auth_token == "TEST88") |
         (models.Kiosk.key == "8888KS")
     ).delete()
@@ -390,7 +390,7 @@ def test_kiosk_iso_dynamic_naming_and_download(db_session):
 
     kiosk = models.Kiosk(
         name="Test Dynamic Kiosk",
-        uuid="KS8888",
+        kiosk_id="KS8888",
         key="8888KS",
         auth_token="TEST88",
         status="APPROVED"

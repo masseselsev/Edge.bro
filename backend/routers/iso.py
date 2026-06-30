@@ -346,7 +346,7 @@ def download_repo(
         if auth.name == "Offline Restore Client":
             kiosk_name = "Kiosk: Offline Restore Client"
         else:
-            kiosk_name = f"Kiosk: {auth.name} (UUID: {auth.uuid})" if auth.name else f"Kiosk: {auth.uuid}"
+            kiosk_name = f"Kiosk: {auth.name} (KioskID: {auth.kiosk_id})" if auth.name else f"Kiosk: {auth.kiosk_id}"
     elif isinstance(auth, models.User):
         kiosk_name = f"Admin: {auth.username}"
 
@@ -365,7 +365,7 @@ def download_repo(
 
 @router.post("/kiosks/issue")
 def issue_kiosk(req: schemas.KioskIssueRequest, request: Request = None, db: Session = Depends(get_db), auth = Depends(require_admin)):
-    from routers.kiosks import generate_kiosk_key, generate_kiosk_token, generate_kiosk_uuid
+    from routers.kiosks import generate_kiosk_key, generate_kiosk_token, generate_kiosk_id
     import secrets
 
     # Generate auth token (kiosk token style, e.g. AB1234)
@@ -373,10 +373,10 @@ def issue_kiosk(req: schemas.KioskIssueRequest, request: Request = None, db: Ses
     while db.query(models.Kiosk).filter(models.Kiosk.auth_token == auth_token).first():
         auth_token = generate_kiosk_token()
 
-    # Generate a unique memorable uuid (format: KS1234)
-    uuid_val = generate_kiosk_uuid()
-    while db.query(models.Kiosk).filter(models.Kiosk.uuid == uuid_val).first():
-        uuid_val = generate_kiosk_uuid()
+    # Generate a unique memorable kiosk ID (format: KS1234)
+    kiosk_id_val = generate_kiosk_id()
+    while db.query(models.Kiosk).filter(models.Kiosk.kiosk_id == kiosk_id_val).first():
+        kiosk_id_val = generate_kiosk_id()
 
     # Generate pairing key (connection token style, e.g. 1234AB)
     pairing_key = generate_kiosk_key()
@@ -386,7 +386,7 @@ def issue_kiosk(req: schemas.KioskIssueRequest, request: Request = None, db: Ses
     # Create kiosk record directly approved
     kiosk = models.Kiosk(
         name=req.name,
-        uuid=uuid_val,
+        kiosk_id=kiosk_id_val,
         key=pairing_key,
         contact=req.contact,
         comment=req.comment,
@@ -403,7 +403,7 @@ def issue_kiosk(req: schemas.KioskIssueRequest, request: Request = None, db: Ses
     
     from database import log_user_action
     username = getattr(auth, "username", "test_admin")
-    log_user_action(db, username, "Issue Kiosk", f"Issued kiosk {kiosk.uuid} (token: {kiosk.auth_token}) for recipient {kiosk.name}", request)
+    log_user_action(db, username, "Issue Kiosk", f"Issued kiosk {kiosk.kiosk_id} (token: {kiosk.auth_token}) for recipient {kiosk.name}", request)
 
     # Return kiosk response + task_id to follow progress
     return {"kiosk": kiosk, "task_id": task.id}
@@ -420,7 +420,7 @@ def recreate_kiosk_iso(id: int, request: Request = None, db: Session = Depends(g
     
     from database import log_user_action
     username = getattr(auth, "username", "test_admin")
-    log_user_action(db, username, "Recreate Kiosk ISO", f"Triggered recreation of Kiosk {kiosk.uuid} ISO (token: {kiosk.auth_token})", request)
+    log_user_action(db, username, "Recreate Kiosk ISO", f"Triggered recreation of Kiosk {kiosk.kiosk_id} ISO (token: {kiosk.auth_token})", request)
 
     return {"task_id": task.id, "message": "Recreation task started"}
 
@@ -453,7 +453,7 @@ def download_kiosk_iso(id: int, request: Request = None, db: Session = Depends(g
     
     from database import log_user_action
     username = getattr(auth, "username", "test_admin")
-    log_user_action(db, username, "Download Kiosk ISO", f"Downloaded Kiosk {kiosk.uuid} ISO (token: {kiosk.auth_token})", request)
+    log_user_action(db, username, "Download Kiosk ISO", f"Downloaded Kiosk {kiosk.kiosk_id} ISO (token: {kiosk.auth_token})", request)
 
     return FileResponse(
         path=iso_path,

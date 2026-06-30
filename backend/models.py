@@ -153,7 +153,7 @@ class Kiosk(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=True)
-    uuid = Column(String, unique=True, index=True, nullable=False)
+    kiosk_id = Column(String, unique=True, index=True, nullable=False)
     key = Column(String, unique=True, index=True, nullable=False)
     status = Column(String, default='PENDING', nullable=False) # PENDING, APPROVED, REVOKED
     ip_address = Column(String, nullable=True)

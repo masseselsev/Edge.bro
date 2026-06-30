@@ -372,14 +372,14 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         import models
         settings = db.query(models.Settings).first()
         lang = settings.language if settings else "en"
-        kiosk_uuid = generate_kiosk_id()
+        kiosk_id = generate_kiosk_id()
         server_ips = settings.server_ips if (settings and settings.server_ips) else []
         config_data = {
             "orchestrator_ip": target_ip,
             "available_server_ips": server_ips,
             "auth_token": auth_token,
             "language": lang,
-            "kiosk_uuid": kiosk_uuid
+            "kiosk_id": kiosk_id
         }
         with open(os.path.join(opt_offline, "backend", "config.json"), "w") as f:
             json.dump(config_data, f, indent=4)
@@ -621,7 +621,7 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
                 config_data = json.load(f)
                 
         config_data["auth_token"] = kiosk.auth_token
-        config_data["kiosk_uuid"] = kiosk.uuid
+        config_data["kiosk_id"] = kiosk.kiosk_id
         config_data["available_server_ips"] = available_ips
         config_data["orchestrator_ip"] = target_ip
         config_data["language"] = lang

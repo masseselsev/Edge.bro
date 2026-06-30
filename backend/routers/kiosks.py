@@ -29,7 +29,7 @@ def generate_kiosk_token() -> str:
     return f"{letters}{digits}"
 
 
-def generate_kiosk_uuid() -> str:
+def generate_kiosk_id() -> str:
     # Generate 'KS' followed by 4 digits, excluding confusing ones (0, 1, 2)
     digits = "".join(random.choice("3456789") for _ in range(4))
     return f"KS{digits}"
@@ -37,14 +37,14 @@ def generate_kiosk_uuid() -> str:
 
 @router.post("", response_model=schemas.KioskResponse)
 def create_kiosk(req: schemas.KioskCreate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
-    # Generate unique placeholder UUID if none provided
-    kiosk_uuid = req.uuid
-    if kiosk_uuid:
-        existing = db.query(models.Kiosk).filter(models.Kiosk.uuid == kiosk_uuid).first()
+    # Generate unique placeholder ID if none provided
+    kiosk_id = req.kiosk_id
+    if kiosk_id:
+        existing = db.query(models.Kiosk).filter(models.Kiosk.kiosk_id == kiosk_id).first()
         if existing:
-            raise HTTPException(status_code=400, detail="Kiosk UUID already registered")
+            raise HTTPException(status_code=400, detail="Kiosk ID already registered")
     else:
-        kiosk_uuid = f"PENDING-{secrets.token_hex(8)}"
+        kiosk_id = f"PENDING-{secrets.token_hex(8)}"
     
     # Generate unique key
     key = generate_kiosk_key()
@@ -53,7 +53,7 @@ def create_kiosk(req: schemas.KioskCreate, request: Request = None, db: Session 
 
     kiosk = models.Kiosk(
         name=req.name, 
-        uuid=kiosk_uuid, 
+        kiosk_id=kiosk_id, 
         key=key,
         contact=req.contact,
         comment=req.comment,
@@ -64,7 +64,7 @@ def create_kiosk(req: schemas.KioskCreate, request: Request = None, db: Session 
     db.refresh(kiosk)
     from database import log_user_action
     username = getattr(current_user, "username", "test_admin")
-    log_user_action(db, username, "Create Kiosk", f"Created kiosk pairing record with friendly name '{kiosk.name}' (UUID placeholder: {kiosk.uuid})", request)
+    log_user_action(db, username, "Create Kiosk", f"Created kiosk pairing record with friendly name '{kiosk.name}' (KioskID placeholder: {kiosk.kiosk_id})", request)
     return kiosk
 
 @router.get("", response_model=List[schemas.KioskResponse])
@@ -131,7 +131,7 @@ def delete_kiosk(kiosk_id: int, request: Request = None, db: Session = Depends(g
     db.commit()
     from database import log_user_action
     username = getattr(current_user, "username", "test_admin")
-    log_user_action(db, username, "Delete Kiosk", f"Deleted kiosk {kiosk.uuid} (token: {kiosk.auth_token})", request)
+    log_user_action(db, username, "Delete Kiosk", f"Deleted kiosk {kiosk.kiosk_id} (token: {kiosk.auth_token})", request)
     return {"status": "SUCCESS"}
 
 @router.post("/{kiosk_id}/revoke")
@@ -150,7 +150,7 @@ def revoke_kiosk(kiosk_id: int, request: Request = None, db: Session = Depends(g
     db.commit()
     from database import log_user_action
     username = getattr(current_user, "username", "test_admin")
-    log_user_action(db, username, "Block Kiosk", f"Revoked/blocked kiosk {kiosk.uuid}", request)
+    log_user_action(db, username, "Block Kiosk", f"Revoked/blocked kiosk {kiosk.kiosk_id}", request)
     return {"status": "SUCCESS", "kiosk_status": kiosk.status}
 
 @router.post("/handshake")
@@ -166,18 +166,18 @@ def handshake(req: schemas.HandshakeRequest, request: Request = None, db: Sessio
     if kiosk.status != "PENDING":
         raise HTTPException(status_code=400, detail=f"Kiosk status is {kiosk.status}")
 
-    # Verify UUID if the kiosk was pre-registered with a specific one
-    if kiosk.uuid and not kiosk.uuid.startswith("PENDING-"):
-        if kiosk.uuid != req.uuid:
-            raise HTTPException(status_code=400, detail="UUID mismatch for this key")
+    # Verify ID if the kiosk was pre-registered with a specific one
+    if kiosk.kiosk_id and not kiosk.kiosk_id.startswith("PENDING-"):
+        if kiosk.kiosk_id != req.kiosk_id:
+            raise HTTPException(status_code=400, detail="Kiosk ID mismatch for this key")
 
-    # Check if this UUID is already associated with another kiosk
-    existing = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid, models.Kiosk.id != kiosk.id).first()
+    # Check if this ID is already associated with another kiosk
+    existing = db.query(models.Kiosk).filter(models.Kiosk.kiosk_id == req.kiosk_id, models.Kiosk.id != kiosk.id).first()
     if existing:
-        raise HTTPException(status_code=400, detail=f"Kiosk UUID {req.uuid} is already registered")
+        raise HTTPException(status_code=400, detail=f"Kiosk ID {req.kiosk_id} is already registered")
 
-    # Update kiosk record with actual client UUID
-    kiosk.uuid = req.uuid
+    # Update kiosk record with actual client KioskID
+    kiosk.kiosk_id = req.kiosk_id
     
     # Generate unique API token in format AB1234
     token = generate_kiosk_token()
@@ -191,7 +191,7 @@ def handshake(req: schemas.HandshakeRequest, request: Request = None, db: Sessio
     db.commit()
 
     # Log successful handshake
-    kiosk_username = f"Kiosk: {kiosk.name} (UUID: {kiosk.uuid})" if kiosk.name else f"Kiosk: {kiosk.uuid}"
+    kiosk_username = f"Kiosk: {kiosk.name} (KioskID: {kiosk.kiosk_id})" if kiosk.name else f"Kiosk: {kiosk.kiosk_id}"
     from database import log_user_action
     log_user_action(db, kiosk_username, "Kiosk Connected (Handshake)", "Kiosk paired and initialized SSH public key", request)
 
@@ -262,8 +262,8 @@ def revoke_ssh_key(pub_key: str):
 
 @router.post("/enroll")
 def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db)):
-    # Check if UUID already registered
-    existing = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid).first()
+    # Check if ID already registered
+    existing = db.query(models.Kiosk).filter(models.Kiosk.kiosk_id == req.kiosk_id).first()
     
     # Generate unique auth token
     token = generate_kiosk_token()
@@ -291,7 +291,7 @@ def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db))
         key = generate_kiosk_key()
 
     kiosk = models.Kiosk(
-        uuid=req.uuid,
+        kiosk_id=req.kiosk_id,
         name=req.name,
         contact=req.contact,
         comment=req.comment,
@@ -335,7 +335,7 @@ def toggle_kiosk_active(id: int, request: Request = None, db: Session = Depends(
     db.refresh(kiosk)
     from database import log_user_action
     username = getattr(auth, "username", "test_admin")
-    log_user_action(db, username, "Toggle Kiosk State", f"Toggled kiosk {kiosk.uuid} status to {kiosk.status}", request)
+    log_user_action(db, username, "Toggle Kiosk State", f"Toggled kiosk {kiosk.kiosk_id} status to {kiosk.status}", request)
     return {"status": "SUCCESS", "kiosk_status": kiosk.status}
 
 
@@ -351,7 +351,7 @@ def request_kiosk_activation(req: schemas.RequestActivationRequest, request: Req
     kiosk.status = "PENDING"
     db.commit()
     from database import log_user_action
-    log_user_action(db, f"Kiosk {kiosk.uuid}", "Request Activation", "Requested kiosk reactivation", request)
+    log_user_action(db, f"Kiosk {kiosk.kiosk_id}", "Request Activation", "Requested kiosk reactivation", request)
     return {"status": "SUCCESS", "message": "Activation request submitted"}
 
 
@@ -374,22 +374,22 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
         
     if kiosk.status == "PENDING":
         # Keep it pending, update metadata if needed, but do not authorize SSH
-        kiosk.uuid = req.uuid
+        kiosk.kiosk_id = req.kiosk_id
         kiosk.ssh_pub_key = req.ssh_pub_key
         db.commit()
         from database import log_user_action
-        kiosk_username = f"Kiosk: {kiosk.name} (UUID: {kiosk.uuid})" if kiosk.name else f"Kiosk: {kiosk.uuid}"
+        kiosk_username = f"Kiosk: {kiosk.name} (KioskID: {kiosk.kiosk_id})" if kiosk.name else f"Kiosk: {kiosk.kiosk_id}"
         log_user_action(db, kiosk_username, "Auto Handshake Pending", "Kiosk requested status check, remains pending activation", request)
         return {"status": "PENDING"}
 
     if kiosk.status == "APPROVED":
-        # Check if this UUID is already associated with another kiosk
-        existing = db.query(models.Kiosk).filter(models.Kiosk.uuid == req.uuid, models.Kiosk.id != kiosk.id).first()
+        # Check if this ID is already associated with another kiosk
+        existing = db.query(models.Kiosk).filter(models.Kiosk.kiosk_id == req.kiosk_id, models.Kiosk.id != kiosk.id).first()
         if existing:
-            raise HTTPException(status_code=400, detail="UUID is already registered under another kiosk")
+            raise HTTPException(status_code=400, detail="Kiosk ID is already registered under another kiosk")
 
         # Update kiosk details
-        kiosk.uuid = req.uuid
+        kiosk.kiosk_id = req.kiosk_id
         kiosk.ssh_pub_key = req.ssh_pub_key
 
         # Authorize SSH key
@@ -402,7 +402,7 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
 
         db.commit()
         from database import log_user_action
-        kiosk_username = f"Kiosk: {kiosk.name} (UUID: {kiosk.uuid})" if kiosk.name else f"Kiosk: {kiosk.uuid}"
+        kiosk_username = f"Kiosk: {kiosk.name} (KioskID: {kiosk.kiosk_id})" if kiosk.name else f"Kiosk: {kiosk.kiosk_id}"
         log_user_action(db, kiosk_username, "Auto Handshake Approved", "Authorized kiosk and registered public key", request)
         return {"status": "APPROVED"}
         
@@ -438,7 +438,7 @@ def update_kiosk(kiosk_id: int, req: schemas.KioskUpdate, request: Request = Non
     db.refresh(kiosk)
     from database import log_user_action
     username = getattr(current_user, "username", "test_admin")
-    details_str = f"Update Kiosk '{kiosk.uuid}': {', '.join(changes)}" if changes else f"Updated kiosk profile '{kiosk.uuid}' (friendly name={kiosk.name}) (no values changed)"
+    details_str = f"Update Kiosk '{kiosk.kiosk_id}': {', '.join(changes)}" if changes else f"Updated kiosk profile '{kiosk.kiosk_id}' (friendly name={kiosk.name}) (no values changed)"
     log_user_action(db, username, "Update Kiosk", details_str, request)
     return kiosk
 
