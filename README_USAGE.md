@@ -116,6 +116,12 @@ To prevent backup tasks from saturating target node CPU or available site bandwi
 * **Checkpoint Interval**:
   - By default, the system **auto-calculates** a dynamic checkpoint interval based on the configured bandwidth upload rate limit (e.g. checkpointing every ~50 MB of data at <= 500 KiB/s, or every ~200 MB at <= 5000 KiB/s) to ensure progress is saved frequently on slow links.
   - You can also explicitly override this to a manual interval (in seconds).
+* **Dynamic Concurrency & Queue Scheduler**:
+  - **Dynamic Concurrency Scaling**: Automatically scales the group's active backups concurrency if the remaining time in the group's execution window is too short to complete all pending backups.
+  - **Bandwidth-Aware Capping**: Automatically caps the group's baseline concurrency limit under low `upload_rate_limit` configurations (allowing at least 2 MiB/s per stream) to prevent network congestion.
+  - **Sequential FIFO Queueing**: Queues backups sequentially based on their deterministic stagger offsets. When a running backup completes, the scheduler immediately triggers the next node in queue.
+  - **Running Backup Protection**: Currently running backups are allowed to complete and clear their flags even after the window ends, preventing premature `missed_window` marking.
+  - **Test-specific Intervals**: Supports `"10min"` and `"30min"` execution intervals for fast simulation and local deployment testing, skipping stagger delays and validating successes within the respective timeframe.
 * **Retention Policy Override**: Toggle retention overrides to apply group-specific rules rather than inheriting the global policy. The system supports three pruning types:
   - **Interval**: Keep a specified number of daily, weekly, and monthly backups.
   - **Count**: Keep a fixed number of the last backups (e.g. keep last 5).
@@ -166,7 +172,7 @@ For convenience, use an external **USB to SATA** or **USB to NVMe** dongle/adapt
 
 ---
 
-## 6. Live-USB Offline Restoration (Kiosk Mode)
+## 6. Live-USB Offline Restoration & Single Snapshot Synchronization
 
 While Section 5 describes restoring a disk by physically connecting it to the NUC, you can also restore edge nodes **without extracting their disks** by using the generated Live-USB.
 
@@ -176,12 +182,21 @@ While Section 5 describes restoring a disk by physically connecting it to the NU
 3. Click **GENERATE LIVE-USB**. The orchestrator will dynamically fetch the exact file size, download a base Debian testing ISO, inject the configuration, and compile a custom `technician_client_v1.iso`.
 4. Once generation is complete, click **DOWNLOAD ISO IMAGE** and flash it to a USB drive using [Rufus](https://rufus.ie/en/) or [balenaEtcher](https://etcher.balena.io/).
 
-### 6.2 Using the Live-USB
+### 6.2 Selective Snapshot Sync & Progress
+Instead of copying the entire fleet repository history (which could consume hundreds of gigabytes), you can synchronize a specific selected backup snapshot to the USB drive:
+1. In the **Live-USB Client** tab, select the target node and the desired snapshot.
+2. Click the **Sync Snapshot** button.
+3. The backend will compile a temporary mini repository containing only the single selected archive on the fly using a high-speed `borg export-tar` and `borg import-tar` stream pipeline, sending it directly to the USB.
+4. During synchronization, the interface will display the real-time download speed, progress bar, and estimated time of arrival (ETA).
+
+### 6.3 Using the Live-USB & WireGuard VPN Setup
 1. Insert the generated USB drive into the broken edge node and boot from it.
-2. Ensure the node is connected to the same local network as the orchestrator.
-3. The system will automatically boot into a lightweight Debian XFCE environment and launch a secure kiosk browser.
-4. The kiosk will connect to the central orchestrator and present the Flasher interface.
-5. Select the local disk of the node and the desired backup snapshot. The restoration process will securely pull the backup data over the network and flash it directly to the node's internal disk.
+2. If the node requires a VPN connection to access the central orchestrator:
+   - Click the **Network Settings** tab / icon in the kiosk dashboard.
+   - Point the webcam at your WireGuard configuration QR code to scan it dynamically using the integrated `jsQR` webcam feed reader, or paste the manual configuration text.
+   - The VPN profile is stored persistently in `/media/usb-data` on the USB drive, and NetworkManager profiles (`.nmconnection`) are automatically reloaded with correct `0600` root permissions at boot.
+3. The system will connect to the central orchestrator and present the Flasher interface.
+4. Select the local disk of the node and the desired backup snapshot. The restoration process will flash the system directly to the node's internal disk.
 
 ---
 

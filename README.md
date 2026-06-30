@@ -77,6 +77,12 @@ The system is fully containerized and uses a decoupled architecture to manage co
     - This yields a massive overall storage footprint reduction for fleets running similar base images, with incremental runs remaining extremely lightweight.
 - **Configurable Global Exclusions**: In the **Orchestrator Settings** tab in the web UI, you can configure a comma-separated list of directories to exclude from backups (e.g. temporary/virtual mounts or heavy log/data folders).
   - **Default Exclusions**: `/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*`
+- **Intelligent Queue Scheduling & Dynamic Concurrency**:
+  - **Dynamic Concurrency Scaling**: Automatically dynamically computes and scales up the group's concurrency limit if the remaining time in the backup window is too short to complete all pending backups, ensuring all scheduled devices finish their runs on time.
+  - **Bandwidth-Aware Concurrency Capping**: Automatically caps the group's concurrency limit if a low `upload_rate_limit` is set (allocating at least 2 MiB/s per backup stream), preventing edge site network choking.
+  - **Sequential FIFO Queue Triggering**: Staggers backup execution by sorting pending nodes by their deterministic host-based stagger offsets and executing them sequentially. When one node finishes its backup, it immediately releases the slot for the next pending device in queue.
+  - **Running Backup Protection**: Currently running backups are allowed to complete and clear their execution flags even after the window end time passes, preventing premature `missed_window` marking.
+  - **Test-specific Intervals**: Supports `"10min"` and `"30min"` execution intervals for fast simulation and local deployment testing, skipping stagger delays and validating successes within the respective timeframe.
 - To prevent database lock-ups on the shared Borg repositories, pruning is decoupled from individual backups. A global Celery Beat schedule triggers a local repository `borg prune` daily at 3:00 AM using the global retention policy (configurable in Settings, or overridden per backup group). The system supports interval-based (daily/weekly/monthly), count-based (keep last N), or timeframe-based (keep within past days/weeks/months/years) retention.
 
 ### 4. Bare-Metal Flashing Restore
@@ -87,10 +93,18 @@ The system is fully containerized and uses a decoupled architecture to manage co
 - **Chroot Bootloader Config**: Mounts the system, binds virtualization paths (`/dev`, `/proc`, `/sys`), reinstalls GRUB on the target device, updates initramfs, and writes a fallback EFI loader path (`EFI/BOOT/BOOTX64.EFI`).
 - **Auditing**: Performs a post-restore verification audit confirming label configurations inside `/etc/fstab` before safely unmounting.
 
-### 5. Live-USB Offline Client Generation
+### 5. Live-USB Offline Client Generation & Single Snapshot Sync
 - Compiles a bootable Debian Live environment on the fly.
 - Embeds the orchestrator's IP address and authentication tokens directly into the generated ISO.
 - When booted on an edge node, launches a secure kiosk UI that connects to the central orchestrator, enabling offline network restoration directly to the node's internal disk without requiring hardware extraction.
+- **Selective Snapshot Sync / Single Snapshot Download**: Allows syncing only a specific selected backup snapshot to the USB client rather than download the entire node history (which could be hundreds of gigabytes).
+- **Dynamic On-The-Fly Repo Compilation**: Generates a temporary, compact Borg repository containing only the single selected archive by running a high-speed `borg export-tar` and `borg import-tar` pipeline on the backend, streaming it over the network as a tar file to the kiosk client on the fly.
+- Displays real-time download speed, progress bar, and estimated time of arrival (ETA) during local USB synchronization.
+
+### 6. WireGuard VPN Browser QR Integration & Network Settings Persistence
+- **QR Webcam Configuration**: Integrates a browser webcam feed reader using `jsQR` to dynamically scan WireGuard VPN configuration profiles, along with a fallback manual configuration text container.
+- **Persistence on USB**: Saves configured NetworkManager profiles (`.nmconnection`) and WireGuard configs (`wg0.conf`) to `/media/usb-data` at system boot, assigning proper `0600` permissions and ownership (`root:root`) to pass NetworkManager daemon security validation checks.
+- **Control APIs**: Provides backend endpoints to poll active VPN tunnel statistics (`wg show wg0 dump`), reload NM connections (`nmcli connection reload`), and toggle active status (`up`/`down`).
 
 ---
 
