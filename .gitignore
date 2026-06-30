@@ -46,3 +46,6 @@ docs/
 # Celery Beat
 celerybeat-schedule*
 
+# Reports
+reports/
+

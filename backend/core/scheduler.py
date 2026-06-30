@@ -60,19 +60,14 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
         if redis_client.get(f"backup_running:{node.id}"):
             group_running_counts[node.group_id] = group_running_counts.get(node.group_id, 0) + 1
 
-    for node in nodes:
-        group = groups.get(node.group_id)
-        if not group:
-            continue
-
+    # Precompute group-level variables to optimize execution speed (especially for simulations)
+    group_cache = {}
+    for gid, group in groups.items():
         # Determine group timezone
         group_tz = get_tzinfo(group.timezone, db)
         
         # Current local time for the group
         now_local = now.replace(tzinfo=timezone.utc).astimezone(group_tz)
-        local_day_of_week = now_local.weekday()
-        local_week_of_month = min(4, ((now_local.day - 1) // 7) + 1)
-        local_month = now_local.month
         local_hour = now_local.hour
         local_minute = now_local.minute
         local_mins = local_hour * 60 + local_minute
@@ -92,10 +87,58 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
 
         if start_mins < end_mins:
             in_window = (start_mins <= local_mins < end_mins)
+            window_start_local = now_local.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
         elif start_mins > end_mins:
             in_window = (local_mins >= start_mins or local_mins < end_mins)
+            if local_mins >= start_mins:
+                window_start_local = now_local.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+            else:
+                window_start_local = now_local.replace(hour=start_h, minute=start_m, second=0, microsecond=0) - timedelta(days=1)
         else:
             in_window = True
+            window_start_local = now_local.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+
+        # Extract calendar logic relative to window start date to handle crossing midnight correctly
+        local_day_of_week = window_start_local.weekday()
+        local_week_of_month = min(4, ((window_start_local.day - 1) // 7) + 1)
+        local_month = window_start_local.month
+        
+        window_start_dt = window_start_local.astimezone(timezone.utc).replace(tzinfo=None)
+
+        group_cache[gid] = {
+            "group": group,
+            "now_local": now_local,
+            "in_window": in_window,
+            "window_start_local": window_start_local,
+            "window_start_dt": window_start_dt,
+            "start_h": start_h,
+            "start_m": start_m,
+            "end_h": end_h,
+            "start_mins": start_mins,
+            "end_mins": end_mins,
+            "local_day_of_week": local_day_of_week,
+            "local_week_of_month": local_week_of_month,
+            "local_month": local_month
+        }
+
+    for node in nodes:
+        g_data = group_cache.get(node.group_id)
+        if not g_data:
+            continue
+
+        group = g_data["group"]
+        now_local = g_data["now_local"]
+        in_window = g_data["in_window"]
+        window_start_local = g_data["window_start_local"]
+        window_start_dt = g_data["window_start_dt"]
+        start_h = g_data["start_h"]
+        start_m = g_data["start_m"]
+        end_h = g_data["end_h"]
+        start_mins = g_data["start_mins"]
+        end_mins = g_data["end_mins"]
+        local_day_of_week = g_data["local_day_of_week"]
+        local_week_of_month = g_data["local_week_of_month"]
+        local_month = g_data["local_month"]
 
         # Calculate scheduling metrics
         node_hash = deterministic_hash(node.hostname)
@@ -134,12 +177,6 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
                 if local_week_of_month == group.target_week and day_index == local_day_of_week:
                     is_scheduled_today = True
 
-        # Determine window start datetime in UTC (naive)
-        window_start_local = now_local.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
-        if start_mins > local_mins:
-            window_start_local -= timedelta(days=1)
-        window_start_dt = window_start_local.astimezone(timezone.utc).replace(tzinfo=None)
-
         # 1. Handle Out-Of-Window missed backup marking
         if not in_window:
             # Check if this node was supposed to run in the window that just completed
@@ -169,6 +206,10 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
             continue
 
         # 2. Inside Window: Evaluate execution
+        # If not scheduled today and no manual flags set, skip evaluating inside the window
+        if not (is_scheduled_today or node.backup_today or node.missed_window):
+            continue
+
         # Check if already completed successfully in this window
         successful_backup = db.query(models.BackupHistory).filter(
             models.BackupHistory.node_id == node.id,
@@ -194,8 +235,10 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
         if node.backup_today or node.missed_window:
             should_run = True
         elif is_scheduled_today:
-            # Check if we are at/past staggered hour and minute
-            if now_local.hour > scheduled_hour or (now_local.hour == scheduled_hour and now_local.minute >= scheduled_minute):
+            # Check if we are at/past staggered hour and minute relative to the start of the window
+            elapsed_since_start = int((now_local - window_start_local).total_seconds() / 60)
+            stagger_offset_mins = hour_offset * 60 + minute_offset
+            if elapsed_since_start >= stagger_offset_mins:
                 should_run = True
 
         if should_run:
