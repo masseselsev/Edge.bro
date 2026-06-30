@@ -5,7 +5,7 @@ import { useTranslation } from '../context/TranslationContext';
 interface Kiosk {
   id: number;
   name: string | null;
-  uuid: string;
+  kiosk_id: string;
   key: string;
   status: 'PENDING' | 'APPROVED' | 'REVOKED' | 'DISABLED';
   ip_address: string | null;
@@ -35,7 +35,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
   const filteredKiosks = kiosks.filter(k => {
     const query = searchQuery.toLowerCase();
     const nameMatch = (k.name || '').toLowerCase().includes(query);
-    const uuidMatch = (k.uuid || '').toLowerCase().includes(query);
+    const uuidMatch = (k.kiosk_id || '').toLowerCase().includes(query);
     const ipMatch = (k.ip_address || '').toLowerCase().includes(query);
     const contactMatch = (k.contact || '').toLowerCase().includes(query);
     const commentMatch = (k.comment || '').toLowerCase().includes(query);
@@ -48,7 +48,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
   
   // Form fields
   const [name, setName] = useState('');
-  const [uuid, setUuid] = useState('');
+  const [kioskId, setKioskId] = useState('');
   const [contact, setContact] = useState('');
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -103,7 +103,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name || null,
-          uuid: uuid.trim() || null,
+          kiosk_id: kioskId.trim() || null,
           contact: contact.trim() || null,
           comment: comment.trim() || null
         })
@@ -117,7 +117,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
       setShowAddModal(false);
       setShowKeyModal(true);
       setName('');
-      setUuid('');
+      setKioskId('');
       setContact('');
       setComment('');
       fetchKiosks();
@@ -312,7 +312,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                       )}
                     </td>
                     <td className="py-3.5 px-4 font-mono text-zinc-400 select-all">
-                      {kiosk.uuid.startsWith('PENDING-') ? <span className="text-zinc-500 italic">{t('kioskPending') || 'Pending...'}</span> : kiosk.uuid}
+                      {kiosk.kiosk_id.startsWith('PENDING-') ? <span className="text-zinc-500 italic">{t('kioskPending') || 'Pending...'}</span> : kiosk.kiosk_id}
                     </td>
                     <td className="py-3.5 px-4 font-mono">
                       {kiosk.auth_token ? (
@@ -334,7 +334,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
                           <ShieldAlert size={10} /> {t('kioskStatusDisabledLabel') || 'Disabled'}
                         </span>
-                      ) : kiosk.status === 'PENDING' && kiosk.uuid && !kiosk.uuid.startsWith('PENDING-') ? (
+                      ) : kiosk.status === 'PENDING' && kiosk.kiosk_id && !kiosk.kiosk_id.startsWith('PENDING-') ? (
                         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
                           <ShieldAlert size={10} /> {t('kioskStatusPendingLabel') || 'Re-activation Request'}
                         </span>
@@ -356,7 +356,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                     </td>
                     <td className="py-3.5 px-4 text-right space-x-2 whitespace-nowrap">
                       {/* Toggle Active state (Block/Unblock) */}
-                      {(kiosk.status === 'APPROVED' || kiosk.status === 'DISABLED' || (kiosk.status === 'PENDING' && !kiosk.uuid.startsWith('PENDING-'))) && (
+                      {(kiosk.status === 'APPROVED' || kiosk.status === 'DISABLED' || (kiosk.status === 'PENDING' && !kiosk.kiosk_id.startsWith('PENDING-'))) && (
                         <button
                           onClick={() => handleToggleActive(kiosk.id)}
                           className={`px-2 py-1 border rounded text-[10px] font-bold transition-all cursor-pointer ${
