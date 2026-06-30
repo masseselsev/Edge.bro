@@ -18,7 +18,7 @@ except ImportError:
 try:
     from version import VERSION
 except ImportError:
-    VERSION = "v0.9beta"
+    VERSION = "v0.9.2beta"
 
 app = FastAPI(title="Offline Technician Client", version=VERSION)
 
