@@ -1,6 +1,7 @@
 import os
 import hashlib
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 import logging
 import redis
 from sqlalchemy.orm import Session
@@ -32,12 +33,13 @@ def get_tzinfo(tz_name: str, db: Session) -> zoneinfo.ZoneInfo:
     except Exception:
         return zoneinfo.ZoneInfo('UTC')
 
-def check_and_trigger_backups(db: Session):
+def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
     """
     Evaluates all nodes and their assigned groups. Triggers backups in Celery
     if they are scheduled, retrying or flagged for manual "Backup Today" execution.
     """
-    now = datetime.utcnow()  # Naive UTC datetime to match db timestamps
+    if now is None:
+        now = datetime.utcnow()  # Naive UTC datetime to match db timestamps
 
     # 1. Fetch all nodes that are assigned to a group and not paused
     nodes = db.query(models.Node).filter(

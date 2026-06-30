@@ -252,3 +252,60 @@ def test_scheduler_missed_window_marking(mock_run_backup_task, mock_redis, test_
     assert node.missed_window is True
     assert node.backup_today is False
     mock_run_backup_task.delay.assert_not_called()
+
+
+def test_check_and_trigger_backups_accepts_now(test_db):
+    # Verify that the function runs and accepts a manual datetime object
+    fake_time = datetime(2026, 6, 29, 2, 30)
+    check_and_trigger_backups(test_db, now=fake_time)
+
+
+@patch('core.scheduler.redis_client')
+@patch('core.scheduler.run_backup_task')
+def test_scheduler_retry_delay(mock_run_backup_task, mock_redis, test_db):
+    mock_redis.get.return_value = None
+    
+    group = models.BackupGroup(
+        name="NightlyGroup",
+        interval="weekly",
+        start_time="02:00",
+        end_time="05:00",
+        concurrency_limit=5,
+        randomize_days=False
+    )
+    test_db.add(group)
+    test_db.commit()
+    
+    node = models.Node(
+        hostname="node-01",
+        ip_address="192.168.1.10",
+        group_id=group.id,
+        backup_paused=False,
+        backup_today=True
+    )
+    test_db.add(node)
+    test_db.commit()
+    
+    # 1. Add a FAILED backup history entry 30 minutes ago
+    fail_time = datetime(2026, 6, 15, 2, 0)
+    history = models.BackupHistory(
+        node_id=node.id,
+        archive_name="node-01-fail-archive",
+        timestamp=fail_time,
+        original_size=1000,
+        deduplicated_size=500,
+        status="FAILED",
+        log_output="Some error log"
+    )
+    test_db.add(history)
+    test_db.commit()
+    
+    # Run scheduler 30 minutes after failure (should NOT trigger)
+    now_time = datetime(2026, 6, 15, 2, 30)
+    check_and_trigger_backups(test_db, now=now_time)
+    mock_run_backup_task.delay.assert_not_called()
+    
+    # Run scheduler 61 minutes after failure (should trigger retry)
+    now_time_retry = datetime(2026, 6, 15, 3, 1)
+    check_and_trigger_backups(test_db, now=now_time_retry)
+    mock_run_backup_task.delay.assert_called_once()
