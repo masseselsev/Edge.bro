@@ -84,6 +84,8 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
   }, []);
 
   const intervalOptions = React.useMemo(() => [
+    { value: '10min', label: t('10min') || 'Every 10 minutes' },
+    { value: '30min', label: t('30min') || 'Every 30 minutes' },
     { value: 'weekly', label: t('weekly') },
     { value: 'monthly', label: t('monthly') },
     { value: 'quarterly', label: t('quarterly') },
@@ -297,7 +299,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                     />
                   </div>
 
-                  {interval !== 'weekly' && (
+                  {interval !== 'weekly' && interval !== '10min' && interval !== '30min' && (
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5">
                         {t('targetWeek')}

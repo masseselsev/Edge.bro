@@ -355,7 +355,7 @@ export default function ScheduleTab() {
                     <span className="text-zinc-400">{t('interval')}:</span>
                     <span className="font-semibold text-zinc-200 uppercase">{t(group.interval)}</span>
                   </div>
-                  {group.interval !== 'weekly' && (
+                  {group.interval !== 'weekly' && group.interval !== '10min' && group.interval !== '30min' && (
                     <div className="flex justify-between">
                       <span className="text-zinc-400">{t('targetWeek')}:</span>
                       <span className="font-semibold text-zinc-200">{t('weekUnit')} {group.target_week}</span>
