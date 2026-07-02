@@ -616,6 +616,19 @@ def get_kiosk_local_history():
         repo_path = os.path.join(local_storage_path, "borg", "fleet", hostname)
         if not os.path.exists(repo_path):
             continue
+
+        # Load cached metadata sizes if present
+        metadata_path = os.path.join(repo_path, "archive_metadata.json")
+        metadata_by_name = {}
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, "r") as mf:
+                    m_data = json.load(mf)
+                    for item in m_data:
+                        metadata_by_name[item["archive_name"]] = item
+            except Exception:
+                pass
+
         env = os.environ.copy()
         env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
         try:
@@ -623,14 +636,24 @@ def get_kiosk_local_history():
             data = json.loads(out)
             archives = data.get("archives", [])
             for i, a in enumerate(archives):
+                a_name = a["name"]
+                original_size = 0
+                deduplicated_size = 0
+                comment = a.get("comment", "")
+                if a_name in metadata_by_name:
+                    m_item = metadata_by_name[a_name]
+                    original_size = m_item.get("original_size", 0)
+                    deduplicated_size = m_item.get("deduplicated_size", 0)
+                    comment = m_item.get("comment") or comment
+
                 all_snapshots.append({
                     "id": len(all_snapshots) + 1,
                     "node_id": node_id,
-                    "archive_name": a["name"],
+                    "archive_name": a_name,
                     "timestamp": a["start"],
-                    "original_size": a.get("stats", {}).get("original_size", 0),
-                    "deduplicated_size": a.get("stats", {}).get("deduplicated_size", 0),
-                    "comment": a.get("comment", ""),
+                    "original_size": original_size,
+                    "deduplicated_size": deduplicated_size,
+                    "comment": comment,
                     "status": "SUCCESS"
                 })
         except Exception:
@@ -666,6 +689,18 @@ def get_local_history(node_id: int):
     repo_path = os.path.join(local_storage_path, "borg", "fleet", hostname)
     if not os.path.exists(repo_path):
         return []
+
+    # Load cached metadata sizes if present
+    metadata_path = os.path.join(repo_path, "archive_metadata.json")
+    metadata_by_name = {}
+    if os.path.exists(metadata_path):
+        try:
+            with open(metadata_path, "r") as mf:
+                m_data = json.load(mf)
+                for item in m_data:
+                    metadata_by_name[item["archive_name"]] = item
+        except Exception:
+            pass
     
     env = os.environ.copy()
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
@@ -675,14 +710,24 @@ def get_local_history(node_id: int):
         archives = data.get("archives", [])
         snapshots = []
         for i, a in enumerate(archives):
+            a_name = a["name"]
+            original_size = 0
+            deduplicated_size = 0
+            comment = a.get("comment", "")
+            if a_name in metadata_by_name:
+                m_item = metadata_by_name[a_name]
+                original_size = m_item.get("original_size", 0)
+                deduplicated_size = m_item.get("deduplicated_size", 0)
+                comment = m_item.get("comment") or comment
+
             snapshots.append({
                 "id": i,
                 "node_id": node_id,
-                "archive_name": a["name"],
+                "archive_name": a_name,
                 "timestamp": a["start"],
-                "original_size": a.get("stats", {}).get("original_size", 0),
-                "deduplicated_size": a.get("stats", {}).get("deduplicated_size", 0),
-                "comment": a.get("comment", ""),
+                "original_size": original_size,
+                "deduplicated_size": deduplicated_size,
+                "comment": comment,
                 "status": "SUCCESS"
             })
         return snapshots
@@ -807,6 +852,7 @@ def get_task_status(task_id: str):
             "status": task_status[task_id],
             "progress": task_progress.get(task_id, 0),
             "logs": task_logs.get(task_id, ""),
+            "log_output": task_logs.get(task_id, ""),
             "download_speed": task_download_speed.get(task_id, ""),
             "eta": task_eta.get(task_id, "")
         }
@@ -834,7 +880,7 @@ def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
     task_logs[task_id] = f"Starting {sync_desc} from http://{orchestrator_ip}:{orchestrator_api_port}\n"
 
     try:
-        # Step A: Cache partition layout from orchestrator
+        # Step A: Cache partition layout and archive metadata from orchestrator
         try:
             nodes_req = urllib.request.Request(
                 f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes",
@@ -846,6 +892,8 @@ def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
                 if n["hostname"] == hostname:
                     layout_dir = os.path.join(local_storage_path, "borg", "fleet", hostname)
                     os.makedirs(layout_dir, exist_ok=True)
+                    
+                    # Cache partition layout
                     layout_path = os.path.join(layout_dir, "partition_layout.json")
                     with open(layout_path, "w") as lf:
                         json.dump({
@@ -853,6 +901,22 @@ def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
                             "efi_uuid": n.get("efi_uuid")
                         }, lf)
                     task_logs[task_id] += "Successfully cached partition layout configuration.\n"
+                    
+                    # Fetch and cache archive history metadata (sizes)
+                    try:
+                        history_req = urllib.request.Request(
+                            f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes/{n['id']}/history",
+                            headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+                        )
+                        with urllib.request.urlopen(history_req, timeout=5) as h_response:
+                            history_data = json.loads(h_response.read().decode())
+                        
+                        metadata_path = os.path.join(layout_dir, "archive_metadata.json")
+                        with open(metadata_path, "w") as mf:
+                            json.dump(history_data, mf)
+                        task_logs[task_id] += "Successfully cached archive metadata size configurations.\n"
+                    except Exception as he:
+                        task_logs[task_id] += f"WARNING: Failed to fetch and cache archive history: {he}\n"
                     break
         except Exception as e:
             task_logs[task_id] += f"WARNING: Failed to fetch and cache partition layout: {e}\n"

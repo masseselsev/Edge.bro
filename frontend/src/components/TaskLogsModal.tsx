@@ -50,7 +50,7 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
       notFoundCountRef.current = 0;
       const data = await res.json();
       setStatus(data.status);
-      setLogs(data.log_output);
+      setLogs(data.log_output || data.logs || '');
     } catch (e) {
       console.error(e);
     }
