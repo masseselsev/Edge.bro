@@ -694,6 +694,21 @@ def format_and_restore(
         except Exception as e:
             emit_log(f"WARNING: Failed to mask live-config generator: {str(e)}")
 
+        # Remove any leftover PostgreSQL postmaster.pid lock files to prevent startup failure
+        try:
+            var_path = os.path.join(target_mnt, "var")
+            if os.path.exists(var_path):
+                for root_dir, dirs, files in os.walk(var_path):
+                    if "postmaster.pid" in files:
+                        pid_file_path = os.path.join(root_dir, "postmaster.pid")
+                        emit_log(f"Removing stale PostgreSQL lock file: {pid_file_path}")
+                        try:
+                            os.remove(pid_file_path)
+                        except Exception as pe:
+                            emit_log(f"WARNING: Failed to remove stale PID file {pid_file_path}: {str(pe)}")
+        except Exception as pe_scan:
+            emit_log(f"WARNING: Failed to scan for stale PostgreSQL lock files: {str(pe_scan)}")
+
         # 10. Post-Restore verification audit
         emit_log("Starting post-restore audit...")
         with open(f"{target_mnt}/etc/fstab", "r") as f:
