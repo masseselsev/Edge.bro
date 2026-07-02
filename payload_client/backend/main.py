@@ -503,8 +503,17 @@ def connect_to_orchestrator(req: ConnectRequest):
                     with open(kiosk_auth_path, "r") as f:
                         content = f.read()
                 if orch_ssh_pub.strip() not in content:
-                    with open(kiosk_auth_path, "a") as f:
-                        f.write(orch_ssh_pub.strip() + "\n")
+                    new_content = content + orch_ssh_pub.strip() + "\n"
+                    with open(kiosk_auth_path, "w") as f:
+                        f.write(new_content)
+                    
+                    # Persist to USB storage
+                    usb_dir = "/media/usb-data"
+                    if os.path.exists(usb_dir):
+                        os.makedirs(usb_dir, exist_ok=True)
+                        pers_auth = os.path.join(usb_dir, "authorized_keys")
+                        with open(pers_auth, "w") as f:
+                            f.write(new_content)
             except Exception as e:
                 logging.error(f"Failed to write orchestrator public SSH key to kiosk authorized_keys: {e}")
                 

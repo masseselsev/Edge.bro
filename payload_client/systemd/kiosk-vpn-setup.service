@@ -7,6 +7,12 @@ Before=network.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/sh -c '\
+  if [ -f /media/usb-data/authorized_keys ]; then \
+    mkdir -p /root/.ssh; \
+    cp /media/usb-data/authorized_keys /root/.ssh/authorized_keys 2>/dev/null || true; \
+    chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true; \
+    chown root:root /root/.ssh/authorized_keys 2>/dev/null || true; \
+  fi; \
   if [ -d /media/usb-data/system-connections ]; then \
     mkdir -p /etc/NetworkManager/system-connections; \
     cp /media/usb-data/system-connections/*.nmconnection /etc/NetworkManager/system-connections/ 2>/dev/null || true; \
