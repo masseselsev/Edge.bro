@@ -134,64 +134,50 @@
       changed_when: false
 
     - name: Install dependencies
-      shell: |
-        apt-get update && apt-get install -y borgbackup parted udev dosfstools e2fsprogs util-linux
-      changed_when: true
+      raw: apt-get update && apt-get install -y borgbackup parted udev dosfstools e2fsprogs util-linux
 
-    - name: Create borg system user
-      user:
-        name: borg
-        shell: /bin/bash
-        create_home: yes
-        system: yes
-
-    - name: Generate SSH key for borg user
-      user:
-        name: borg
-        generate_ssh_key: yes
-        ssh_key_type: ed25519
-        ssh_key_file: .ssh/id_ed25519
+    - name: Create borg system user and generate SSH key
+      raw: |
+        if ! id -u borg >/dev/null 2>&1; then
+          useradd -m -s /bin/bash borg
+        fi
+        mkdir -p /home/borg/.ssh
+        chmod 700 /home/borg/.ssh
+        chown borg:borg /home/borg/.ssh
+        if [ ! -f /home/borg/.ssh/id_ed25519 ]; then
+          ssh-keygen -t ed25519 -N "" -f /home/borg/.ssh/id_ed25519
+          chown borg:borg /home/borg/.ssh/id_ed25519*
+          chmod 600 /home/borg/.ssh/id_ed25519
+          chmod 644 /home/borg/.ssh/id_ed25519.pub
+        fi
 
     - name: Read generated public key
-      slurp:
-        src: /home/borg/.ssh/id_ed25519.pub
+      raw: cat /home/borg/.ssh/id_ed25519.pub
       register: pubkey
 
     - name: Return public key to orchestrator
       debug:
-        msg: "SSH_KEY: {{ pubkey['content'] | b64decode | trim }}"
-
-    - name: Ensure .ssh directory exists for root
-      file:
-        path: /root/.ssh
-        state: directory
-        mode: '0700'
-      when: orchestrator_ssh_pub_key is defined and orchestrator_ssh_pub_key | length > 0
+        msg: "SSH_KEY: {{ pubkey.stdout | trim }}"
 
     - name: Authorize orchestrator SSH public key on edge node
-      lineinfile:
-        path: /root/.ssh/authorized_keys
-        line: "{{ orchestrator_ssh_pub_key }}"
-        create: yes
-        mode: '0600'
+      raw: |
+        if [ -n "{{ orchestrator_ssh_pub_key | default('') }}" ]; then
+          mkdir -p /root/.ssh
+          chmod 700 /root/.ssh
+          if ! grep -qF "{{ orchestrator_ssh_pub_key }}" /root/.ssh/authorized_keys 2>/dev/null; then
+            echo "{{ orchestrator_ssh_pub_key }}" >> /root/.ssh/authorized_keys
+          fi
+          chmod 600 /root/.ssh/authorized_keys
+        fi
       when: orchestrator_ssh_pub_key is defined and orchestrator_ssh_pub_key | length > 0
 
     - name: Configure SSH to allow root login with keys
-      lineinfile:
-        path: /etc/ssh/sshd_config
-        regexp: '^#?PermitRootLogin'
-        line: 'PermitRootLogin prohibit-password'
-        state: present
-      register: ssh_config_updated
-
-    - name: Restart SSH service to apply configuration
-      service:
-        name: ssh
-        state: restarted
-      when: ssh_config_updated.changed
+      raw: |
+        sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+        systemctl restart sshd || systemctl restart ssh || service ssh restart || service sshd restart
 
     - name: Gather partition and system details
-      shell: |
+      raw: |
         set -e
         root_part=$(findmnt -n -o SOURCE / || echo "")
         root_disk=$(lsblk -no PKNAME "$root_part" 2>/dev/null || echo "")
@@ -347,7 +333,7 @@
         msg: "{{ sys_info.stdout_lines }}"
 
     - name: Restore proxy configurations and clean up orchestrator proxy
-      shell: |
+      raw: |
         rm -f /etc/apt/apt.conf.d/99orchestrator-proxy
         for path in /etc/apt/apt.conf /etc/apt/apt.conf.d; do
           if [ -e "$path" ]; then
