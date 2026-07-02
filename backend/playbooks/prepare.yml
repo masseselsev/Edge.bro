@@ -2,6 +2,8 @@
 - name: Auto-Prepare Edge Node (Fix Labels & Configure Fstab)
   hosts: all
   become: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
   tasks:
     - name: Run prepare tasks in block to handle errors and rollbacks
       block:
