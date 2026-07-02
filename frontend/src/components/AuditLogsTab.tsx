@@ -48,8 +48,10 @@ export default function AuditLogsTab({ timezone, type }: AuditLogsTabProps) {
   };
 
   useEffect(() => {
+    setSearchTerm('');
+    setCurrentPage(1);
     fetchLogs();
-  }, []);
+  }, [type]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
