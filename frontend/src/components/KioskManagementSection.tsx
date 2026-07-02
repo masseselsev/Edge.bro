@@ -281,9 +281,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                 <tr className="border-b border-zinc-800 text-zinc-400 font-semibold bg-zinc-950/40">
                   <th className="py-3 px-4">{t('kioskNameLabel') || 'Name'}</th>
                   <th className="py-3 px-4">{t('kioskUuidLabel') || 'UUID'}</th>
-                  <th className="py-3 px-4">{t('keyLabel') || 'Pairing Key'}</th>
                   <th className="py-3 px-4">{t('statusLabel') || 'Status'}</th>
-                  <th className="py-3 px-4">{t('kioskCreatedAtLabel') || 'Creation Date'}</th>
                   <th className="py-3 px-4">{t('kioskApprovedAtLabel') || 'Approval Date'}</th>
                   <th className="py-3 px-4">{t('ipAddressLabel') || 'IP Address'}</th>
                   <th className="py-3 px-4 text-right">{t('actionsLabel') || 'Actions'}</th>
@@ -313,105 +311,115 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                       )}
                     </td>
                     <td className="py-3.5 px-4 font-mono text-zinc-400 select-all">
-                      {kiosk.kiosk_id.startsWith('PENDING-') ? <span className="text-zinc-500 italic">{t('kioskPending') || 'Pending...'}</span> : kiosk.kiosk_id}
-                    </td>
-                    <td className="py-3.5 px-4 font-mono">
-                      {kiosk.auth_token ? (
-                        <div className="font-bold text-indigo-400 select-all" title="Kiosk Authentication Token">
-                          {kiosk.auth_token}
+                      <div className="relative group cursor-help inline-block">
+                        <span>
+                          {kiosk.kiosk_id.startsWith('PENDING-') 
+                            ? <span className="text-zinc-500 italic">{t('kioskPending') || 'Pending...'}</span> 
+                            : kiosk.kiosk_id}
+                        </span>
+                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 px-2 py-1 bg-zinc-950/95 backdrop-blur-md text-zinc-200 text-[10px] rounded-lg border border-zinc-800 shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap pointer-events-none z-50 font-sans scale-95 group-hover:scale-100">
+                          <span className="text-zinc-500 font-bold mr-1">
+                            {kiosk.auth_token ? 'Auth Token:' : 'Pairing Key:'}
+                          </span>
+                          <span className="font-mono font-black text-indigo-400">
+                            {kiosk.auth_token || kiosk.key}
+                          </span>
                         </div>
-                      ) : (
-                        <div className="font-bold text-amber-400 select-all" title="Pairing Key">
-                          {kiosk.key}
-                        </div>
-                      )}
+                      </div>
                     </td>
                     <td className="py-3.5 px-4 font-semibold">
-                      {kiosk.status === 'APPROVED' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          <CheckCircle size={10} /> {t('kioskStatusApprovedLabel') || 'Active'}
-                        </span>
-                      ) : kiosk.status === 'DISABLED' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
-                          <ShieldAlert size={10} /> {t('kioskStatusDisabledLabel') || 'Disabled'}
-                        </span>
-                      ) : kiosk.status === 'PENDING' && kiosk.kiosk_id && !kiosk.kiosk_id.startsWith('PENDING-') ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
-                          <ShieldAlert size={10} /> {t('kioskStatusPendingLabel') || 'Re-activation Request'}
-                        </span>
-                      ) : kiosk.status === 'REVOKED' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                          <ShieldAlert size={10} /> {t('kioskRevoked') || 'Access Revoked'}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                          <RefreshCw size={10} className="animate-spin-slow" /> {t('kioskPending') || 'Pending Connection'}
-                        </span>
-                      )}
+                      <div className="space-y-1">
+                        <div>
+                          {kiosk.status === 'APPROVED' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <CheckCircle size={10} /> {t('kioskStatusApprovedLabel') || 'Active'}
+                            </span>
+                          ) : kiosk.status === 'DISABLED' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
+                              <ShieldAlert size={10} /> {t('kioskStatusDisabledLabel') || 'Disabled'}
+                            </span>
+                          ) : kiosk.status === 'PENDING' && kiosk.kiosk_id && !kiosk.kiosk_id.startsWith('PENDING-') ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
+                              <ShieldAlert size={10} /> {t('kioskStatusPendingLabel') || 'Re-activation Request'}
+                            </span>
+                          ) : kiosk.status === 'REVOKED' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                              <ShieldAlert size={10} /> {t('kioskRevoked') || 'Access Revoked'}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                              <RefreshCw size={10} className="animate-spin-slow" /> {t('kioskPending') || 'Pending Connection'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-zinc-500 font-mono">
+                          <span className="text-zinc-600 font-sans mr-0.5">{t('kioskCreatedAtLabel') || 'Created'}:</span>{' '}
+                          {kiosk.created_at ? new Date(kiosk.created_at).toLocaleString() : '—'}
+                        </div>
+                      </div>
                     </td>
-                    <td className="py-3.5 px-4 text-zinc-305 font-mono">
-                      {kiosk.created_at ? new Date(kiosk.created_at).toLocaleString() : <span className="text-zinc-650">—</span>}
-                    </td>
-                    <td className="py-3.5 px-4 text-zinc-305 font-mono">
+                    <td className="py-3.5 px-4 text-zinc-350 font-mono">
                       {kiosk.approved_at ? new Date(kiosk.approved_at).toLocaleString() : <span className="text-zinc-650">—</span>}
                     </td>
                     <td className="py-3.5 px-4 text-zinc-300 font-mono">
                       {kiosk.ip_address || <span className="text-zinc-600">—</span>}
                     </td>
-                    <td className="py-3.5 px-4 text-right space-x-2 whitespace-nowrap">
-                      {/* Toggle Active state (Block/Unblock) */}
-                      {(kiosk.status === 'APPROVED' || kiosk.status === 'DISABLED' || (kiosk.status === 'PENDING' && !kiosk.kiosk_id.startsWith('PENDING-'))) && (
+                    <td className="py-3.5 px-4">
+                      <div className="flex flex-wrap gap-1.5 justify-end max-w-[190px] ml-auto">
+                        {/* Toggle Active state (Block/Unblock) */}
+                        {(kiosk.status === 'APPROVED' || kiosk.status === 'DISABLED' || (kiosk.status === 'PENDING' && !kiosk.kiosk_id.startsWith('PENDING-'))) && (
+                          <button
+                            onClick={() => handleToggleActive(kiosk.id)}
+                            className={`w-[85px] py-1 border rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis ${
+                              kiosk.status === 'APPROVED'
+                                ? 'bg-amber-950/20 border-amber-900/30 hover:border-amber-900/60 hover:bg-amber-950/40 text-amber-400'
+                                : 'bg-emerald-950/20 border-emerald-900/30 hover:border-emerald-900/60 hover:bg-emerald-950/40 text-emerald-400'
+                            }`}
+                          >
+                            {kiosk.status === 'APPROVED' ? t('kioskActionDisable') : t('kioskActionEnable')}
+                          </button>
+                        )}
+
+                        {/* Download Kiosk ISO */}
+                        {kiosk.iso_exists ? (
+                          <a
+                            href={`/api/iso/kiosks/${kiosk.id}/download`}
+                            className="inline-block w-[85px] py-1 bg-indigo-950/20 border border-indigo-900/30 hover:border-indigo-900/60 hover:bg-indigo-950/40 text-indigo-400 rounded text-[10px] font-bold transition-all text-center whitespace-nowrap overflow-hidden text-ellipsis"
+                          >
+                            {t('kioskActionDownload')}
+                          </a>
+                        ) : (
+                          <span className="w-[85px] py-1 bg-zinc-950/40 border border-zinc-800 text-zinc-550 italic text-[10px] rounded text-center whitespace-nowrap overflow-hidden text-ellipsis inline-block" title={t('issueKioskPrunedMsg')}>
+                            {t('kioskStatusPruned') || 'Pruned'}
+                          </span>
+                        )}
+
+                        {/* Re-create ISO */}
                         <button
-                          onClick={() => handleToggleActive(kiosk.id)}
-                          className={`px-2 py-1 border rounded text-[10px] font-bold transition-all cursor-pointer ${
-                            kiosk.status === 'APPROVED'
-                              ? 'bg-amber-950/20 border-amber-900/30 hover:border-amber-900/60 hover:bg-amber-950/40 text-amber-400'
-                              : 'bg-emerald-950/20 border-emerald-900/30 hover:border-emerald-900/60 hover:bg-emerald-950/40 text-emerald-400'
-                          }`}
+                          onClick={() => handleRecreateIso(kiosk.id)}
+                          className="w-[85px] py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis"
+                          title="Recreate ISO image"
                         >
-                          {kiosk.status === 'APPROVED' ? t('kioskActionDisable') : t('kioskActionEnable')}
+                          {t('kioskActionRecreate')}
                         </button>
-                      )}
 
-                      {/* Download Kiosk ISO */}
-                      {kiosk.iso_exists ? (
-                        <a
-                          href={`/api/iso/kiosks/${kiosk.id}/download`}
-                          className="inline-block px-2 py-1 bg-indigo-950/20 border border-indigo-900/30 hover:border-indigo-900/60 hover:bg-indigo-950/40 text-indigo-400 rounded text-[10px] font-bold transition-all"
+                        {/* Edit Kiosk */}
+                        <button
+                          onClick={() => handleEditClick(kiosk)}
+                          className="w-[85px] py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-350 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-650 rounded text-[10px] font-bold transition-all cursor-pointer inline-flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis"
+                          title={t('editLabel') || 'Edit'}
                         >
-                          {t('kioskActionDownload')}
-                        </a>
-                      ) : (
-                        <span className="text-[10px] text-zinc-550 italic" title={t('issueKioskPrunedMsg')}>
-                          {t('kioskStatusPruned') || 'Pruned'}
-                        </span>
-                      )}
+                          <Edit2 size={10} /> {t('editLabel') || 'Edit'}
+                        </button>
 
-                      {/* Re-create ISO */}
-                      <button
-                        onClick={() => handleRecreateIso(kiosk.id)}
-                        className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-bold transition-all cursor-pointer"
-                        title="Recreate ISO image"
-                      >
-                        {t('kioskActionRecreate')}
-                      </button>
-
-                      {/* Edit Kiosk */}
-                      <button
-                        onClick={() => handleEditClick(kiosk)}
-                        className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-350 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-650 rounded text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1"
-                        title={t('editLabel') || 'Edit'}
-                      >
-                        <Edit2 size={10} /> {t('editLabel') || 'Edit'}
-                      </button>
-
-                      {/* Delete Kiosk */}
-                      <button
-                        onClick={() => handleDelete(kiosk.id)}
-                        className="px-2 py-1 bg-zinc-800 hover:bg-rose-900/30 hover:text-rose-400 text-zinc-400 rounded text-[10px] font-bold transition-all cursor-pointer"
-                      >
-                        {t('deleteLabel') || 'Delete'}
-                      </button>
+                        {/* Delete Kiosk */}
+                        <button
+                          onClick={() => handleDelete(kiosk.id)}
+                          className="w-[85px] py-1 bg-zinc-800 hover:bg-rose-900/30 hover:text-rose-400 text-zinc-400 rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis"
+                        >
+                          {t('deleteLabel') || 'Delete'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
