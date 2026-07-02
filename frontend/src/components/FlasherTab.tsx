@@ -26,6 +26,7 @@ interface Snapshot {
   archive_name: string;
   timestamp: string;
   original_size: number;
+  deduplicated_size: number;
   comment: string | null;
 }
 
@@ -331,7 +332,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   const snapshotOptions = snapshots.map(s => ({
     value: s.archive_name,
     label: s.archive_name,
-    sublabel: `${formatDate(s.timestamp, timezone)} (${getFormatSize(s.original_size)})${s.comment ? ` — ${s.comment}` : ''}`,
+    sublabel: `${formatDate(s.timestamp, timezone)} (${getFormatSize(s.original_size)} ${t('sizeOnDisk') || 'on disk'} / ${getFormatSize(s.deduplicated_size)} ${t('archiveSize') || 'archive'})${s.comment ? ` — ${s.comment}` : ''}`,
     disabled: false
   }));
 
