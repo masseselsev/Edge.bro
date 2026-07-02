@@ -129,6 +129,30 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
     });
   };
 
+  const getSelectedMetrics = () => {
+    const selectedItems = filteredHistory.filter(h => {
+      const key = `${h.node_id}-${h.archive_name}`;
+      return !!selectedArchives[key];
+    });
+    if (selectedItems.length === 0) return { totalOriginal: 0, totalEstimatedDownload: 0 };
+
+    const sorted = [...selectedItems].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const totalOriginal = selectedItems.reduce((acc, h) => acc + h.original_size, 0);
+
+    const baseItem = sorted[0];
+    const baseCompressed = Math.max(baseItem.deduplicated_size, Math.round(baseItem.original_size * 0.4));
+
+    let additionalDelta = 0;
+    for (let i = 1; i < sorted.length; i++) {
+      additionalDelta += sorted[i].deduplicated_size;
+    }
+
+    return {
+      totalOriginal,
+      totalEstimatedDownload: baseCompressed + additionalDelta
+    };
+  };
+
   const handleCopyToLocal = async () => {
     if (selectedNodeForSync === null) return;
     const node = nodes.find(n => n.id === selectedNodeForSync);
@@ -362,6 +386,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
             <th className="px-6 py-3">{t('timestampColumn')}</th>
             <th className="px-6 py-3">{t('originalSizeColumn')}</th>
             <th className="px-6 py-3">{t('dedupSizeColumn')}</th>
+            <th className="px-6 py-3">{t('estDownloadSizeColumn') || 'Est. Download Size'}</th>
             <th className="px-6 py-3">{t('statusColumn')}</th>
           </tr>
         </thead>
@@ -417,6 +442,9 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                 <td className="px-6 py-3.5 text-zinc-400">{formatDate(h.timestamp, timezone)}</td>
                 <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.original_size)}</td>
                 <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
+                <td className="px-6 py-3.5 text-zinc-300">
+                  {getFormatSize(Math.max(h.deduplicated_size, Math.round(h.original_size * 0.4)))}
+                </td>
                 <td className="px-6 py-3.5">
                   {h.status === 'SUCCESS' ? (
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Success</span>
@@ -815,8 +843,15 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                     </p>
                     <p className="text-[10px] text-zinc-400 mt-0.5">
                       Selected {Object.keys(selectedArchives).filter(k => selectedArchives[k]).length} archive(s) from node:{' '}
-                      <span className="font-semibold text-indigo-400">
+                      <span className="font-semibold text-indigo-400 mr-2">
                         {nodes.find(n => n.id === selectedNodeForSync)?.hostname || 'Unknown'}
+                      </span>
+                      | {t('estDownloadSizeColumn') || 'Est. Download Size'}:{' '}
+                      <span className="font-bold text-emerald-400">
+                        {getFormatSize(getSelectedMetrics().totalEstimatedDownload)}
+                      </span>{' '}
+                      <span className="text-[9px] text-zinc-500 font-normal">
+                        ({t('originalSizeColumn') || 'Original Size'}: {getFormatSize(getSelectedMetrics().totalOriginal)})
                       </span>
                     </p>
                   </div>

@@ -271,6 +271,13 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         # Inject Unified version configuration
         shutil.copy2("/app/version.py", os.path.join(opt_offline, "backend", "version.py"))
 
+        # Inject static borg binary
+        borg_src = "/payload_client/bin/borg"
+        if os.path.exists(borg_src):
+            borg_dst_dir = os.path.join(payload_dir, "usr", "local", "bin")
+            os.makedirs(borg_dst_dir, exist_ok=True)
+            shutil.copy2(borg_src, os.path.join(borg_dst_dir, "borg"))
+
         # Inject Frontend Build (mapped via named volume to /opt/frontend_build)
         if os.path.exists("/opt/frontend_build"):
             shutil.copytree("/opt/frontend_build", os.path.join(opt_offline, "backend", "frontend_build"))
