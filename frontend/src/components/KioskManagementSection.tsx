@@ -319,10 +319,10 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                         </span>
                         <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 px-2 py-1 bg-zinc-950/95 backdrop-blur-md text-zinc-200 text-[10px] rounded-lg border border-zinc-800 shadow-2xl opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap pointer-events-none z-50 font-sans scale-95 group-hover:scale-100">
                           <span className="text-zinc-500 font-bold mr-1">
-                            {kiosk.auth_token ? 'Auth Token:' : 'Pairing Key:'}
+                            {t('kioskPairingKeyTooltip') || 'Pairing Key:'}
                           </span>
                           <span className="font-mono font-black text-indigo-400">
-                            {kiosk.auth_token || kiosk.key}
+                            {kiosk.key}
                           </span>
                         </div>
                       </div>
