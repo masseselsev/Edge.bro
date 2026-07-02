@@ -181,49 +181,96 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
     hostname = None
     partitions = None
     efi_uuid = "458C-37BB"
-    
-    global restore_mode
-    if restore_mode == "online":
-        try:
-            task_logs[task_id] += "Fetching node configuration from orchestrator...\n"
-            nodes_req = urllib.request.Request(
-                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes",
-                headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
-            )
-            with urllib.request.urlopen(nodes_req, timeout=5) as response:
-                nodes_data = json.loads(response.read().decode())
-            for n in nodes_data:
-                if n["id"] == req.node_id:
-                    hostname = n["hostname"]
-                    partitions = n.get("partition_layout")
-                    efi_uuid = n.get("efi_uuid") or efi_uuid
-                    break
-        except Exception as e:
-            task_logs[task_id] += f"WARNING: Failed to fetch partition layout from orchestrator: {e}. Falling back to default layout.\n"
-    else:
-        nodes = get_kiosk_nodes()
-        for n in nodes:
-            if n["id"] == req.node_id:
-                hostname = n["hostname"].split(" (")[0]
-                break
-        if hostname:
-            layout_path = os.path.join(local_storage_path, "borg", "fleet", hostname, "partition_layout.json")
-            if os.path.exists(layout_path):
-                try:
-                    with open(layout_path, "r") as f:
-                        layout_data = json.load(f)
-                        partitions = layout_data.get("partition_layout")
-                        efi_uuid = layout_data.get("efi_uuid") or efi_uuid
-                except Exception as e:
-                    task_logs[task_id] += f"WARNING: Failed to load cached partition layout: {e}\n"
+
+    # Resolve hostname
+    nodes = get_kiosk_nodes()
+    for n in nodes:
+        if n["id"] == req.node_id:
+            hostname = n["hostname"].split(" (")[0]
+            break
 
     if not hostname:
         task_status[task_id] = "FAILED"
         task_logs[task_id] += "ERROR: Selected node not found.\n"
         return
 
+    # Check if archive exists in local USB cache
+    local_repo = os.path.join(local_storage_path, "borg", "fleet", hostname)
+    archive_exists_locally = False
+    if os.path.exists(local_repo):
+        env = os.environ.copy()
+        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
+        try:
+            out = subprocess.check_output(["borg", "list", "--json", local_repo], env=env, text=True)
+            data = json.loads(out)
+            for a in data.get("archives", []):
+                if a["name"] == req.archive_name:
+                    archive_exists_locally = True
+                    break
+        except Exception:
+            pass
+
+    # Resolve repository path and load layout
+    if archive_exists_locally:
+        log_callback(f"Archive {req.archive_name} found in local USB cache. Using offline restore.")
+        repo_path = local_repo
+        
+        # Load local partition layout
+        layout_path = os.path.join(local_repo, "partition_layout.json")
+        if os.path.exists(layout_path):
+            try:
+                with open(layout_path, "r") as f:
+                    layout_data = json.load(f)
+                    partitions = layout_data.get("partition_layout")
+                    efi_uuid = layout_data.get("efi_uuid") or efi_uuid
+                    log_callback("Loaded partition layout from local cache.")
+            except Exception as e:
+                log_callback(f"WARNING: Failed to load cached partition layout: {e}")
+    else:
+        global restore_mode
+        if restore_mode == "online":
+            log_callback("Using online restore from orchestrator.")
+            repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}/data/borg/fleet/{hostname}"
+        else:
+            log_callback("Online mode is unavailable. Attempting offline restore from local cache.")
+            repo_path = local_repo
+
+    # Fallback to fetching layout from orchestrator if not yet loaded and online
     if not partitions:
-        task_logs[task_id] += "Using default fallback partition layout.\n"
+        global restore_mode
+        if restore_mode == "online":
+            try:
+                log_callback("Fetching node configuration from orchestrator...")
+                nodes_req = urllib.request.Request(
+                    f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes",
+                    headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+                )
+                with urllib.request.urlopen(nodes_req, timeout=5) as response:
+                    nodes_data = json.loads(response.read().decode())
+                for n in nodes_data:
+                    if n["id"] == req.node_id:
+                        partitions = n.get("partition_layout")
+                        efi_uuid = n.get("efi_uuid") or efi_uuid
+                        break
+            except Exception as e:
+                log_callback(f"WARNING: Failed to fetch partition layout from orchestrator: {e}")
+
+    # Fallback to cached layout if still not loaded
+    if not partitions:
+        layout_path = os.path.join(local_repo, "partition_layout.json")
+        if os.path.exists(layout_path):
+            try:
+                with open(layout_path, "r") as f:
+                    layout_data = json.load(f)
+                    partitions = layout_data.get("partition_layout")
+                    efi_uuid = layout_data.get("efi_uuid") or efi_uuid
+                    log_callback("Loaded partition layout from local cache fallback.")
+            except Exception as e:
+                log_callback(f"WARNING: Failed to load cached partition layout: {e}")
+
+    # Ultimate fallback layout
+    if not partitions:
+        log_callback("Using default fallback partition layout.")
         partitions = [
             {"name": "ESP", "mount": "/boot/efi", "fstype": "vfat", "label": "EFI", "uuid": "458C-37BB", "size_bytes": 512 * 1024 * 1024},
             {"name": "boot", "mount": "/boot", "fstype": "ext2", "label": "edgeboot", "uuid": "", "size_bytes": 1024 * 1024 * 1024},
@@ -231,11 +278,6 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
             {"name": "log", "mount": "/var/log/edge", "fstype": "ext4", "label": "edgelog", "uuid": "", "size_bytes": 5 * 1024 * 1024 * 1024},
             {"name": "storage", "mount": "/var/opt/edge", "fstype": "ext4", "label": "edgestor", "uuid": "", "size_bytes": 0}
         ]
-
-    if restore_mode == "online":
-        repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}/data/borg/fleet/{hostname}"
-    else:
-        repo_path = os.path.join(local_storage_path, "borg", "fleet", hostname)
 
     try:
         format_and_restore(
