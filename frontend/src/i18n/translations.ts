@@ -593,7 +593,10 @@ export const translations: Record<Language, Record<string, string>> = {
     loadingFleetData: 'Loading fleet data...',
     noNodesMatchFilter: 'No nodes match your filter.',
     saveConnection: 'Save Connection',
-    vpnProfileHint: 'Scan a WireGuard QR code or paste standard configuration file text manually.'
+    vpnProfileHint: 'Scan a WireGuard QR code or paste standard configuration file text manually.',
+    imageCreatedAt: 'Image Created',
+    baseImageTitle: 'Base Image Note',
+    baseImageInstruction: 'This is the base offline client system. Changing configurations here updates the template. After compiling a new base image, any custom kiosks below should be regenerated to inherit the updates.'
   },
   ru: {
     // Navigation / Tabs
@@ -1186,7 +1189,10 @@ export const translations: Record<Language, Record<string, string>> = {
     loadingFleetData: 'Загрузка данных узлов...',
     noNodesMatchFilter: 'Нет узлов, соответствующих вашему фильтру.',
     saveConnection: 'Сохранить подключение',
-    vpnProfileHint: 'Отсканируйте QR-код WireGuard или вставьте текст стандартного файла конфигурации вручную.'
+    vpnProfileHint: 'Отсканируйте QR-код WireGuard или вставьте текст стандартного файла конфигурации вручную.',
+    imageCreatedAt: 'Дата создания образа',
+    baseImageTitle: 'Базовый образ',
+    baseImageInstruction: 'Это базовый образ системы офлайн-клиента. Изменение настроек здесь обновляет общий шаблон. После сборки базового образа необходимо пересобрать киоски ниже, чтобы применить изменения.'
   },
   uk: {
     // Navigation / Tabs
@@ -1776,6 +1782,9 @@ export const translations: Record<Language, Record<string, string>> = {
     loadingFleetData: 'Завантаження даних вузлів...',
     noNodesMatchFilter: 'Немає вузлів, що відповідають вашому фільтру.',
     saveConnection: 'Зберегти підключення',
-    vpnProfileHint: 'Відсканируйте QR-код WireGuard або вставте текст стандартного файлу конфігурації вручну.'
+    vpnProfileHint: 'Відсканируйте QR-код WireGuard або вставте текст стандартного файлу конфігурації вручну.',
+    imageCreatedAt: 'Дата створення образу',
+    baseImageTitle: 'Базовий образ',
+    baseImageInstruction: 'Це базовий образ системи офлайн-клієнта. Зміна налаштувань тут оновлює загальний шаблон. Після збирання базового образу необхідно перезібрати кіоски нижче, щоб застосувати зміни.'
   }
 };

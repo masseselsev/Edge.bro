@@ -540,6 +540,19 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         ], on_log_line=on_repack_line)
 
         log_to_task(task_id, "[PROGRESS] 100:Client ISO generated successfully!", status="SUCCESS")
+        
+        # Auto-regenerate any existing approved kiosks to build on top of the new base ISO
+        try:
+            db_reg = SessionLocal()
+            from models import Kiosk
+            approved_kiosks = db_reg.query(Kiosk).filter(Kiosk.status == "APPROVED").all()
+            for kiosk in approved_kiosks:
+                logger.info(f"Auto-triggering rebuild for approved kiosk {kiosk.kiosk_id} after base ISO update.")
+                repack_kiosk_iso_task.delay(kiosk.id)
+            db_reg.close()
+        except Exception as e_kiosk:
+            logger.error(f"Failed to auto-trigger kiosk ISO rebuild: {e_kiosk}")
+
         return {"status": "SUCCESS"}
 
     except Exception as e:

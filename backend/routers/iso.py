@@ -131,7 +131,17 @@ def get_iso_status(auth = Depends(require_admin)):
     base_exists = os.path.exists(base_iso_path) and os.path.getsize(base_iso_path) > 1000 * 1024 * 1024
     tmp_path = os.path.join(CACHE_DIR, "base.iso.tmp")
     lock_path = os.path.join(CACHE_DIR, "download.lock")
-    client_exists = os.path.exists(os.path.join(CACHE_DIR, "technician_client_v1.iso"))
+    client_iso_path = os.path.join(CACHE_DIR, "technician_client_v1.iso")
+    client_exists = os.path.exists(client_iso_path)
+    
+    client_created_at = None
+    if client_exists:
+        try:
+            mtime = os.path.getmtime(client_iso_path)
+            from datetime import datetime, timezone
+            client_created_at = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+        except:
+            pass
     
     progress = -1
     speed_str = ""
@@ -196,6 +206,7 @@ def get_iso_status(auth = Depends(require_admin)):
         "base_iso_progress": progress,
         "base_iso_speed": speed_str,
         "client_iso_ready": client_exists,
+        "client_iso_created_at": client_created_at,
         "iso_cache_free_space": free,
         "iso_cache_total_space": total
     }

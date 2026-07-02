@@ -11,6 +11,7 @@ interface IsoStatus {
   base_iso_speed?: string;
   iso_cache_free_space?: number;
   iso_cache_total_space?: number;
+  client_iso_created_at?: string;
 }
 
 const formatBytes = (bytes: number) => {
@@ -458,6 +459,21 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                 {isGenerating ? <RefreshCw className="animate-spin" size={18} /> : <Cpu size={18} />}
                 {isGenerating ? (t('generatingUsb') || 'Generating...') : (t('generateUsbButton') || 'GENERATE LIVE-USB')}
               </button>
+
+              {status?.client_iso_ready && status.client_iso_created_at && (
+                <div className="mt-3.5 space-y-2 border-t border-zinc-800/60 pt-3">
+                  <div className="text-[10px] text-zinc-400 font-semibold flex items-center justify-center gap-1.5">
+                    <span className="text-zinc-500">{t('imageCreatedAt') || 'Image Created'}:</span>
+                    <span className="text-zinc-300 font-mono bg-zinc-950 px-2 py-0.5 rounded border border-zinc-850/60">
+                      {new Date(status.client_iso_created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-zinc-400 leading-normal bg-zinc-950/65 border border-zinc-800/80 rounded-xl p-3 text-center">
+                    <span className="text-amber-500 font-bold block mb-1">⚠️ {t('baseImageTitle') || 'Base Image Note'}</span>
+                    {t('baseImageInstruction') || 'This is the base offline client system. Changing configurations here updates the template. After compiling a new base image, any custom kiosks below should be regenerated to inherit the updates.'}
+                  </div>
+                </div>
+              )}
             </form>
 
             <div className="border-t border-zinc-800/80 pt-4 space-y-4">
