@@ -168,7 +168,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
 
   const fetchNodes = async () => {
     try {
-      const res = await fetch('/api/nodes');
+      const res = await fetch(`/api/nodes?mode=${restoreMode}`);
       if (res.ok) {
         const data = await res.json();
         setNodes(Array.isArray(data) ? data : []);
@@ -219,7 +219,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   const fetchSnapshots = async (nodeId: number) => {
     setLoadingSnapshots(true);
     try {
-      const res = await fetch(`/api/nodes/${nodeId}/history`);
+      const res = await fetch(`/api/nodes/${nodeId}/history?mode=${restoreMode}`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -293,7 +293,8 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
           target_dev: selectedDevice,
           override_mismatch: overrideChecked,
           keep_network_configs: keepNetworkConfigs,
-          wipe_mac_bindings: wipeMacBindings
+          wipe_mac_bindings: wipeMacBindings,
+          restore_mode: restoreMode
         })
       });
       const data = await res.json();
