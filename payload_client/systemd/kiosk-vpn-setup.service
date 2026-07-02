@@ -13,6 +13,13 @@ ExecStart=/bin/sh -c '\
     chmod 600 /etc/NetworkManager/system-connections/*.nmconnection 2>/dev/null || true; \
     chown root:root /etc/NetworkManager/system-connections/*.nmconnection 2>/dev/null || true; \
     nmcli connection reload 2>/dev/null || true; \
+    (sleep 10; \
+     for conn in /etc/NetworkManager/system-connections/*.nmconnection; do \
+       if [ -f "$conn" ]; then \
+         name=$(grep -E "^id=" "$conn" | cut -d= -f2- | xargs || basename "$conn" .nmconnection); \
+         nmcli connection up id "$name" 2>/dev/null || true; \
+       fi; \
+     done) & \
   fi; \
   if [ -f /media/usb-data/wg0.conf ]; then \
     mkdir -p /etc/wireguard; \

@@ -39,24 +39,56 @@ local_storage_path = "/media/usb-data"
 available_server_ips = []
 autocheck_in_thread_started = False
 
+cfg = {}
 if os.path.exists(CONFIG_PATH):
     try:
         with open(CONFIG_PATH, "r") as f:
             cfg = json.load(f)
-            orchestrator_ip = cfg.get("orchestrator_ip", "127.0.0.1")
-            orchestrator_api_port = cfg.get("orchestrator_api_port", 8000)
-            orchestrator_ssh_port = cfg.get("orchestrator_ssh_port", 12345)
-            auth_token = cfg.get("auth_token", "")
-            language = cfg.get("language", "en")
-            kiosk_id = cfg.get("kiosk_id", "")
-            restore_mode = cfg.get("restore_mode", "online" if auth_token else "offline")
-            local_storage_path = cfg.get("local_storage_path", "/media/usb-data")
-            available_server_ips = cfg.get("available_server_ips", [])
-            borg_passphrase = cfg.get("borg_passphrase", "")
-            if borg_passphrase:
-                os.environ["BORG_PASSPHRASE"] = borg_passphrase
     except Exception as e:
         logging.error(f"Failed to load config.json: {e}")
+
+PERSISTENT_CONFIG_PATH = "/media/usb-data/config.json"
+if os.path.exists(PERSISTENT_CONFIG_PATH):
+    try:
+        with open(PERSISTENT_CONFIG_PATH, "r") as f:
+            pers_cfg = json.load(f)
+            cfg.update(pers_cfg)
+            logging.info("Loaded persistent configuration from USB storage")
+    except Exception as e:
+        logging.error(f"Failed to load persistent config from USB: {e}")
+
+if cfg:
+    orchestrator_ip = cfg.get("orchestrator_ip", "127.0.0.1")
+    orchestrator_api_port = cfg.get("orchestrator_api_port", 8000)
+    orchestrator_ssh_port = cfg.get("orchestrator_ssh_port", 12345)
+    auth_token = cfg.get("auth_token", "")
+    language = cfg.get("language", "en")
+    kiosk_id = cfg.get("kiosk_id", "")
+    restore_mode = cfg.get("restore_mode", "online" if auth_token else "offline")
+    local_storage_path = cfg.get("local_storage_path", "/media/usb-data")
+    available_server_ips = cfg.get("available_server_ips", [])
+    borg_passphrase = cfg.get("borg_passphrase", "")
+    if borg_passphrase:
+        os.environ["BORG_PASSPHRASE"] = borg_passphrase
+
+
+def save_config(cfg_data):
+    """Saves the configuration to both RAM storage (CONFIG_PATH) and persistent USB storage."""
+    try:
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(cfg_data, f, indent=4)
+    except Exception as e:
+        logging.error(f"Failed to write configuration to {CONFIG_PATH}: {e}")
+        
+    usb_dir = "/media/usb-data"
+    if os.path.exists(usb_dir):
+        try:
+            os.makedirs(usb_dir, exist_ok=True)
+            pers_path = os.path.join(usb_dir, "config.json")
+            with open(pers_path, "w") as f:
+                json.dump(cfg_data, f, indent=4)
+        except Exception as e:
+            logging.error(f"Failed to write configuration to persistent storage: {e}")
 
 
 def generate_kiosk_id() -> str:
@@ -76,8 +108,7 @@ if not kiosk_id:
             with open(CONFIG_PATH, "r") as f:
                 cfg_data = json.load(f)
         cfg_data["kiosk_id"] = kiosk_id
-        with open(CONFIG_PATH, "w") as f:
-            json.dump(cfg_data, f, indent=4)
+        save_config(cfg_data)
     except Exception as e:
         logging.error(f"Failed to save kiosk_id to config.json: {e}")
 
@@ -382,11 +413,7 @@ def enroll_client_kiosk(req: ClientEnrollRequest):
             cfg_data["auth_token"] = token
             cfg_data["restore_mode"] = "offline"
             
-            try:
-                with open(CONFIG_PATH, "w") as f:
-                    json.dump(cfg_data, f, indent=4)
-            except Exception as e:
-                logging.error(f"Failed to write config.json during connection enrollment: {e}")
+            save_config(cfg_data)
                 
         return res_data
     except urllib.error.HTTPError as he:
@@ -464,11 +491,7 @@ def connect_to_orchestrator(req: ConnectRequest):
         cfg_data["auth_token"] = token
         cfg_data["restore_mode"] = "online"
         
-        try:
-            with open(CONFIG_PATH, "w") as f:
-                json.dump(cfg_data, f, indent=4)
-        except Exception as e:
-            logging.error(f"Failed to write config.json during connection pairing: {e}")
+        save_config(cfg_data)
             
         # Append orchestrator public SSH key to kiosk authorized_keys if returned
         if orch_ssh_pub:
@@ -1184,11 +1207,7 @@ def set_kiosk_storage_path(req: StoragePathRequest):
             
     cfg_data["local_storage_path"] = local_storage_path
     
-    try:
-        with open(CONFIG_PATH, "w") as f:
-            json.dump(cfg_data, f, indent=4)
-    except Exception as e:
-        logging.error(f"Failed to write config.json during storage path update: {e}")
+    save_config(cfg_data)
         
     return get_kiosk_storage()
 
