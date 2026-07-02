@@ -52,6 +52,9 @@ if os.path.exists(CONFIG_PATH):
             restore_mode = cfg.get("restore_mode", "online" if auth_token else "offline")
             local_storage_path = cfg.get("local_storage_path", "/media/usb-data")
             available_server_ips = cfg.get("available_server_ips", [])
+            borg_passphrase = cfg.get("borg_passphrase", "")
+            if borg_passphrase:
+                os.environ["BORG_PASSPHRASE"] = borg_passphrase
     except Exception as e:
         logging.error(f"Failed to load config.json: {e}")
 
@@ -551,7 +554,7 @@ def get_mock_stats():
     
     if os.path.exists(repo_path):
         env = os.environ.copy()
-        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
         try:
             out = subprocess.check_output(["borg", "info", "--json", repo_path], env=env, text=True)
             data = json.loads(out)
@@ -614,7 +617,7 @@ def get_kiosk_local_history():
         if not os.path.exists(repo_path):
             continue
         env = os.environ.copy()
-        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
         try:
             out = subprocess.check_output(["borg", "list", "--json", repo_path], env=env, text=True)
             data = json.loads(out)
@@ -665,7 +668,7 @@ def get_local_history(node_id: int):
         return []
     
     env = os.environ.copy()
-    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
     try:
         out = subprocess.check_output(["borg", "list", "--json", repo_path], env=env, text=True)
         data = json.loads(out)

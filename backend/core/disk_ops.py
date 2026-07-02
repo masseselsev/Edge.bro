@@ -393,7 +393,7 @@ def format_and_restore(
         emit_log(f"Extracting archive {archive_name} into {target_mnt}...", prog=45)
 
         env = os.environ.copy()
-        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
         env["PYTHONUNBUFFERED"] = "1"
         env["BORG_RELOCATED_REPO_ACCESS_IS_OK"] = "yes"
 
