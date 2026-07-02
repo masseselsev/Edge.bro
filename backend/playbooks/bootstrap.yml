@@ -134,16 +134,9 @@
       changed_when: false
 
     - name: Install dependencies
-      apt:
-        name:
-          - borgbackup
-          - parted
-          - udev
-          - dosfstools
-          - e2fsprogs
-          - util-linux
-        state: present
-        update_cache: yes
+      shell: |
+        apt-get update && apt-get install -y borgbackup parted udev dosfstools e2fsprogs util-linux
+      changed_when: true
 
     - name: Create borg system user
       user:
