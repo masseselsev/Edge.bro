@@ -426,18 +426,18 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                         {node.hostname}
                       </span>
                     ) : (
-                      <span className="text-zinc-500">Unknown</span>
+                      <span className="text-zinc-500">{t('unknown') || 'Unknown'}</span>
                     )}
                   </td>
                 )}
                 {showNodeInfo && (
                   <td className="px-6 py-3.5 text-zinc-400">
-                    {node ? node.ip_address : 'Unknown'}
+                    {node ? node.ip_address : (t('unknown') || 'Unknown')}
                   </td>
                 )}
                 <td className="px-6 py-3 flex flex-col justify-center">
                   <span className="font-semibold text-zinc-50">{h.archive_name}</span>
-                  {h.comment && <span className="text-[11px] text-zinc-500 mt-0.5 italic">Comment: {h.comment}</span>}
+                  {h.comment && <span className="text-[11px] text-zinc-500 mt-0.5 italic">{t('kioskTableComment') || 'Comment'}: {h.comment}</span>}
                 </td>
                 <td className="px-6 py-3.5 text-zinc-400">{formatDate(h.timestamp, timezone)}</td>
                 <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.original_size)}</td>
@@ -447,9 +447,9 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                 </td>
                 <td className="px-6 py-3.5">
                   {h.status === 'SUCCESS' ? (
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Success</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{t('statusSuccess') || 'Success'}</span>
                   ) : (
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">Failed</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">{t('statusFailed') || 'Failed'}</span>
                   )}
                 </td>
               </tr>
@@ -617,11 +617,11 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
               <h3 className="text-lg font-bold text-zinc-50">{t('purgeWarningTitle')}</h3>
             </div>
             <p className="text-sm text-zinc-300 mb-1">
-              You are about to delete <strong className="text-zinc-50">all backup archives</strong> for:
+              {t('deleteArchivesConfirmText') || 'You are about to delete all backup archives for:'}
             </p>
             <p className="text-base font-semibold text-rose-400 mb-3">{purgeTarget.hostname}</p>
             <p className="text-xs text-zinc-500 mb-6">
-              The Borg repository will remain initialized. This action cannot be undone.
+              {t('purgeWarningSubtext') || 'The Borg repository will remain initialized. This action cannot be undone.'}
             </p>
             <div className="flex gap-3 justify-end">
               <button
@@ -720,13 +720,13 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
 
           <div className="flex items-center gap-3 border-t md:border-t-0 md:border-l border-zinc-800 pt-4 md:pt-0 md:pl-6">
             <div className="flex flex-col">
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Mount Path</span>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">{t('mountPath') || 'Mount Path'}</span>
               <select
                 value={storageInfo.path}
                 onChange={async (e) => {
                   const val = e.target.value;
                   if (val === '__custom__') {
-                    const custom = prompt("Enter custom absolute storage path:", storageInfo.path);
+                    const custom = prompt(t('enterCustomStoragePath') || "Enter custom absolute storage path:", storageInfo.path);
                     if (custom && custom.trim().startsWith("/")) {
                       await handleStoragePathChange(custom.trim());
                     }
@@ -756,11 +756,11 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
               <Database size={16} />
             </div>
             <div>
-              <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">{t('originalSizeColumn')}</p>
+              <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">{t('dedupSizeColumn') || 'Deduplicated Size'}</p>
               <h4 className="text-base font-bold text-zinc-50 mt-0.5">
                 {stats ? getFormatSize(stats.total_deduplicated_size_bytes) : '0 B'}
               </h4>
-              <p className="text-[9px] text-zinc-500">Physical size on central storage</p>
+              <p className="text-[9px] text-zinc-500">{t('physicalSizeCentral') || 'Physical size on central storage'}</p>
             </div>
           </div>
 
@@ -769,11 +769,11 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
               <ArrowDownCircle size={16} />
             </div>
             <div>
-              <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">{t('originalSizeColumn')}</p>
+              <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">{t('originalSizeColumn') || 'Original Size'}</p>
               <h4 className="text-base font-bold text-zinc-50 mt-0.5">
                 {stats ? getFormatSize(stats.total_original_size_bytes) : '0 B'}
               </h4>
-              <p className="text-[9px] text-emerald-400">Total size before deduplication</p>
+              <p className="text-[9px] text-emerald-400">{t('sizeBeforeDedup') || 'Total size before deduplication'}</p>
             </div>
           </div>
 

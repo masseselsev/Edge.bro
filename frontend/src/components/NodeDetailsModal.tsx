@@ -303,7 +303,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
             <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
               <HardDrive className="h-8 w-8 text-amber-400/90" />
               <div>
-                <span className="text-[10px] uppercase font-bold text-zinc-500 block">Disk Drive</span>
+                <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('diskDrive') || 'Disk Drive'}</span>
                 <span className="text-xs font-semibold text-zinc-200 block mt-0.5">
                   {node.disk_type}
                 </span>
@@ -347,7 +347,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="block text-xs font-semibold text-zinc-400">Status Tags</span>
+                    <span className="block text-xs font-semibold text-zinc-400">{t('statusTags') || 'Status Tags'}</span>
                     <div className="flex gap-2.5">
                       {node.backup_paused ? (
                         <span className="px-2 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md text-xs font-semibold">

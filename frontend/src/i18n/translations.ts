@@ -144,6 +144,7 @@ export const translations: Record<Language, Record<string, string>> = {
     dedupRatio: 'Deduplication Ratio:',
     noHistoryFound: 'No backup archive records found in database.',
     purgeWarningTitle: 'Confirm Archive Purge',
+    purgeWarningSubtext: 'The Borg repository will remain initialized. This action cannot be undone.',
     purgeArchives: 'Purge Archives',
 
     // Logs Tab
@@ -568,7 +569,31 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskStatusApprovedLabel: 'Active',
     kioskStatusPendingLabel: 'Re-activation Request',
     bandwidthDownload: 'Download',
-    bandwidthUpload: 'Upload'
+    bandwidthUpload: 'Upload',
+    flasherLockedTitle: 'Flasher Locked',
+    flasherLockedText: 'Restore controls are disabled in Online Mode until this kiosk is authorized by the orchestrator.',
+    selectSnapshotStep: '2. Select Backup Snapshot',
+    chooseSnapshotPlaceholder: '-- Choose Snapshot Archive --',
+    mountPath: 'Mount Path',
+    enterCustomStoragePath: 'Enter custom absolute storage path:',
+    backupHistoryArchives: 'Backup History & Archives',
+    noBackupSnapshots: 'No backup snapshots executed yet.',
+    lastBackup: 'Last Backup',
+    adjustSearchCriteria: 'Try adjusting your search criteria',
+    statusSuccess: 'Success',
+    statusFailed: 'Failed',
+    deleteArchivesConfirmText: 'You are about to delete all backup archives for:',
+    physicalSizeCentral: 'Physical size on central storage',
+    sizeBeforeDedup: 'Total size before deduplication',
+    diskDrive: 'Disk Drive',
+    statusTags: 'Status Tags',
+    noVpnProfile: 'No VPN Profile Configured',
+    diskInterface: 'Disk & Interface',
+    statusAction: 'Status / Action',
+    loadingFleetData: 'Loading fleet data...',
+    noNodesMatchFilter: 'No nodes match your filter.',
+    saveConnection: 'Save Connection',
+    vpnProfileHint: 'Scan a WireGuard QR code or paste standard configuration file text manually.'
   },
   ru: {
     // Navigation / Tabs
@@ -713,6 +738,7 @@ export const translations: Record<Language, Record<string, string>> = {
     dedupRatio: 'Коэффициент сжатия:',
     noHistoryFound: 'В базе данных нет записей об архиве бэкапов.',
     purgeWarningTitle: 'Подтвердите очистку архивов',
+    purgeWarningSubtext: 'Репозиторий Borg останется инициализированным. Это действие необратимо.',
     purgeArchives: 'Очистить архивы',
 
     // Logs Tab
@@ -1136,7 +1162,31 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskStatusApprovedLabel: 'Активен',
     kioskStatusPendingLabel: 'Запрос на активацию',
     bandwidthDownload: 'Загрузка',
-    bandwidthUpload: 'Отдача'
+    bandwidthUpload: 'Отдача',
+    flasherLockedTitle: 'Панель записи заблокирована',
+    flasherLockedText: 'Управление восстановлением заблокировано в онлайн-режиме, пока киоск не авторизован на оркестраторе.',
+    selectSnapshotStep: '2. Выберите архив бэкапа',
+    chooseSnapshotPlaceholder: '-- Выберите архив --',
+    mountPath: 'Путь монтирования',
+    enterCustomStoragePath: 'Введите абсолютный путь к хранилищу:',
+    backupHistoryArchives: 'История бэкапов и архивы',
+    noBackupSnapshots: 'Резервные копии еще не создавались.',
+    lastBackup: 'Последний бэкап',
+    adjustSearchCriteria: 'Попробуйте изменить критерии поиска',
+    statusSuccess: 'Успешно',
+    statusFailed: 'Ошибка',
+    deleteArchivesConfirmText: 'Вы собираетесь удалить все архивы бэкапов для:',
+    physicalSizeCentral: 'Физический размер в центральном хранилище',
+    sizeBeforeDedup: 'Общий размер перед дедупликацией',
+    diskDrive: 'Дисковый накопитель',
+    statusTags: 'Теги статуса',
+    noVpnProfile: 'Профиль VPN не настроен',
+    diskInterface: 'Диск и интерфейс',
+    statusAction: 'Статус / Действие',
+    loadingFleetData: 'Загрузка данных узлов...',
+    noNodesMatchFilter: 'Нет узлов, соответствующих вашему фильтру.',
+    saveConnection: 'Сохранить подключение',
+    vpnProfileHint: 'Отсканируйте QR-код WireGuard или вставьте текст стандартного файла конфигурации вручную.'
   },
   uk: {
     // Navigation / Tabs
@@ -1281,6 +1331,7 @@ export const translations: Record<Language, Record<string, string>> = {
     dedupRatio: 'Коефіцієнт стиснення:',
     noHistoryFound: 'У базі даних немає записів про архів бекапів.',
     purgeWarningTitle: 'Підтвердьте очищення архівів',
+    purgeWarningSubtext: 'Репозиторій Borg залишиться ініціалізованим. Ця дія є незворотною.',
     purgeArchives: 'Очистити архіви',
 
     // Logs Tab
@@ -1701,6 +1752,30 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskStatusApprovedLabel: 'Активний',
     kioskStatusPendingLabel: 'Запит на активацію',
     bandwidthDownload: 'Завантаження',
-    bandwidthUpload: 'Віддача'
+    bandwidthUpload: 'Віддача',
+    flasherLockedTitle: 'Панель запису заблокована',
+    flasherLockedText: 'Керування відновленням заблоковано в онлайн-режимі, доки кіоск не авторизовано на оркестраторі.',
+    selectSnapshotStep: '2. Виберіть архів бекапу',
+    chooseSnapshotPlaceholder: '-- Виберіть архів --',
+    mountPath: 'Шлях монтування',
+    enterCustomStoragePath: 'Введіть абсолютний шлях до сховища:',
+    backupHistoryArchives: 'Історія бекапів та архіви',
+    noBackupSnapshots: 'Резервні копії ще не створювалися.',
+    lastBackup: 'Останній бекап',
+    adjustSearchCriteria: 'Спробуйте змінити критерії пошуку',
+    statusSuccess: 'Успішно',
+    statusFailed: 'Помилка',
+    deleteArchivesConfirmText: 'Ви збираєтеся видалити всі архіви бекапів для:',
+    physicalSizeCentral: 'Фізичний розмір у центральному сховищі',
+    sizeBeforeDedup: 'Загальний розмір перед дедуплікацією',
+    diskDrive: 'Дисковий накопичувач',
+    statusTags: 'Теги статусу',
+    noVpnProfile: 'Профіль VPN не налаштований',
+    diskInterface: 'Диск та інтерфейс',
+    statusAction: 'Статус / Дія',
+    loadingFleetData: 'Завантаження даних вузлів...',
+    noNodesMatchFilter: 'Немає вузлів, що відповідають вашому фільтру.',
+    saveConnection: 'Зберегти підключення',
+    vpnProfileHint: 'Відсканируйте QR-код WireGuard або вставте текст стандартного файлу конфігурації вручну.'
   }
 };

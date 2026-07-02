@@ -28,19 +28,19 @@ export default function NodeBackupHistory({
     <div className="bg-zinc-950/30 border border-zinc-800/80 rounded-xl p-5 space-y-4">
       <h4 className="font-bold text-zinc-200 text-sm border-b border-zinc-800 pb-2 flex items-center gap-1.5">
         <History className="h-4.5 w-4.5 text-indigo-400" />
-        Backup History & Archives
+        {t('backupHistoryArchives') || 'Backup History & Archives'}
       </h4>
 
       <div className="overflow-x-auto rounded-lg border border-zinc-800">
         <table className="w-full text-left border-collapse text-sm">
           <thead>
             <tr className="bg-zinc-950 text-zinc-400 font-semibold border-b border-zinc-800">
-              <th className="p-3">Archive Name</th>
-              <th className="p-3">Date & Time (UTC)</th>
-              <th className="p-3">Original Size</th>
-              <th className="p-3">Deduplicated Size</th>
-              <th className="p-3">Status</th>
-              <th className="p-3">Comment</th>
+              <th className="p-3">{t('snapshotColumn') || 'Archive Name'}</th>
+              <th className="p-3">{t('timestampColumn') || 'Date & Time (UTC)'}</th>
+              <th className="p-3">{t('originalSizeColumn') || 'Original Size'}</th>
+              <th className="p-3">{t('dedupSizeColumn') || 'Deduplicated Size'}</th>
+              <th className="p-3">{t('statusColumn') || 'Status'}</th>
+              <th className="p-3">{t('commentColumn') || 'Comment'}</th>
             </tr>
           </thead>
           <tbody>
@@ -73,7 +73,7 @@ export default function NodeBackupHistory({
             {history.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-6 text-center text-zinc-500">
-                  No backup snapshots executed yet.
+                  {t('noBackupSnapshots') || 'No backup snapshots executed yet.'}
                 </td>
               </tr>
             )}

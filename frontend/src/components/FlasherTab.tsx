@@ -350,9 +350,9 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
       {isOnlineWaitingApproval && (
         <div className="absolute inset-0 z-30 bg-zinc-950/45 backdrop-blur-[2px] rounded-3xl flex items-center justify-center p-6 text-center animate-fade-in border border-zinc-800/30">
           <div className="max-w-xs p-5 bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-xl space-y-2">
-            <h3 className="text-sm font-bold text-zinc-200">Flasher Locked</h3>
+            <h3 className="text-sm font-bold text-zinc-200">{t('flasherLockedTitle') || 'Flasher Locked'}</h3>
             <p className="text-[11px] text-zinc-400 leading-normal">
-              Restore controls are disabled in Online Mode until this kiosk is authorized by the orchestrator.
+              {t('flasherLockedText') || 'Restore controls are disabled in Online Mode until this kiosk is authorized by the orchestrator.'}
             </p>
           </div>
         </div>
@@ -431,12 +431,12 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
 
             {selectedNodeId && (
               <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">2. Select Backup Snapshot</label>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('selectSnapshotStep') || '2. Select Backup Snapshot'}</label>
                 <SearchableSelect
                   options={snapshotOptions}
                   value={selectedSnapshot}
                   onChange={(val) => setSelectedSnapshot(val)}
-                  placeholder="-- Choose Snapshot Archive --"
+                  placeholder={t('chooseSnapshotPlaceholder') || '-- Choose Snapshot Archive --'}
                   disabled={loadingSnapshots}
                 />
               </div>

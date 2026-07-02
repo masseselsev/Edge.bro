@@ -494,21 +494,21 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
               )}
               <th className="px-4 py-2.5">{t('hostnameLabel')}</th>
               <th className="px-4 py-2.5">{t('ipAddressLabel')}</th>
-              <th className="px-4 py-2.5">OS Version</th>
-              <th className="px-4 py-2.5">Disk & Interface</th>
-              <th className="px-4 py-2.5">Status / Action</th>
-              <th className="px-4 py-2.5">Last Backup</th>
+              <th className="px-4 py-2.5">{t('osVersion') || 'OS Version'}</th>
+              <th className="px-4 py-2.5">{t('diskInterface') || 'Disk & Interface'}</th>
+              <th className="px-4 py-2.5">{t('statusAction') || 'Status / Action'}</th>
+              <th className="px-4 py-2.5">{t('lastBackup') || 'Last Backup'}</th>
               <th className="px-4 py-2.5 text-right">{t('actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
             {loading ? (
               <tr>
-                <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-8 text-center text-zinc-500">Loading fleet data...</td>
+                <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-8 text-center text-zinc-500">{t('loadingFleetData') || 'Loading fleet data...'}</td>
               </tr>
             ) : filteredNodes.length === 0 ? (
               <tr>
-                <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-8 text-center text-zinc-500">No nodes match your filter.</td>
+                <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-8 text-center text-zinc-500">{t('noNodesMatchFilter') || 'No nodes match your filter.'}</td>
               </tr>
             ) : (
               renderGroupedContent()

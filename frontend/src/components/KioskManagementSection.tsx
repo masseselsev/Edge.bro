@@ -272,7 +272,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
           <div className="py-12 text-center text-zinc-500">
             <Search className="mx-auto text-zinc-600 mb-3" size={36} />
             <p className="text-xs font-semibold">{t('noMatchingKiosks') || 'No matching kiosks found'}</p>
-            <p className="text-[10px] text-zinc-500 mt-1">Try adjusting your search criteria</p>
+            <p className="text-[10px] text-zinc-500 mt-1">{t('adjustSearchCriteria') || 'Try adjusting your search criteria'}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

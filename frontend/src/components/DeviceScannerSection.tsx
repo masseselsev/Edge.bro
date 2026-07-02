@@ -106,14 +106,14 @@ export function DeviceScannerSection({
 
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs text-zinc-400 gap-2">
-              <span>Mount Path</span>
+              <span>{t('mountPath') || 'Mount Path'}</span>
               {onStoragePathChange ? (
                 <select
                   value={storageInfo.path}
                   onChange={async (e) => {
                     const val = e.target.value;
                     if (val === '__custom__') {
-                      const custom = prompt("Enter custom absolute storage path:", storageInfo.path);
+                      const custom = prompt(t('enterCustomStoragePath') || "Enter custom absolute storage path:", storageInfo.path);
                       if (custom && custom.trim().startsWith("/")) {
                         await onStoragePathChange(custom.trim());
                       }

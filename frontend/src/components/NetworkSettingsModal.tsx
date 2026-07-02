@@ -729,7 +729,7 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
                           }}
                           className="px-4 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
                         >
-                          Save Connection
+                          {t('saveConnection') || 'Save Connection'}
                         </button>
                       </div>
                     </div>
@@ -737,9 +737,9 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
                     /* Initial missing profile chooser buttons */
                     <div className="border border-zinc-800/80 border-dashed rounded-xl p-8 text-center space-y-4 bg-zinc-950/20">
                       <div>
-                        <span className="text-xs font-bold text-zinc-100 block">No VPN Profile Configured</span>
+                        <span className="text-xs font-bold text-zinc-100 block">{t('noVpnProfile') || 'No VPN Profile Configured'}</span>
                         <span className="text-[10px] text-zinc-400 mt-1 block max-w-[280px] mx-auto leading-relaxed">
-                          Scan a WireGuard QR code or paste standard configuration file text manually.
+                          {t('vpnProfileHint') || 'Scan a WireGuard QR code or paste standard configuration file text manually.'}
                         </span>
                       </div>
                       <div className="flex justify-center gap-2">
