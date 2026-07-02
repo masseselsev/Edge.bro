@@ -167,17 +167,21 @@ def handshake(req: schemas.HandshakeRequest, request: Request = None, db: Sessio
         raise HTTPException(status_code=400, detail=f"Kiosk status is {kiosk.status}")
 
     # Verify ID if the kiosk was pre-registered with a specific one
+    kiosk_id = req.kiosk_id or req.uuid
+    if not kiosk_id:
+        raise HTTPException(status_code=400, detail="Missing kiosk_id or uuid")
+
     if kiosk.kiosk_id and not kiosk.kiosk_id.startswith("PENDING-"):
-        if kiosk.kiosk_id != req.kiosk_id:
+        if kiosk.kiosk_id != kiosk_id:
             raise HTTPException(status_code=400, detail="Kiosk ID mismatch for this key")
 
     # Check if this ID is already associated with another kiosk
-    existing = db.query(models.Kiosk).filter(models.Kiosk.kiosk_id == req.kiosk_id, models.Kiosk.id != kiosk.id).first()
+    existing = db.query(models.Kiosk).filter(models.Kiosk.kiosk_id == kiosk_id, models.Kiosk.id != kiosk.id).first()
     if existing:
-        raise HTTPException(status_code=400, detail=f"Kiosk ID {req.kiosk_id} is already registered")
+        raise HTTPException(status_code=400, detail=f"Kiosk ID {kiosk_id} is already registered")
 
     # Update kiosk record with actual client KioskID
-    kiosk.kiosk_id = req.kiosk_id
+    kiosk.kiosk_id = kiosk_id
     
     # Generate unique API token in format AB1234
     token = generate_kiosk_token()
@@ -262,8 +266,12 @@ def revoke_ssh_key(pub_key: str):
 
 @router.post("/enroll")
 def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db)):
+    kiosk_id = req.kiosk_id or req.uuid
+    if not kiosk_id:
+        raise HTTPException(status_code=400, detail="Missing kiosk_id or uuid")
+
     # Check if ID already registered
-    existing = db.query(models.Kiosk).filter(models.Kiosk.kiosk_id == req.kiosk_id).first()
+    existing = db.query(models.Kiosk).filter(models.Kiosk.kiosk_id == kiosk_id).first()
     
     # Generate unique auth token
     token = generate_kiosk_token()
@@ -291,7 +299,7 @@ def enroll_kiosk(req: schemas.KioskEnrollRequest, db: Session = Depends(get_db))
         key = generate_kiosk_key()
 
     kiosk = models.Kiosk(
-        kiosk_id=req.kiosk_id,
+        kiosk_id=kiosk_id,
         name=req.name,
         contact=req.contact,
         comment=req.comment,
@@ -369,12 +377,16 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
     if not kiosk:
         raise HTTPException(status_code=401, detail="Invalid auth token")
 
+    kiosk_id = req.kiosk_id or req.uuid
+    if not kiosk_id:
+        raise HTTPException(status_code=400, detail="Missing kiosk_id or uuid")
+
     if kiosk.status == "DISABLED":
         raise HTTPException(status_code=403, detail="Kiosk status is DISABLED")
         
     if kiosk.status == "PENDING":
         # Keep it pending, update metadata if needed, but do not authorize SSH
-        kiosk.kiosk_id = req.kiosk_id
+        kiosk.kiosk_id = kiosk_id
         kiosk.ssh_pub_key = req.ssh_pub_key
         db.commit()
         from database import log_user_action
@@ -384,12 +396,12 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
 
     if kiosk.status == "APPROVED":
         # Check if this ID is already associated with another kiosk
-        existing = db.query(models.Kiosk).filter(models.Kiosk.kiosk_id == req.kiosk_id, models.Kiosk.id != kiosk.id).first()
+        existing = db.query(models.Kiosk).filter(models.Kiosk.kiosk_id == kiosk_id, models.Kiosk.id != kiosk.id).first()
         if existing:
             raise HTTPException(status_code=400, detail="Kiosk ID is already registered under another kiosk")
 
         # Update kiosk details
-        kiosk.kiosk_id = req.kiosk_id
+        kiosk.kiosk_id = kiosk_id
         kiosk.ssh_pub_key = req.ssh_pub_key
 
         # Authorize SSH key

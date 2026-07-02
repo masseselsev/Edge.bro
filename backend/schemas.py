@@ -223,7 +223,8 @@ class KioskResponse(KioskBase):
 
 
 class HandshakeRequest(BaseModel):
-    kiosk_id: str
+    kiosk_id: Optional[str] = None
+    uuid: Optional[str] = None
     key: str
     ssh_pub_key: str
 
@@ -273,7 +274,8 @@ class LoginPayload(BaseModel):
 
 
 class KioskEnrollRequest(BaseModel):
-    kiosk_id: str
+    kiosk_id: Optional[str] = None
+    uuid: Optional[str] = None
     name: str
     contact: str
     comment: str
@@ -293,7 +295,8 @@ class KioskUpdate(BaseModel):
 
 
 class AutoHandshakeRequest(BaseModel):
-    kiosk_id: str
+    kiosk_id: Optional[str] = None
+    uuid: Optional[str] = None
     ssh_pub_key: str
 
 
