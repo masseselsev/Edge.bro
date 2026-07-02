@@ -709,6 +709,28 @@ def format_and_restore(
         except Exception as pe_scan:
             emit_log(f"WARNING: Failed to scan for stale PostgreSQL lock files: {str(pe_scan)}")
 
+        # Recreate custom PostgreSQL log directories if they point to custom locations (which might be excluded)
+        try:
+            pg_etc_dir = os.path.join(target_mnt, "etc/postgresql")
+            if os.path.exists(pg_etc_dir):
+                for version in os.listdir(pg_etc_dir):
+                    version_path = os.path.join(pg_etc_dir, version)
+                    if os.path.isdir(version_path):
+                        for cluster in os.listdir(version_path):
+                            cluster_path = os.path.join(version_path, cluster)
+                            log_symlink = os.path.join(cluster_path, "log")
+                            if os.path.islink(log_symlink):
+                                target_log_path = os.readlink(log_symlink)
+                                log_dir_in_chroot = os.path.dirname(target_log_path)
+                                log_dir_host = os.path.join(target_mnt, log_dir_in_chroot.lstrip("/"))
+                                if not os.path.exists(log_dir_host):
+                                    emit_log(f"Recreating custom PostgreSQL log directory: {log_dir_in_chroot}")
+                                    os.makedirs(log_dir_host, exist_ok=True)
+                                    subprocess.run(["chroot", target_mnt, "chown", "postgres:postgres", log_dir_in_chroot], check=True)
+                                    subprocess.run(["chroot", target_mnt, "chmod", "775", log_dir_in_chroot], check=True)
+        except Exception as pe_log:
+            emit_log(f"WARNING: Failed to recreate custom PostgreSQL log directories: {str(pe_log)}")
+
         # 10. Post-Restore verification audit
         emit_log("Starting post-restore audit...")
         with open(f"{target_mnt}/etc/fstab", "r") as f:
