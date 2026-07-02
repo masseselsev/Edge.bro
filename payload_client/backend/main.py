@@ -163,9 +163,11 @@ class RestoreRequest(BaseModel):
     override_mismatch: bool = False
     keep_network_configs: bool = True
     wipe_mac_bindings: bool = False
+    restore_mode: Optional[str] = None
 
 def run_offline_restore(task_id: str, req: RestoreRequest):
     global restore_mode
+    active_mode = req.restore_mode or restore_mode
     task_status[task_id] = "RUNNING"
     task_progress[task_id] = 0
     task_logs[task_id] = f"Starting bare-metal restore for archive {req.archive_name} to {req.target_dev}\n"
@@ -184,7 +186,7 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
     efi_uuid = "458C-37BB"
 
     # Resolve hostname
-    nodes = get_kiosk_nodes()
+    nodes = get_kiosk_nodes(mode=active_mode)
     for n in nodes:
         if n["id"] == req.node_id:
             hostname = n["hostname"].split(" (")[0]
@@ -228,7 +230,7 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
             except Exception as e:
                 log_callback(f"WARNING: Failed to load cached partition layout: {e}")
     else:
-        if restore_mode == "online":
+        if active_mode == "online":
             log_callback("Using online restore from orchestrator.")
             repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}/data/borg/fleet/{hostname}"
         else:
@@ -237,7 +239,7 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
 
     # Fallback to fetching layout from orchestrator if not yet loaded and online
     if not partitions:
-        if restore_mode == "online":
+        if active_mode == "online":
             try:
                 log_callback("Fetching node configuration from orchestrator...")
                 nodes_req = urllib.request.Request(
@@ -534,9 +536,10 @@ def scan_devices():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/nodes")
-def get_kiosk_nodes():
+def get_kiosk_nodes(mode: Optional[str] = None):
     global restore_mode
-    if restore_mode == "online":
+    active_mode = mode or restore_mode
+    if active_mode == "online":
         try:
             req = urllib.request.Request(
                 f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes",
@@ -564,12 +567,32 @@ def get_kiosk_nodes():
                         except Exception:
                             repo_size = 0
 
+                        # Try to load cached ID and disk metadata from partition_layout.json
+                        node_id = len(nodes) + 1000  # Fallback high ID
+                        disk_type = "UNKNOWN"
+                        disk_size_bytes = 0
+                        efi_uuid = "458C-37BB"
+                        layout_path = os.path.join(node_path, "partition_layout.json")
+                        if os.path.exists(layout_path):
+                            try:
+                                with open(layout_path, "r") as f:
+                                    ldata = json.load(f)
+                                    if "id" in ldata:
+                                        node_id = int(ldata["id"])
+                                    disk_type = ldata.get("disk_type", "UNKNOWN")
+                                    efi_uuid = ldata.get("efi_uuid", "458C-37BB")
+                                    if "partition_layout" in ldata and isinstance(ldata["partition_layout"], list):
+                                        disk_size_bytes = sum(int(p.get("size_bytes", 0)) for p in ldata["partition_layout"])
+                            except Exception:
+                                pass
+
                         nodes.append({
-                            "id": len(nodes) + 1,
+                            "id": node_id,
                             "hostname": f"{entry} (Local Cache)",
                             "ip_address": "127.0.0.1",
-                            "disk_type": "UNKNOWN",
-                            "efi_uuid": "458C-37BB",
+                            "disk_type": disk_type,
+                            "disk_size_bytes": disk_size_bytes,
+                            "efi_uuid": efi_uuid,
                             "last_backup": "Available",
                             "repo_size_bytes": repo_size
                         })
@@ -702,9 +725,10 @@ def get_kiosk_local_history():
     return all_snapshots
 
 @app.get("/api/nodes/{node_id}/history")
-def get_local_history(node_id: int):
+def get_local_history(node_id: int, mode: Optional[str] = None):
     global restore_mode
-    if restore_mode == "online":
+    active_mode = mode or restore_mode
+    if active_mode == "online":
         try:
             req = urllib.request.Request(
                 f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes/{node_id}/history",
@@ -717,7 +741,7 @@ def get_local_history(node_id: int):
             raise HTTPException(status_code=502, detail=f"Failed to contact orchestrator: {str(e)}")
             
     # For offline cache, scan local borg repo of the corresponding node
-    nodes = get_kiosk_nodes()
+    nodes = get_kiosk_nodes(mode=active_mode)
     hostname = None
     for n in nodes:
         if n["id"] == node_id:
@@ -938,6 +962,8 @@ def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
                     layout_path = os.path.join(layout_dir, "partition_layout.json")
                     with open(layout_path, "w") as lf:
                         json.dump({
+                            "id": n["id"],
+                            "disk_type": n.get("disk_type", "UNKNOWN"),
                             "partition_layout": n.get("partition_layout"),
                             "efi_uuid": n.get("efi_uuid")
                         }, lf)
