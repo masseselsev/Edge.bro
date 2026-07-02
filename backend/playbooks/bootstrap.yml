@@ -134,7 +134,7 @@
       changed_when: false
 
     - name: Install dependencies
-      raw: apt-get update && apt-get install -y borgbackup parted udev dosfstools e2fsprogs util-linux
+      raw: apt-get update -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false --allow-releaseinfo-change || true; apt-get install -y -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false --allow-unauthenticated borgbackup parted udev dosfstools e2fsprogs util-linux
 
     - name: Create borg system user and generate SSH key
       raw: |
