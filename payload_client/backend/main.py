@@ -165,6 +165,7 @@ class RestoreRequest(BaseModel):
     wipe_mac_bindings: bool = False
 
 def run_offline_restore(task_id: str, req: RestoreRequest):
+    global restore_mode
     task_status[task_id] = "RUNNING"
     task_progress[task_id] = 0
     task_logs[task_id] = f"Starting bare-metal restore for archive {req.archive_name} to {req.target_dev}\n"
@@ -227,7 +228,6 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
             except Exception as e:
                 log_callback(f"WARNING: Failed to load cached partition layout: {e}")
     else:
-        global restore_mode
         if restore_mode == "online":
             log_callback("Using online restore from orchestrator.")
             repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}/data/borg/fleet/{hostname}"
@@ -237,7 +237,6 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
 
     # Fallback to fetching layout from orchestrator if not yet loaded and online
     if not partitions:
-        global restore_mode
         if restore_mode == "online":
             try:
                 log_callback("Fetching node configuration from orchestrator...")
