@@ -56,11 +56,15 @@ def build_borg_create_cmd(
     )
     borg_env = f"BORG_RSH='{borg_rsh}' BORG_PASSPHRASE='{borg_passphrase}' BORG_RELOCATED_REPO_ACCESS_IS_OK=yes"
     borg_compression = compression.replace(":", ",")
+    rate_limit_str = ""
+    if rate_limit_kib and rate_limit_kib > 0:
+        rate_limit_str = f"--remote-ratelimit {rate_limit_kib} "
+
     borg_create = (
         f"borg create --json --stats "
         f"--compression {borg_compression} "
         f"--checkpoint-interval {checkpoint_secs} "
-        f"--upload-ratelimit {rate_limit_kib} "
+        f"{rate_limit_str}"
         f"{borg_repo_url}::{archive_name} / {exclude_str}"
     )
 
