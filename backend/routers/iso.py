@@ -23,6 +23,36 @@ redis_client = redis.Redis.from_url(REDIS_URL)
 
 router = APIRouter()
 
+def check_concurrent_iso_task(db: Session):
+    # 1. Check download lock
+    lock_path = os.path.join(CACHE_DIR, "download.lock")
+    base_iso_path = os.path.join(CACHE_DIR, "base.iso")
+    base_exists = os.path.exists(base_iso_path) and os.path.getsize(base_iso_path) > 1000 * 1024 * 1024
+    if not base_exists and os.path.exists(lock_path):
+        raise HTTPException(
+            status_code=400,
+            detail="Base ISO download is currently in progress. Please wait for it to complete."
+        )
+
+    # 2. Check running ISO generation or repack tasks
+    active_task = db.query(models.TaskLog).filter(
+        models.TaskLog.task_type == "ISO_GEN",
+        models.TaskLog.status == "RUNNING"
+    ).first()
+    if active_task:
+        from datetime import datetime
+        age = datetime.utcnow() - active_task.created_at
+        if age.total_seconds() < 45 * 60:
+            raise HTTPException(
+                status_code=400,
+                detail="An ISO generation or repack task is already in progress. Please wait for it to complete."
+            )
+        else:
+            # Mark stale task as FAILED
+            active_task.status = "FAILED"
+            active_task.log_output += "\n[SYSTEM] Task assumed dead after 45 minutes timeout."
+            db.commit()
+
 class GenerateIsoRequest(BaseModel):
     target_ip: str
     auth_token: str
@@ -32,6 +62,7 @@ class BaseIsoDownloadRequest(BaseModel):
 
 @router.post("/generate")
 def generate_iso(req: GenerateIsoRequest, db: Session = Depends(get_db), auth = Depends(require_admin)):
+    check_concurrent_iso_task(db)
     try:
         # Save the orchestrator_ip in the settings database so it is preserved
         settings = db.query(models.Settings).first()
@@ -376,6 +407,7 @@ def download_repo(
 
 @router.post("/kiosks/issue")
 def issue_kiosk(req: schemas.KioskIssueRequest, request: Request = None, db: Session = Depends(get_db), auth = Depends(require_admin)):
+    check_concurrent_iso_task(db)
     from routers.kiosks import generate_kiosk_key, generate_kiosk_token, generate_kiosk_id
     import secrets
 
@@ -422,6 +454,7 @@ def issue_kiosk(req: schemas.KioskIssueRequest, request: Request = None, db: Ses
 
 @router.post("/kiosks/{id}/recreate")
 def recreate_kiosk_iso(id: int, request: Request = None, db: Session = Depends(get_db), auth = Depends(require_admin)):
+    check_concurrent_iso_task(db)
     kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == id).first()
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")
