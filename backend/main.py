@@ -77,6 +77,19 @@ def startup_db_init():
     except Exception as e:
         print(f"Error managing base ISO download resume on startup: {str(e)}")
 
+    # Clear any stale tasks that were left in RUNNING state
+    try:
+        db = next(get_db())
+        stale_tasks = db.query(models.TaskLog).filter(models.TaskLog.status == "RUNNING").all()
+        for task in stale_tasks:
+            task.status = "FAILED"
+            task.log_output = (task.log_output or "") + "\n[SYSTEM] Task interrupted due to orchestrator service restart."
+        db.commit()
+        db.close()
+        print(f"Cleared {len(stale_tasks)} stale running tasks on startup.")
+    except Exception as e:
+        print(f"Error clearing stale running tasks on startup: {str(e)}")
+
     db = next(get_db())
     upgrade_settings(db)
     seed_superadmin(db)
