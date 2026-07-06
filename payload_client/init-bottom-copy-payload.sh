@@ -20,6 +20,13 @@ if [ -d /opt/offline-client ]; then
     cp -r /opt/offline-client /root/opt/
 fi
 
+# Copy usr/local/bin files (like static borg binary)
+if [ -f /usr/local/bin/borg ]; then
+    mkdir -p /root/usr/local/bin
+    cp /usr/local/bin/borg /root/usr/local/bin/
+    chmod +x /root/usr/local/bin/borg
+fi
+
 # Copy systemd units
 if [ -d /etc/systemd/system ]; then
     mkdir -p /root/etc/systemd/system/multi-user.target.wants

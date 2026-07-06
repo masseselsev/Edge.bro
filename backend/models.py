@@ -162,6 +162,7 @@ class Kiosk(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     approved_at = Column(DateTime, nullable=True)
+    last_seen = Column(DateTime, nullable=True)
     contact = Column(String, nullable=True)
     comment = Column(Text, nullable=True)
 

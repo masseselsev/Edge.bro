@@ -144,9 +144,24 @@ services:
 
 volumes:
   pg-data:
+    name: backup-edge-restore_pg-data
+    external: true
   borg-data:
+    name: backup-edge-restore_borg-data
+    external: true
   ssh-keys:
+    name: backup-edge-restore_ssh-keys
+    external: true
   redis-data:
+    name: backup-edge-restore_redis-data
+    external: true
   iso-cache:
+    name: backup-edge-restore_iso-cache
+    external: true
   frontend-build:
+    name: backup-edge-restore_frontend-build
+    external: true
   apt-cache:
+    name: backup-edge-restore_apt-cache
+    external: true
+

@@ -216,6 +216,8 @@ class KioskResponse(KioskBase):
     created_at: datetime
     updated_at: datetime
     approved_at: Optional[datetime] = None
+    last_seen: Optional[datetime] = None
+    is_online: Optional[bool] = None
 
 
     class Config:

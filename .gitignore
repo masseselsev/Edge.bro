@@ -49,3 +49,7 @@ celerybeat-schedule*
 # Reports
 reports/
 
+.agents/
+
+lab
+scratch/

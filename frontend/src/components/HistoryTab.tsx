@@ -61,6 +61,8 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
   const [storagePathInput, setStoragePathInput] = useState('');
   const [selectedNodeForSync, setSelectedNodeForSync] = useState<number | null>(null);
   const [selectedArchives, setSelectedArchives] = useState<Record<string, boolean>>({});
+  const [hasCheckedInitialLocal, setHasCheckedInitialLocal] = useState(false);
+  const [remoteLoading, setRemoteLoading] = useState(false);
 
   // Sync process state
   const [syncing, setSyncing] = useState(false);
@@ -246,11 +248,26 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
         const histRes = await fetch('/api/kiosk/local-history');
         if (histRes.ok) {
           const histData = await histRes.json();
-          setHistory(Array.isArray(histData) ? histData : []);
+          const parsedHist = Array.isArray(histData) ? histData : [];
+          setHistory(parsedHist);
+          
+          if (!hasCheckedInitialLocal) {
+            setHasCheckedInitialLocal(true);
+            if (parsedHist.length === 0) {
+              setViewMode('remote');
+            }
+          }
         } else {
           setHistory([]);
+          if (!hasCheckedInitialLocal) {
+            setHasCheckedInitialLocal(true);
+            setViewMode('remote');
+          }
         }
       } else {
+        if (isKiosk && viewMode === 'remote') {
+          setRemoteLoading(true);
+        }
         const histRes = await fetch('/api/nodes/history');
         if (histRes.ok) {
           const histData = await histRes.json();
@@ -275,8 +292,9 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
       setHistory([]);
     } finally {
       setLoading(false);
+      setRemoteLoading(false);
     }
-  }, [isKiosk, viewMode]);
+  }, [isKiosk, viewMode, hasCheckedInitialLocal]);
 
   useEffect(() => {
     fetchStats();
@@ -793,7 +811,21 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
       )}
 
       {/* Execution History */}
-      <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
+      <div className="relative p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 overflow-hidden">
+        {/* Loading Overlay */}
+        {isKiosk && viewMode === 'remote' && remoteLoading && (
+          <div className="absolute inset-0 bg-zinc-950/65 backdrop-blur-[2px] flex flex-col items-center justify-center gap-3 z-50 animate-fade-in transition-all">
+            <div className="relative flex h-10 w-10">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-10 w-10 bg-indigo-600 flex items-center justify-center text-zinc-50 border border-indigo-400/30">
+                <Loader2 className="animate-spin" size={20} />
+              </span>
+            </div>
+            <p className="text-xs font-bold text-zinc-200 uppercase tracking-widest animate-pulse">
+              {t('loadingRemoteArchives') || 'Loading Remote Archives...'}
+            </p>
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h3 className="text-lg font-bold text-zinc-50">{t('tabHistory')}</h3>

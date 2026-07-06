@@ -61,13 +61,6 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Sync states
-  const [syncing, setSyncing] = useState(false);
-  const [syncTaskId, setSyncTaskId] = useState<string | null>(null);
-  const [syncProgress, setSyncProgress] = useState(0);
-  const [syncSpeed, setSyncSpeed] = useState<string | null>(null);
-  const [syncEta, setSyncEta] = useState<string | null>(null);
-
   // Storage partition capacity state
   const [storageInfo, setStorageInfo] = useState<{
     total: number;
@@ -77,77 +70,6 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     is_mounted: boolean;
     potential_paths?: string[];
   } | null>(null);
-
-  const handleSyncToUsb = async () => {
-    const node = nodes.find(n => n.id === Number(selectedNodeId));
-    if (!node) return;
-    
-    setSyncing(true);
-    setSyncProgress(0);
-    setSyncSpeed(null);
-    setSyncEta(null);
-    try {
-      const url = selectedSnapshot
-        ? `/api/kiosk/sync/${node.hostname}?archive=${encodeURIComponent(selectedSnapshot)}`
-        : `/api/kiosk/sync/${node.hostname}`;
-      const res = await fetch(url, { method: 'POST' });
-      if (!res.ok) throw new Error("Failed to start sync");
-      const data = await res.json();
-      if (data.task_id) {
-        setSyncTaskId(data.task_id);
-      }
-    } catch (err: any) {
-      alert(`Sync failed to start: ${err.message}`);
-      setSyncing(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!syncTaskId) return;
-
-    let intervalId: any = null;
-    const pollStatus = async () => {
-      try {
-        const res = await fetch(`/api/tasks/${syncTaskId}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data.progress) {
-          setSyncProgress(data.progress);
-        }
-        if (data.download_speed) {
-          setSyncSpeed(data.download_speed);
-        } else {
-          setSyncSpeed(null);
-        }
-        if (data.eta) {
-          setSyncEta(data.eta);
-        } else {
-          setSyncEta(null);
-        }
-        if (data.status === 'SUCCESS') {
-          clearInterval(intervalId);
-          setSyncTaskId(null);
-          setSyncing(false);
-          alert(t('settingsSuccess'));
-          // Refresh lists to see cached nodes
-          fetchDevices();
-          fetchNodes();
-          fetchStorageInfo();
-        } else if (data.status === 'FAILED') {
-          clearInterval(intervalId);
-          setSyncTaskId(null);
-          setSyncing(false);
-          alert(t('failed'));
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    pollStatus();
-    intervalId = setInterval(pollStatus, 2000);
-    return () => clearInterval(intervalId);
-  }, [syncTaskId]);
 
   const fetchDevices = async () => {
     setScanning(true);
@@ -313,8 +235,10 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
 
   const getFormatSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
-    const g = bytes / (1024 * 1024 * 1024);
-    return `${g.toFixed(1)} GB`;
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   };
 
   const selectedNode = nodes.find(n => n.id === Number(selectedNodeId));
@@ -329,12 +253,21 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
       disabled: false
     }));
 
-  const snapshotOptions = snapshots.map(s => ({
-    value: s.archive_name,
-    label: s.archive_name,
-    sublabel: `${formatDate(s.timestamp, timezone)} (${getFormatSize(s.original_size)} ${t('sizeOnDisk') || 'on disk'} / ${getFormatSize(s.deduplicated_size)} ${t('archiveSize') || 'archive'})${s.comment ? ` — ${s.comment}` : ''}`,
-    disabled: false
-  }));
+  const snapshotOptions = snapshots.map(s => {
+    let sizeDetails = "";
+    if (restoreMode === 'online') {
+      const estDownload = Math.max(s.deduplicated_size, Math.round(s.original_size * 0.4));
+      sizeDetails = `${getFormatSize(estDownload)} ${t('estDownload') || 'to download'}`;
+    } else {
+      sizeDetails = `${getFormatSize(s.original_size)} ${t('sizeOnDisk') || 'on disk'} / ${getFormatSize(s.deduplicated_size)} ${t('archiveSize') || 'archive'}`;
+    }
+    return {
+      value: s.archive_name,
+      label: s.archive_name,
+      sublabel: `${formatDate(s.timestamp, timezone)} (${sizeDetails})${s.comment ? ` — ${s.comment}` : ''}`,
+      disabled: false
+    };
+  });
 
   const deviceOptions = devices.map(d => ({
     value: d.name,
@@ -382,52 +315,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
               )}
             </div>
 
-            {selectedNodeId && isKiosk && restoreMode === 'online' && (
-              <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-xs font-bold text-indigo-800 dark:text-indigo-300 uppercase tracking-wider">{t('localBackupStorage')}</h4>
-                    <p className="text-[10px] text-zinc-400 mt-1">
-                      {t('offlineCapabilitiesText')}
-                    </p>
-                    {storageInfo && (
-                      <p className="text-[10px] text-zinc-500 mt-1.5 flex items-center gap-1.5 font-semibold">
-                        <HardDrive size={11} className="text-zinc-400" />
-                        {t('freeSpace')}: <span className="text-emerald-400">{getFormatSize(storageInfo.free)}</span> / {getFormatSize(storageInfo.total)}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSyncToUsb}
-                    disabled={syncing}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                  >
-                    <Download size={13} />
-                    {syncing ? t('syncingText') : t('syncButton')}
-                  </button>
-                </div>
-                {syncing && (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
-                      <span>
-                        {syncProgress === 0 && !syncSpeed
-                          ? t('syncPreparing')
-                          : `${t('syncingText')} ${syncSpeed ? `(${syncSpeed}, ETA: ${syncEta})` : ''}`
-                        }
-                      </span>
-                      <span>{syncProgress}%</span>
-                    </div>
-                    <div className="w-full bg-zinc-950 h-1.5 rounded-full overflow-hidden border border-zinc-800">
-                      <div 
-                        className="bg-indigo-500 h-full rounded-full transition-all duration-300"
-                        style={{ width: `${syncProgress}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+
 
             {selectedNodeId && (
               <div>

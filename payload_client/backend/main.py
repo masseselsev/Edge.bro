@@ -263,7 +263,7 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
     else:
         if active_mode == "online":
             log_callback("Using online restore from orchestrator.")
-            repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}/data/borg/fleet/{hostname}"
+            repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}/data/borg/fleet"
         else:
             log_callback("Online mode is unavailable. Attempting offline restore from local cache.")
             repo_path = local_repo
@@ -977,7 +977,9 @@ def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
     task_logs[task_id] = f"Starting {sync_desc} from http://{orchestrator_ip}:{orchestrator_api_port}\n"
 
     try:
-        # Step A: Cache partition layout and archive metadata from orchestrator
+        # Step A: Cache partition layout and archive metadata from orchestrator in memory
+        cached_layout = None
+        cached_history = None
         try:
             nodes_req = urllib.request.Request(
                 f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes",
@@ -987,19 +989,12 @@ def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
                 nodes_data = json.loads(response.read().decode())
             for n in nodes_data:
                 if n["hostname"] == hostname:
-                    layout_dir = os.path.join(local_storage_path, "borg", "fleet", hostname)
-                    os.makedirs(layout_dir, exist_ok=True)
-                    
-                    # Cache partition layout
-                    layout_path = os.path.join(layout_dir, "partition_layout.json")
-                    with open(layout_path, "w") as lf:
-                        json.dump({
-                            "id": n["id"],
-                            "disk_type": n.get("disk_type", "UNKNOWN"),
-                            "partition_layout": n.get("partition_layout"),
-                            "efi_uuid": n.get("efi_uuid")
-                        }, lf)
-                    task_logs[task_id] += "Successfully cached partition layout configuration.\n"
+                    cached_layout = {
+                        "id": n["id"],
+                        "disk_type": n.get("disk_type", "UNKNOWN"),
+                        "partition_layout": n.get("partition_layout"),
+                        "efi_uuid": n.get("efi_uuid")
+                    }
                     
                     # Fetch and cache archive history metadata (sizes)
                     try:
@@ -1008,17 +1003,12 @@ def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
                             headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
                         )
                         with urllib.request.urlopen(history_req, timeout=5) as h_response:
-                            history_data = json.loads(h_response.read().decode())
-                        
-                        metadata_path = os.path.join(layout_dir, "archive_metadata.json")
-                        with open(metadata_path, "w") as mf:
-                            json.dump(history_data, mf)
-                        task_logs[task_id] += "Successfully cached archive metadata size configurations.\n"
+                            cached_history = json.loads(h_response.read().decode())
                     except Exception as he:
-                        task_logs[task_id] += f"WARNING: Failed to fetch and cache archive history: {he}\n"
+                        task_logs[task_id] += f"WARNING: Failed to fetch archive history: {he}\n"
                     break
         except Exception as e:
-            task_logs[task_id] += f"WARNING: Failed to fetch and cache partition layout: {e}\n"
+            task_logs[task_id] += f"WARNING: Failed to fetch partition layout: {e}\n"
 
         # Step B: Download tar stream
         url = f"http://{orchestrator_ip}:{orchestrator_api_port}/api/iso/repos/{hostname}/download?token={auth_token}"
@@ -1108,6 +1098,25 @@ def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
 
             if tar_proc.returncode != 0:
                 raise Exception(f"tar extraction failed (code {tar_proc.returncode}): {tar_err}")
+
+            # Write cached metadata now that tar extraction completed successfully
+            if cached_layout:
+                try:
+                    layout_path = os.path.join(target_dir, "partition_layout.json")
+                    with open(layout_path, "w") as lf:
+                        json.dump(cached_layout, lf)
+                    task_logs[task_id] += "Successfully cached partition layout configuration.\n"
+                except Exception as ex:
+                    task_logs[task_id] += f"WARNING: Failed to write partition layout: {ex}\n"
+
+            if cached_history:
+                try:
+                    metadata_path = os.path.join(target_dir, "archive_metadata.json")
+                    with open(metadata_path, "w") as mf:
+                        json.dump(cached_history, mf)
+                    task_logs[task_id] += "Successfully cached archive metadata size configurations.\n"
+                except Exception as ex:
+                    task_logs[task_id] += f"WARNING: Failed to write archive metadata sizes: {ex}\n"
 
         task_logs[task_id] += f"Repository sync completed successfully! Total bytes: {bytes_downloaded}\n"
         task_status[task_id] = "SUCCESS"
@@ -1268,6 +1277,19 @@ def auto_register_with_orchestrator():
             if status_returned == "SUCCESS" or status_returned == "APPROVED":
                 kiosk_status = "APPROVED"
                 restore_mode = "online"
+                bp = res_data.get("borg_passphrase")
+                if bp:
+                    os.environ["BORG_PASSPHRASE"] = bp
+                    cfg_data = {}
+                    if os.path.exists(CONFIG_PATH):
+                        try:
+                            with open(CONFIG_PATH, "r") as f:
+                                cfg_data = json.load(f)
+                        except Exception:
+                            pass
+                    if cfg_data.get("borg_passphrase") != bp:
+                        cfg_data["borg_passphrase"] = bp
+                        save_config(cfg_data)
             elif status_returned == "DISABLED":
                 kiosk_status = "DISABLED"
                 restore_mode = "offline"

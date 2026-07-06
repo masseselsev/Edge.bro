@@ -427,7 +427,7 @@ function AppContent() {
   };
 
   useEffect(() => {
-    if (!isAuthenticated || isKiosk) return;
+    if (!isKiosk && !isAuthenticated) return;
     const fetchBandwidth = async () => {
       try {
         const res = await fetch('/api/network/bandwidth');

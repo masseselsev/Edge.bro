@@ -542,6 +542,29 @@ def global_daily_prune() -> Dict[str, Any]:
         logger.error(f"Exception compacting Borg repository: {str(e)}")
         results["compact"] = f"ERROR: {str(e)}"
 
+    # Reconcile database history with active archives in repository
+    try:
+        logger.info("Synchronizing backup history database records with active archives...")
+        list_cmd = ["borg", "list", "--json", repo_path]
+        res_list = subprocess.run(list_cmd, env=env, capture_output=True, text=True)
+        if res_list.returncode == 0:
+            import json
+            active_archives = {a["name"] for a in json.loads(res_list.stdout).get("archives", [])}
+            db_archives = db.query(BackupHistory).filter(BackupHistory.status == "SUCCESS").all()
+            deleted_count = 0
+            for db_a in db_archives:
+                if db_a.archive_name not in active_archives:
+                    logger.info(f"Removing stale database backup history record: {db_a.archive_name}")
+                    db.delete(db_a)
+                    deleted_count += 1
+            if deleted_count > 0:
+                db.commit()
+            logger.info(f"Database history sync completed. Removed {deleted_count} stale records.")
+        else:
+            logger.error(f"Failed to list Borg archives during DB sync: {res_list.stderr}")
+    except Exception as e:
+        logger.error(f"Exception during backup history DB sync: {str(e)}")
+
     fix_repo_permissions(repo_path)
     db.close()
     return results

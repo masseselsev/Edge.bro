@@ -74,6 +74,11 @@ def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_ad
     settings = db.query(models.Settings).first()
     server_name = settings.server_name if (settings and settings.server_name) else "Edge.bro"
     for k in kiosks:
+        if k.last_seen:
+            k.is_online = (datetime.now() - k.last_seen).total_seconds() < 30
+        else:
+            k.is_online = False
+
         if k.auth_token:
             iso_name = None
             iso_path = None
@@ -182,6 +187,12 @@ def handshake(req: schemas.HandshakeRequest, request: Request = None, db: Sessio
 
     # Update kiosk record with actual client KioskID
     kiosk.kiosk_id = kiosk_id
+    if request:
+        real_ip = request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For")
+        if real_ip:
+            kiosk.ip_address = real_ip.split(",")[0].strip()
+        elif request.client:
+            kiosk.ip_address = request.client.host
     
     # Generate unique API token in format AB1234
     token = generate_kiosk_token()
@@ -377,12 +388,20 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
     if not kiosk:
         raise HTTPException(status_code=401, detail="Invalid auth token")
 
+    kiosk.last_seen = datetime.now()
     kiosk_id = req.kiosk_id or req.uuid
     if not kiosk_id:
         raise HTTPException(status_code=400, detail="Missing kiosk_id or uuid")
 
     if kiosk.status == "DISABLED":
         raise HTTPException(status_code=403, detail="Kiosk status is DISABLED")
+        
+    if request:
+        real_ip = request.headers.get("X-Real-IP") or request.headers.get("X-Forwarded-For")
+        if real_ip:
+            kiosk.ip_address = real_ip.split(",")[0].strip()
+        elif request.client:
+            kiosk.ip_address = request.client.host
         
     if kiosk.status == "PENDING":
         # Keep it pending, update metadata if needed, but do not authorize SSH
@@ -416,7 +435,10 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
         from database import log_user_action
         kiosk_username = f"Kiosk: {kiosk.name} (KioskID: {kiosk.kiosk_id})" if kiosk.name else f"Kiosk: {kiosk.kiosk_id}"
         log_user_action(db, kiosk_username, "Auto Handshake Approved", "Authorized kiosk and registered public key", request)
-        return {"status": "APPROVED"}
+        return {
+            "status": "APPROVED",
+            "borg_passphrase": os.getenv("BORG_PASSPHRASE", "")
+        }
         
     raise HTTPException(status_code=403, detail=f"Kiosk status is {kiosk.status}")
 

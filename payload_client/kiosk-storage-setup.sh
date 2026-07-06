@@ -88,4 +88,26 @@ if [ -f "$PERSISTENT_SSH" ]; then
     ln -sf "$PERSISTENT_SSH" "$SSH_KEY"
     ln -sf "$PERSISTENT_SSH.pub" "$SSH_KEY.pub"
 fi
+
+# Persist NetworkManager Wi-Fi connections
+NM_CONNS_DIR="/etc/NetworkManager/system-connections"
+PERSIST_NM_DIR="$MOUNT_POINT/system-connections"
+
+if [ -d "$MOUNT_POINT" ]; then
+    mkdir -p "$PERSIST_NM_DIR"
+    chmod 700 "$PERSIST_NM_DIR"
+    
+    # If the system directory is not yet a symlink, migrate it
+    if [ ! -L "$NM_CONNS_DIR" ]; then
+        mkdir -p "$(dirname "$NM_CONNS_DIR")"
+        if [ -d "$NM_CONNS_DIR" ]; then
+            # Copy any existing connection files to persistent storage
+            cp -p "$NM_CONNS_DIR"/* "$PERSIST_NM_DIR"/ 2>/dev/null || true
+            rm -rf "$NM_CONNS_DIR"
+        fi
+        ln -s "$PERSIST_NM_DIR" "$NM_CONNS_DIR"
+    fi
+fi
+
 echo "Kiosk storage setup completed successfully!"
+

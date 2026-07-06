@@ -13,6 +13,8 @@ interface Kiosk {
   created_at: string;
   updated_at: string;
   approved_at?: string | null;
+  last_seen?: string | null;
+  is_online?: boolean;
   contact: string | null;
   comment: string | null;
   iso_exists?: boolean;
@@ -331,13 +333,22 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                       <div className="space-y-1">
                         <div>
                           {kiosk.status === 'APPROVED' ? (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              <span className="relative flex h-2 w-2 mr-0.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            kiosk.is_online ? (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title={kiosk.last_seen ? `Last seen: ${new Date(kiosk.last_seen).toLocaleString()}` : ''}>
+                                <span className="relative flex h-2 w-2 mr-0.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                                {t('kioskStatusApprovedLabel') || 'Active'}
                               </span>
-                              {t('kioskStatusApprovedLabel') || 'Active'}
-                            </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-500/10 text-zinc-400 border border-zinc-500/20" title={kiosk.last_seen ? `Last seen: ${new Date(kiosk.last_seen).toLocaleString()}` : ''}>
+                                <span className="relative flex h-2 w-2 mr-0.5">
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-zinc-500"></span>
+                                </span>
+                                {t('kioskStatusOfflineLabel') || 'Offline'}
+                              </span>
+                            )
                           ) : kiosk.status === 'DISABLED' ? (
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20">
                               <ShieldAlert size={10} /> {t('kioskStatusDisabledLabel') || 'Disabled'}
