@@ -148,4 +148,28 @@ button, a, label, span, p, h1, h2, h3, h4, h5, h6 {
   -webkit-backdrop-filter: none !important;
 }
 
+/* Offline Capabilities Card Styling (Theme-aware overrides) */
+.offline-capabilities-card {
+  background-color: rgba(99, 102, 241, 0.1) !important;       /* bg-indigo-500/10 */
+  border-color: rgba(99, 102, 241, 0.2) !important;           /* border-indigo-500/20 */
+}
+.offline-capabilities-card .card-icon {
+  color: rgb(129, 140, 248) !important;                        /* text-indigo-400 */
+}
+.offline-capabilities-card .card-text {
+  color: rgb(199, 210, 254) !important;                        /* text-indigo-200 */
+}
+
+/* When light theme is active, override colors with high contrast indigo colors */
+.light .offline-capabilities-card {
+  background-color: rgba(238, 242, 255, 0.5) !important;      /* bg-indigo-50/50 */
+  border-color: rgb(224, 231, 255) !important;                /* border-indigo-100 */
+}
+.light .offline-capabilities-card .card-icon {
+  color: rgb(79, 70, 229) !important;                          /* text-indigo-600 */
+}
+.light .offline-capabilities-card .card-text {
+  color: rgb(55, 48, 163) !important;                          /* text-indigo-800 */
+}
+
 

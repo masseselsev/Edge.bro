@@ -225,6 +225,7 @@ export const translations: Record<Language, Record<string, string>> = {
     flashInstructions: 'Flash this image using Rufus or balenaEtcher.',
     offlineCapabilities: 'Offline Capabilities:',
     offlineCapabilitiesText: 'The Live-USB bundles the identical Flasher module used by this orchestrator. When booted, it will automatically launch a secure kiosk interface to allow untethered, high-speed disk restoration from local USB storage.',
+    kioskPairingKeyTooltip: 'Pairing Key:',
     taskLogsModalTitle: 'Live-USB Generation Progress',
 
     // Task Logs Modal
@@ -824,6 +825,7 @@ export const translations: Record<Language, Record<string, string>> = {
     flashInstructions: 'Запишите полученный образ через Rufus или balenaEtcher.',
     offlineCapabilities: 'Офлайн-возможности:',
     offlineCapabilitiesText: 'Сборка включает точно такой же прошивальщик, как и этот оркестратор. После загрузки автоматически запустится киоск для автономной и быстрой перезаписи дисков с подключенных USB-накопителей.',
+    kioskPairingKeyTooltip: 'Ключ сопряжения:',
     taskLogsModalTitle: 'Ход генерации образа Live-USB',
 
     // Task Logs Modal
@@ -1422,6 +1424,7 @@ export const translations: Record<Language, Record<string, string>> = {
     flashInstructions: 'Запишіть отриманий образ через Rufus або balenaEtcher.',
     offlineCapabilities: 'Офлайн-можливості:',
     offlineCapabilitiesText: 'Збірка включає точно такий же прошивальник, як і цей оркестратор. Після завантаження автоматично запуститься кіоск для автономного та швидкого перезапису дисків з підключених USB-накопичувачів.',
+    kioskPairingKeyTooltip: 'Ключ сполучення:',
     taskLogsModalTitle: 'Хід генерації образу Live-USB',
 
     // Task Logs Modal

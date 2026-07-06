@@ -527,10 +527,10 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
           </div>
 
           {/* Offline Capabilities Card */}
-          <div className="p-4 bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-xl flex items-start gap-3">
-            <ShieldAlert className="text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" size={18} />
-            <div className="text-xs text-indigo-800 dark:text-indigo-200 leading-relaxed">
-              <strong>{t('offlineCapabilities') || 'Offline Capabilities:'}</strong> {t('offlineCapabilitiesText') || 'The Live-USB bundles the identical Flasher module...'}
+          <div className="p-4 rounded-xl flex items-start gap-3 offline-capabilities-card border">
+            <ShieldAlert className="shrink-0 mt-0.5 card-icon" size={18} />
+            <div className="text-xs leading-relaxed card-text">
+              <strong>{t('offlineCapabilities') || 'Offline Capabilities:'}</strong> {t('offlineCapabilitiesText') || 'The Live-USB bundles the identical Flasher module used by this orchestrator. When booted, it will automatically launch a secure kiosk interface to allow untethered, high-speed disk restoration from local USB storage.'}
             </div>
           </div>
         </div>
