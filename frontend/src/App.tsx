@@ -417,7 +417,6 @@ function AppContent() {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
-  const prevNetworkConnected = useRef<boolean | null>(null);
 
   // Bandwidth monitoring state (admin-only, non-kiosk)
   const [bandwidth, setBandwidth] = useState<{ rx_speed: number; tx_speed: number } | null>(null);
@@ -675,17 +674,11 @@ function AppContent() {
     return () => clearInterval(wdtInterval);
   }, [isKiosk, hasShownWatchdogModal]);
 
-  // Auto-show network modal when kiosk has no connection (after boot)
+  // Auto-show network modal when kiosk has no connection (after boot, once per session)
   useEffect(() => {
     if (!isKiosk || !appReady || networkStatus === null) return;
 
     const isConnected = !!(networkStatus?.wired?.connected || networkStatus?.wifi?.connected);
-
-    // Reset dismissal when transitioning from connected → disconnected
-    if (prevNetworkConnected.current === true && !isConnected) {
-      setUserDismissedNetworkModal(false);
-    }
-    prevNetworkConnected.current = isConnected;
 
     if (!isConnected && !userDismissedNetworkModal) {
       setShowNetworkModal(true);
