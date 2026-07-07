@@ -446,5 +446,54 @@ def test_kiosk_iso_dynamic_naming_and_download(db_session):
         shutil.rmtree(workspace_test_cache, ignore_errors=True)
 
 
+def test_repack_kiosk_iso_task_updates_timestamp(db_session):
+    from unittest.mock import mock_open
+    
+    # 1. Create a kiosk
+    kiosk = models.Kiosk(
+        name="Test Timestamp Kiosk",
+        kiosk_id="KS9999",
+        key="9999KS",
+        status="APPROVED",
+        auth_token="TEST99"
+    )
+    db_session.add(kiosk)
+    db_session.commit()
+    kiosk_id = kiosk.id
+    assert kiosk.iso_built_at is None
+    
+    # 2. Call repack_kiosk_iso_task directly with the kiosk ID, mocking all external file/cmd calls
+    from iso_tasks import repack_kiosk_iso_task
+    
+    mock_request = MagicMock()
+    mock_request.id = "test-task-uuid"
+    
+    with patch("database.SessionLocal") as mock_session, \
+         patch("tasks.run_command_with_logging") as mock_run, \
+         patch("tasks.log_to_task") as mock_log, \
+         patch("subprocess.run") as mock_sub, \
+         patch("os.path.exists") as mock_exists, \
+         patch("os.listdir") as mock_listdir, \
+         patch("os.makedirs") as mock_makedirs, \
+         patch("builtins.open", mock_open(read_data="{}")):
+        
+        mock_session.return_value = db_session
+        mock_exists.side_effect = lambda path: True
+        mock_listdir.return_value = []
+        
+        repack_kiosk_iso_task.request_stack.push(mock_request)
+        try:
+            repack_kiosk_iso_task.run(kiosk_id)
+        finally:
+            repack_kiosk_iso_task.request_stack.pop()
+        
+    db_session.expire_all()
+    kiosk_db = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
+    assert kiosk_db.iso_built_at is not None
+    assert kiosk_db.rebuild_required is False
+
+
+
+
 
 

@@ -21,6 +21,7 @@ interface Kiosk {
   auth_token?: string | null;
   target_ip: string | null;
   rebuild_required: boolean;
+  iso_built_at?: string | null;
 }
 
 interface KioskManagementSectionProps {
@@ -327,6 +328,7 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                   <th className="py-3 px-4">{t('kioskUuidLabel') || 'UUID'}</th>
                   <th className="py-3 px-4">{t('statusLabel') || 'Status'}</th>
                   <th className="py-3 px-4">{t('kioskApprovedAtLabel') || 'Approval Date'}</th>
+                  <th className="py-3 px-4">{t('kioskIsoBuiltAtLabel') || 'ISO Built'}</th>
                   <th className="py-3 px-4">{t('ipAddressLabel') || 'IP Address'}</th>
                   <th className="py-3 px-4 text-right">{t('actionsLabel') || 'Actions'}</th>
                 </tr>
@@ -448,6 +450,9 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                     </td>
                     <td className="py-3.5 px-4 text-zinc-350 font-mono">
                       {kiosk.approved_at ? new Date(kiosk.approved_at).toLocaleString() : <span className="text-zinc-650">—</span>}
+                    </td>
+                    <td className="py-3.5 px-4 text-zinc-350 font-mono">
+                      {kiosk.iso_built_at ? new Date(kiosk.iso_built_at).toLocaleString() : <span className="text-zinc-650">—</span>}
                     </td>
                     <td className="py-3.5 px-4 text-zinc-300 font-mono">
                       {kiosk.ip_address || <span className="text-zinc-600">—</span>}

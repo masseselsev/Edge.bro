@@ -597,6 +597,7 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
     db.add(task_log)
     db.commit()
 
+    work_dir = None
     try:
         kiosk = db.query(Kiosk).filter(Kiosk.id == kiosk_id).first()
         if not kiosk:
@@ -726,8 +727,11 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
                 except Exception as pe:
                     logger.error(f"Failed to prune old ISO {iso_files[i][0]}: {pe}")
 
+        from datetime import datetime
+        kiosk.iso_built_at = datetime.utcnow()
         kiosk.rebuild_required = False
         db.commit()
+
 
         log_to_task(task_id, "[PROGRESS] 100:Kiosk custom ISO generated successfully!", status="SUCCESS")
         return {"status": "SUCCESS", "iso_path": output_kiosk_iso}
@@ -737,7 +741,8 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
         log_to_task(task_id, f"Kiosk ISO repackaging failed: {str(e)}", status="FAILED")
         return {"status": "FAILED", "error": str(e)}
     finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
+        if work_dir:
+            shutil.rmtree(work_dir, ignore_errors=True)
         db.close()
 
 
