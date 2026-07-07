@@ -128,6 +128,7 @@ def cleanup_locks_and_resolve_ip(
         f"fi; "
         f"pkill -f '[b]org create' || true; "
         f"find /root/.cache/borg -name 'lock*' -delete 2>/dev/null; "
+        f"find /root/.cache/borg -mindepth 1 -maxdepth 1 -type d -exec sh -c '[ ! -s \"$1/config\" ] && rm -rf \"$1\" && echo \"Removed corrupt borg cache: $1\"' _ {{}} \\; 2>/dev/null; "
         f"echo OK"
     )
 
