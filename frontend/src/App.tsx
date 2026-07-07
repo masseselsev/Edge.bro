@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar, Sun, Moon, Link2, Copy, ShieldAlert, RefreshCw, Loader2, User, ArrowDown, ArrowUp } from 'lucide-react';
+import { Server, HardDrive, History, Settings as Gear, Terminal, Cpu, Globe2, Wifi, LogOut, Calendar, Sun, Moon, Link2, Copy, ShieldAlert, RefreshCw, Loader2, User, ArrowDown, ArrowUp, AlertTriangle } from 'lucide-react';
 import FleetTab from './components/FleetTab';
 import FlasherTab from './components/FlasherTab';
 import HistoryTab from './components/HistoryTab';
@@ -360,6 +360,8 @@ function AppContent() {
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [networkStatus, setNetworkStatus] = useState<any>(null);
   const [networkLoaded, setNetworkLoaded] = useState(false);
+  const [orchestratorReachable, setOrchestratorReachable] = useState<boolean | null>(null);
+  const [userDismissedNetworkModal, setUserDismissedNetworkModal] = useState(false);
   const [logTaskId, setLogTaskId] = useState<string | null>(null);
   const [logTaskTitle, setLogTaskTitle] = useState<string>('');
   
@@ -415,6 +417,7 @@ function AppContent() {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
+  const prevNetworkConnected = useRef<boolean | null>(null);
 
   // Bandwidth monitoring state (admin-only, non-kiosk)
   const [bandwidth, setBandwidth] = useState<{ rx_speed: number; tx_speed: number } | null>(null);
@@ -671,6 +674,45 @@ function AppContent() {
     const wdtInterval = setInterval(fetchWatchdogStatus, 4000);
     return () => clearInterval(wdtInterval);
   }, [isKiosk, hasShownWatchdogModal]);
+
+  // Auto-show network modal when kiosk has no connection (after boot)
+  useEffect(() => {
+    if (!isKiosk || !appReady || networkStatus === null) return;
+
+    const isConnected = !!(networkStatus?.wired?.connected || networkStatus?.wifi?.connected);
+
+    // Reset dismissal when transitioning from connected → disconnected
+    if (prevNetworkConnected.current === true && !isConnected) {
+      setUserDismissedNetworkModal(false);
+    }
+    prevNetworkConnected.current = isConnected;
+
+    if (!isConnected && !userDismissedNetworkModal) {
+      setShowNetworkModal(true);
+    }
+  }, [networkStatus, appReady, isKiosk]);
+
+  // Poll orchestrator reachability (kiosk mode only)
+  useEffect(() => {
+    if (!isKiosk || !appReady) return;
+
+    const checkOrchestrator = async () => {
+      try {
+        const res = await fetch('/api/nodes');
+        if (res.ok) {
+          setOrchestratorReachable(true);
+        } else {
+          setOrchestratorReachable(false);
+        }
+      } catch {
+        setOrchestratorReachable(false);
+      }
+    };
+
+    checkOrchestrator();
+    const interval = setInterval(checkOrchestrator, 15000);
+    return () => clearInterval(interval);
+  }, [isKiosk, appReady]);
 
   const handleFreezeWatchdog = async () => {
     setWatchdogActionLoading(true);
@@ -1082,6 +1124,13 @@ function AppContent() {
                       </>
                     )}
                   </button>
+                  {/* Server unreachable indicator: shown when network is up but orchestrator is down */}
+                  {(networkStatus?.wired?.connected || networkStatus?.wifi?.connected) && orchestratorReachable === false && (
+                    <span className="flex items-center gap-1 text-[10px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full animate-fade-in">
+                      <AlertTriangle size={10} />
+                      {t('serverUnreachable')}
+                    </span>
+                  )}
                   <button
                     onClick={handleExitKiosk}
                     className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-950/20 hover:bg-red-950/40 border border-red-900/30 hover:border-red-900/60 text-xs text-red-400 font-bold transition-all duration-200 cursor-pointer"
@@ -1401,7 +1450,14 @@ function AppContent() {
 
       {/* Network Settings Modal */}
       {showNetworkModal && (
-        <NetworkSettingsModal onClose={() => setShowNetworkModal(false)} initialStatus={networkStatus} />
+        <NetworkSettingsModal
+          onClose={() => {
+            setShowNetworkModal(false);
+            setUserDismissedNetworkModal(true);
+          }}
+          initialStatus={networkStatus}
+          showNoNetworkWarning={isKiosk && !(networkStatus?.wired?.connected || networkStatus?.wifi?.connected)}
+        />
       )}
 
       {/* Profile Modal */}

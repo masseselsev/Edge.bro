@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldAlert, RefreshCw, Wifi, Globe, Key, Settings, X, Globe2 } from 'lucide-react';
+import { ShieldAlert, RefreshCw, Wifi, Globe, Key, Settings, X, Globe2, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import jsQR from 'jsqr';
 
 interface NetworkSettingsModalProps {
   onClose: () => void;
   initialStatus?: NetworkStatus | null;
+  showNoNetworkWarning?: boolean;
 }
 
 interface WiredStatus {
@@ -48,7 +49,7 @@ interface VpnStatus {
   last_handshake: number;
 }
 
-export default function NetworkSettingsModal({ onClose, initialStatus = null }: NetworkSettingsModalProps) {
+export default function NetworkSettingsModal({ onClose, initialStatus = null, showNoNetworkWarning = false }: NetworkSettingsModalProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'wired' | 'wifi' | 'vpn'>('wired');
   const [status, setStatus] = useState<NetworkStatus | null>(initialStatus);
@@ -347,6 +348,14 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null }: 
             <X size={18} />
           </button>
         </div>
+
+        {/* No-network warning banner */}
+        {showNoNetworkWarning && (
+          <div className="flex items-center gap-2.5 px-4 py-3 bg-amber-500/10 border-b border-amber-500/20 text-amber-400 text-xs font-medium">
+            <AlertTriangle size={14} className="shrink-0" />
+            <span>{t('noNetworkWarning')}</span>
+          </div>
+        )}
 
         {/* Navigation Tabs */}
         <div className="flex bg-zinc-950/80 p-1 border-b border-zinc-800">
