@@ -426,6 +426,10 @@ def issue_kiosk(req: schemas.KioskIssueRequest, request: Request = None, db: Ses
     while db.query(models.Kiosk).filter(models.Kiosk.key == pairing_key).first():
         pairing_key = generate_kiosk_key()
 
+    settings = db.query(models.Settings).first()
+    default_target_ip = settings.orchestrator_ip if settings else "127.0.0.1"
+    target_ip_val = req.target_ip if req.target_ip else default_target_ip
+
     # Create kiosk record directly approved
     kiosk = models.Kiosk(
         name=req.name,
@@ -434,7 +438,9 @@ def issue_kiosk(req: schemas.KioskIssueRequest, request: Request = None, db: Ses
         contact=req.contact,
         comment=req.comment,
         status="APPROVED",
-        auth_token=auth_token
+        auth_token=auth_token,
+        target_ip=target_ip_val,
+        rebuild_required=False
     )
     db.add(kiosk)
     db.commit()
@@ -450,6 +456,24 @@ def issue_kiosk(req: schemas.KioskIssueRequest, request: Request = None, db: Ses
 
     # Return kiosk response + task_id to follow progress
     return {"kiosk": kiosk, "task_id": task.id}
+
+
+@router.post("/kiosks/{id}/update_ip")
+def update_kiosk_ip(id: int, req: schemas.KioskIpUpdateRequest, request: Request = None, db: Session = Depends(get_db), auth = Depends(require_admin)):
+    kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == id).first()
+    if not kiosk:
+        raise HTTPException(status_code=404, detail="Kiosk not found")
+        
+    kiosk.target_ip = req.target_ip.strip()
+    kiosk.rebuild_required = True
+    db.commit()
+    db.refresh(kiosk)
+    
+    from database import log_user_action
+    username = getattr(auth, "username", "test_admin")
+    log_user_action(db, username, "Update Kiosk target IP", f"Updated target IP for kiosk {kiosk.kiosk_id} to {kiosk.target_ip}. Marked rebuild required.", request)
+    
+    return {"message": "Kiosk target IP updated", "kiosk": kiosk}
 
 
 @router.post("/kiosks/{id}/recreate")

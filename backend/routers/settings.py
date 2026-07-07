@@ -95,6 +95,12 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
         if policy_changes:
             changes.extend(policy_changes)
 
+    rebuild_needed = (
+        settings.language != payload.language or 
+        settings.server_ips != payload.server_ips or 
+        settings.orchestrator_ip != payload.orchestrator_ip
+    )
+
     settings.borg_ssh_port = payload.borg_ssh_port
     settings.borg_repo_path = payload.borg_repo_path
     settings.keep_daily = payload.keep_daily
@@ -110,6 +116,14 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     settings.server_ips = payload.server_ips
     settings.server_name = payload.server_name
     db.commit()
+
+    if rebuild_needed:
+        try:
+            from iso_tasks import trigger_base_iso_rebuild
+            trigger_base_iso_rebuild(db)
+        except Exception as ex:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to trigger base ISO rebuild: {ex}")
 
     from database import log_user_action
     details_str = f"Update Settings: {', '.join(changes)}" if changes else "Updated global orchestrator settings (no values changed)"

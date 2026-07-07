@@ -171,8 +171,17 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
     from tasks import log_to_task, run_command_with_logging
     from database import SessionLocal
     from models import TaskLog
+    import redis
+    import os
     
     task_id = self.request.id
+
+    try:
+        REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        r = redis.Redis.from_url(REDIS_URL)
+        r.delete("base_iso_dirty")
+    except Exception as re:
+        logger.error(f"Failed to clear base_iso_dirty in Celery task: {re}")
 
     db = SessionLocal()
     task_log = TaskLog(id=task_id, task_type="ISO_GEN", status="RUNNING", log_output="")
@@ -547,6 +556,9 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             from models import Kiosk
             approved_kiosks = db_reg.query(Kiosk).filter(Kiosk.status == "APPROVED").all()
             for kiosk in approved_kiosks:
+                kiosk.rebuild_required = True
+            db_reg.commit()
+            for kiosk in approved_kiosks:
                 logger.info(f"Auto-triggering rebuild for approved kiosk {kiosk.kiosk_id} after base ISO update.")
                 repack_kiosk_iso_task.delay(kiosk.id)
             db_reg.close()
@@ -559,7 +571,17 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         log_to_task(task_id, f"Client ISO generation failed: {str(e)}", status="FAILED")
         return {"status": "FAILED", "error": str(e)}
     finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
+        try:
+            REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+            r = redis.Redis.from_url(REDIS_URL)
+            dirty = r.get("base_iso_dirty")
+            if dirty:
+                r.delete("base_iso_dirty")
+                generate_client_iso_task.delay("127.0.0.1", "TEMPLATE")
+        except Exception as re:
+            logger.error(f"Failed to check/trigger dirty base ISO rebuild: {re}")
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
 
 
 @celery_app.task(bind=True)
@@ -580,10 +602,15 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
         if not kiosk:
             raise Exception(f"Kiosk record {kiosk_id} not found")
 
+        from routers.settings import get_local_ips
         settings = db.query(Settings).first()
         max_kiosk_isos = settings.max_kiosk_isos if settings else 5
-        target_ip = settings.orchestrator_ip if settings else "127.0.0.1"
-        available_ips = settings.server_ips if (settings and settings.server_ips) else []
+        target_ip = kiosk.target_ip if kiosk.target_ip else (settings.orchestrator_ip if settings else "127.0.0.1")
+        
+        auto_ips = get_local_ips()
+        manual_ips = settings.server_ips if (settings and settings.server_ips) else []
+        available_ips = sorted(list(set(auto_ips + manual_ips)))
+        
         lang = settings.language if settings else "en"
 
         template_iso = os.path.join(CACHE_DIR, "technician_client_v1.iso")
@@ -699,6 +726,9 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
                 except Exception as pe:
                     logger.error(f"Failed to prune old ISO {iso_files[i][0]}: {pe}")
 
+        kiosk.rebuild_required = False
+        db.commit()
+
         log_to_task(task_id, "[PROGRESS] 100:Kiosk custom ISO generated successfully!", status="SUCCESS")
         return {"status": "SUCCESS", "iso_path": output_kiosk_iso}
 
@@ -709,4 +739,30 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
         db.close()
+
+
+def trigger_base_iso_rebuild(db):
+    import redis
+    import os
+    from datetime import datetime
+    import models
+    
+    active_task = db.query(models.TaskLog).filter(
+        models.TaskLog.task_type == "ISO_GEN",
+        models.TaskLog.status == "RUNNING"
+    ).first()
+    
+    if active_task:
+        age = datetime.utcnow() - active_task.created_at
+        if age.total_seconds() > 45 * 60:
+            active_task.status = "FAILED"
+            active_task.log_output += "\n[SYSTEM] Task assumed dead after 45 minutes timeout."
+            db.commit()
+        else:
+            REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+            r = redis.Redis.from_url(REDIS_URL)
+            r.set("base_iso_dirty", "1")
+            return
+            
+    generate_client_iso_task.delay("127.0.0.1", "TEMPLATE")
 

@@ -239,6 +239,7 @@ def test_kiosks_activation_and_auto_handshake(mock_authorize, db_session):
     # 3. auto_handshake on disabled kiosk should fail with 403
     mock_request = MagicMock()
     mock_request.headers = {"Authorization": "Bearer token-active-123"}
+    mock_request.client.host = "127.0.0.1"
     req_handshake = schemas.AutoHandshakeRequest(
         kiosk_id="TEST_KIOSK_UUID_111",
         ssh_pub_key="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPqgXgGf18V... KioskSSHKey"

@@ -159,7 +159,7 @@ def test_endpoint_access_control(client, db_session):
     db_session.add(admin)
     
     # 2. Seed approved kiosk
-    kiosk = models.Kiosk(name="Approved Kiosk", uuid="kiosk-uuid", key="ABCD-1234", status="APPROVED", auth_token="kiosk-token")
+    kiosk = models.Kiosk(name="Approved Kiosk", kiosk_id="kiosk-uuid", key="ABCD-1234", status="APPROVED", auth_token="kiosk-token")
     db_session.add(kiosk)
     db_session.commit()
 

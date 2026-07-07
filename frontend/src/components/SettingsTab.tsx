@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Settings as Gear, CheckCircle } from 'lucide-react';
+import { Save, Settings as Gear, CheckCircle, Trash2 } from 'lucide-react';
 import { SearchableSelect, DropdownTextInput } from './SearchableSelect';
 import type { Option } from './SearchableSelect';
 import { useTranslation } from '../context/TranslationContext';
@@ -27,11 +27,12 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [globalExclusions, setGlobalExclusions] = useState('/dev/*,/proc/*,/sys/*,/run/*,/mnt/*');
   const [orchestratorIp, setOrchestratorIp] = useState('');
   const [availableIps, setAvailableIps] = useState<string[]>([]);
+  const [manualIps, setManualIps] = useState<string[]>([]);
+  const [newIpInput, setNewIpInput] = useState('');
   const [language, setLanguageState] = useState<Language>('en');
   const [defaultCompression, setDefaultCompression] = useState('zstd:3');
   const [defaultCpuQuota, setDefaultCpuQuota] = useState<number | ''>('');
   const [hostDataPath, setHostDataPath] = useState<string | null>(null);
-  const [serverIpsInput, setServerIpsInput] = useState('');
   const [maxKioskIsos, setMaxKioskIsos] = useState(5);
   const [serverName, setServerName] = useState('orchestrator');
   
@@ -120,7 +121,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         if (data.borg_host_data_path) {
           setHostDataPath(data.borg_host_data_path);
         }
-        setServerIpsInput(data.server_ips ? data.server_ips.join(', ') : '');
+        setManualIps(data.server_ips || []);
         if (data.max_kiosk_isos !== undefined) {
           setMaxKioskIsos(data.max_kiosk_isos);
         }
@@ -177,7 +178,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           language: language,
           default_compression: defaultCompression,
           default_cpu_quota: defaultCpuQuota === '' ? null : Number(defaultCpuQuota),
-          server_ips: serverIpsInput.split(',').map(s => s.trim()).filter(Boolean),
+          server_ips: manualIps,
           max_kiosk_isos: maxKioskIsos,
           server_name: serverName,
           retention_policy: {
@@ -357,16 +358,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('orchestratorIpLabelSettings')}</label>
-                  <DropdownTextInput
-                    value={orchestratorIp}
-                    onChange={setOrchestratorIp}
-                    options={availableIps}
-                    placeholder={t('orchestratorIpPlaceholderSettings')}
-                  />
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 mb-1.5 min-h-[16px]">
                     <label className="block text-xs font-semibold text-zinc-400">{t('systemTimezone')}</label>
@@ -402,19 +394,6 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                     placeholder={t('selectTimezone')}
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('serverIpsLabel') || 'Server IP Addresses'}</label>
-                  <input
-                    type="text"
-                    value={serverIpsInput}
-                    onChange={(e) => setServerIpsInput(e.target.value)}
-                    placeholder={t('serverIpsPlaceholder') || 'e.g. 192.168.1.100, 10.0.0.5'}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                  />
-                </div>
                 <div>
                   <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
                     {t('maxKioskIsosLabel') || 'Max Kiosk ISOs in Repository'}
@@ -430,6 +409,82 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                   <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
                     {t('maxKioskIsosSub') || 'Maximum number of issued kiosk ISOs to keep in history before automatic pruning.'}
                   </p>
+                </div>
+              </div>
+
+              <div className="mb-4 space-y-3 border border-zinc-800/80 p-4 rounded-xl bg-zinc-950/40">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                    {t('networkAddressesLabel') || 'Orchestrator Network Addresses'}
+                  </label>
+                  <span className="text-[10px] text-zinc-500 block mt-0.5">
+                    {t('networkAddressesSub') || 'Select the default IP to bake into the next kiosk. Auto-detected (A) and manually added (M) options.'}
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {Array.from(new Set([...availableIps, ...manualIps, ...(orchestratorIp ? [orchestratorIp] : [])])).map((ip) => {
+                    const isAuto = availableIps.includes(ip);
+                    const isDefault = orchestratorIp === ip;
+                    return (
+                      <div key={ip} className="flex items-center justify-between p-2 bg-zinc-900/40 border border-zinc-800 rounded-lg hover:border-zinc-700/55 transition-all">
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="radio"
+                            name="default_ip"
+                            checked={isDefault}
+                            onChange={() => setOrchestratorIp(ip)}
+                            className="rounded-full border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-4 w-4"
+                          />
+                          <span className="text-sm font-semibold text-zinc-100 font-mono">{ip}</span>
+                          {isAuto ? (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Auto-detected interface">A</span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" title="Manually added address">M</span>
+                          )}
+                          {isDefault && (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-wide">Default</span>
+                          )}
+                        </div>
+                        {!isAuto && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setManualIps(manualIps.filter((item) => item !== ip));
+                              if (isDefault) setOrchestratorIp('');
+                            }}
+                            className="p-1 hover:bg-rose-500/15 text-rose-400 rounded-md transition-colors cursor-pointer"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex gap-2 border-t border-zinc-800/60 pt-3">
+                  <input
+                    type="text"
+                    placeholder={t('addCustomIpPlaceholder') || 'e.g. 10.0.0.5 or domain.name'}
+                    value={newIpInput}
+                    onChange={(e) => setNewIpInput(e.target.value)}
+                    className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = newIpInput.trim();
+                      if (val && !manualIps.includes(val)) {
+                        setManualIps([...manualIps, val]);
+                        if (!orchestratorIp) setOrchestratorIp(val);
+                      }
+                      setNewIpInput('');
+                    }}
+                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    {t('addButton') || 'Add'}
+                  </button>
                 </div>
               </div>
 

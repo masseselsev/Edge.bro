@@ -29,9 +29,6 @@ interface ClientIsoTabProps {
 export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
   const { t, language } = useTranslation();
   const [status, setStatus] = useState<IsoStatus | null>(null);
-  const [orchestratorIp, setOrchestratorIp] = useState(window.location.hostname);
-  const [availableIps, setAvailableIps] = useState<string[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isDownloadingBase, setIsDownloadingBase] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -107,54 +104,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
     return () => clearInterval(interval);
   }, [lastTriggerTime]);
 
-  useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
-      .then(data => {
-        if (data) {
-          const autoIps = data.available_ips || [];
-          const customIps = data.server_ips || [];
-          const combined = Array.from(new Set([...autoIps, ...customIps]));
-          setAvailableIps(combined);
-          if (data.orchestrator_ip) {
-            setOrchestratorIp(data.orchestrator_ip);
-          }
-        }
-      })
-      .catch(err => console.error(err));
-  }, []);
 
-  const handleGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsGenerating(true);
-    setError('');
-    setSuccessMsg('');
-    try {
-      const res = await fetch('/api/iso/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target_ip: orchestratorIp,
-          auth_token: 'TEMPLATE'
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to start generation');
-      
-      if (data.task_id) {
-        onViewLogs(data.task_id, t('taskLogsModalTitle') || 'Live-USB Generation Progress');
-      } else {
-        setSuccessMsg('ISO Generation task started in background.');
-      }
-      
-      // Start polling faster
-      setTimeout(fetchStatus, 3000);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
   const handleIssueSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -285,12 +235,18 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 animate-fade-in">
         {/* Left Column (30% / 3 cols) */}
         <div className="lg:col-span-3 space-y-6">
-          {/* Base ISO Cache Panel (Prerequisite Panel) */}
+          {/* Base Template ISO Widget */}
           <div className="p-5 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4">
-            <h3 className="text-sm font-bold text-zinc-50">{t('pipelineStatus') || 'Pipeline Status'}</h3>
-            
-            <div className="p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl">
-              <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-bold text-zinc-50">{t('baseTemplateIso') || 'Base Template ISO'}</h3>
+              <p className="text-[10px] text-zinc-400 mt-1 leading-relaxed">
+                {t('baseTemplateIsoSub') || 'Automated base template system for client image packing.'}
+              </p>
+            </div>
+
+            {/* Status card */}
+            <div className="p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs font-bold text-zinc-50">{t('baseIsoCache') || 'Base Debian ISO Cache'}</div>
                   <div className="text-[10px] text-zinc-500">
@@ -312,26 +268,26 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
               </div>
 
               {!status?.base_iso_cached && (
-                <div className="space-y-4">
+                <div className="space-y-3 pt-1">
                   <div className="flex bg-zinc-900 rounded-lg p-1 gap-1">
                     <button
                       type="button"
                       onClick={() => setIsoSourceType('official')}
-                      className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'official' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'}`}
+                      className={`flex-1 py-1.5 text-[9px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'official' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'}`}
                     >
                       {t('officialTab') || 'Official'}
                     </button>
                     <button
                       type="button"
                       onClick={() => setIsoSourceType('url')}
-                      className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'url' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'}`}
+                      className={`flex-1 py-1.5 text-[9px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'url' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'}`}
                     >
                       {t('customUrlTab') || 'Custom URL'}
                     </button>
                     <button
                       type="button"
                       onClick={() => setIsoSourceType('upload')}
-                      className={`flex-1 py-1.5 text-[10px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'upload' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'}`}
+                      className={`flex-1 py-1.5 text-[9px] font-bold rounded-md uppercase cursor-pointer transition-colors ${isoSourceType === 'upload' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'}`}
                     >
                       {t('uploadTab') || 'Upload'}
                     </button>
@@ -343,7 +299,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                       <button
                         onClick={handleCacheBaseIso}
                         disabled={isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0)}
-                        className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        className="w-full py-2 text-xs font-bold bg-zinc-855 hover:bg-zinc-800 text-zinc-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       >
                         {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? (t('downloadProgress') || 'Downloading...') : (t('startDownload') || 'START DOWNLOAD')}
                       </button>
@@ -357,12 +313,12 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                         placeholder="https://example.com/custom.iso"
                         value={customIsoUrl}
                         onChange={(e) => setCustomIsoUrl(e.target.value)}
-                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-md text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
+                        className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded-md text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                       />
                       <button
                         onClick={handleCacheBaseIso}
                         disabled={isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) || !customIsoUrl}
-                        className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        className="w-full py-2 text-xs font-bold bg-zinc-855 hover:bg-zinc-800 text-zinc-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       >
                         {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? (t('downloadProgress') || 'Downloading...') : (t('downloadFromUrl') || 'DOWNLOAD FROM URL')}
                       </button>
@@ -375,12 +331,12 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                         type="file" 
                         accept=".iso"
                         ref={fileInputRef}
-                        className="w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-zinc-800 file:text-zinc-100 hover:file:bg-zinc-700 transition-colors cursor-pointer"
+                        className="w-full text-xs text-zinc-400 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-bold file:bg-zinc-855 file:text-zinc-100 hover:file:bg-zinc-800 transition-colors cursor-pointer"
                       />
                       <button
                         onClick={handleUpload}
                         disabled={isUploading}
-                        className="w-full py-2 text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-100 rounded-md transition-colors disabled:opacity-50 cursor-pointer"
+                        className="w-full py-2 text-xs font-bold bg-zinc-855 hover:bg-zinc-800 text-zinc-100 rounded-md transition-colors disabled:opacity-50 cursor-pointer"
                       >
                         {isUploading ? `${t('uploadProgressText') || 'Uploading file...'} (${uploadProgress}%)` : (t('uploadIso') || 'UPLOAD ISO')}
                       </button>
@@ -399,7 +355,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                         </span>
                         <span className="text-sky-400">{status.base_iso_progress}%</span>
                       </div>
-                      <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-gradient-to-r from-sky-400 to-indigo-500 rounded-full transition-all duration-1000 ease-out"
                           style={{ width: `${status.base_iso_progress}%` }}
@@ -415,7 +371,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                         <span className="text-zinc-400">{t('uploadProgressText') || 'Uploading file...'}</span>
                         <span className="text-emerald-400">{uploadProgress}%</span>
                       </div>
-                      <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="w-full h-1 bg-zinc-800 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-emerald-500 rounded-full transition-all duration-200 ease-out"
                           style={{ width: `${uploadProgress}%` }}
@@ -426,71 +382,34 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Configuration & Compilation Panel */}
-          <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
-            <h3 className="text-sm font-bold text-zinc-50 flex items-center gap-2">
-              {t('configPayloadTitle') || 'Configuration Payload'}
-            </h3>
-            <p className="text-xs text-zinc-400 mb-4 leading-relaxed">
-              {t('configPayloadSub') || 'These settings will be injected into the Live-USB so the offline client can seamlessly sync.'}
-            </p>
+            {error && <div className="text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg leading-relaxed">{error}</div>}
+            {successMsg && <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-lg leading-relaxed">{successMsg}</div>}
 
-            <form onSubmit={handleGenerate} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('targetIpLabel') || 'Target Orchestrator IP / Domain'}</label>
-                <DropdownTextInput
-                  value={orchestratorIp}
-                  onChange={setOrchestratorIp}
-                  options={availableIps}
-                  required
-                />
-              </div>
-
-              {error && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{error}</div>}
-              {successMsg && <div className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg">{successMsg}</div>}
-
-              <button
-                type="submit"
-                disabled={isGenerating || !status?.base_iso_cached}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm tracking-wide shadow-lg disabled:opacity-50 transition-all cursor-pointer"
-              >
-                {isGenerating ? <RefreshCw className="animate-spin" size={18} /> : <Cpu size={18} />}
-                {isGenerating ? (t('generatingUsb') || 'Generating...') : (t('generateUsbButton') || 'GENERATE LIVE-USB')}
-              </button>
-
-              {status?.client_iso_ready && status.client_iso_created_at && (
-                <div className="mt-3.5 space-y-2 border-t border-zinc-800/60 pt-3">
-                  <div className="text-[10px] text-zinc-400 font-semibold flex items-center justify-center gap-1.5">
-                    <span className="text-zinc-500">{t('imageCreatedAt') || 'Image Created'}:</span>
-                    <span className="text-zinc-300 font-mono bg-zinc-950 px-2 py-0.5 rounded border border-zinc-850/60">
-                      {new Date(status.client_iso_created_at).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-zinc-400 leading-normal bg-zinc-950/65 border border-zinc-800/80 rounded-xl p-3 text-center">
-                    <span className="text-amber-500 font-bold block mb-1">⚠️ {t('baseImageTitle') || 'Base Image Note'}</span>
-                    {t('baseImageInstruction') || 'This is the base offline client system. Changing configurations here updates the template. After compiling a new base image, any custom kiosks below should be regenerated to inherit the updates.'}
-                  </div>
-                </div>
-              )}
-            </form>
-
-            <div className="border-t border-zinc-800/80 pt-4 space-y-4">
+            <div className="space-y-3 pt-2 border-t border-zinc-800/80">
               <div className="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl">
                 <div>
-                  <div className="text-xs font-bold text-zinc-50">{t('compiledOfflineClient') || 'Compiled Offline Client'}</div>
-                  <div className="text-[10px] text-zinc-505">technician_client_v1.iso</div>
+                  <div className="text-xs font-bold text-zinc-50">{t('compiledOfflineClient') || 'Compiled Template ISO'}</div>
+                  <div className="text-[10px] text-zinc-500 font-mono">technician_client_v1.iso</div>
                 </div>
                 {status?.client_iso_ready ? (
-                  <span className="px-2 py-1 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded uppercase">{t('readyLabel') || 'Ready'}</span>
+                  <span className="px-1.5 py-0.5 text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded uppercase">{t('readyLabel') || 'Ready'}</span>
                 ) : (
-                  <span className="px-2 py-1 text-[10px] font-bold bg-zinc-800 text-zinc-400 border border-zinc-700 rounded uppercase">{t('notFoundLabel') || 'Not Found'}</span>
+                  <span className="px-1.5 py-0.5 text-[9px] font-bold bg-zinc-800 text-zinc-400 border border-zinc-700 rounded uppercase">{t('notFoundLabel') || 'Not Found'}</span>
                 )}
               </div>
 
+              {status?.client_iso_ready && status.client_iso_created_at && (
+                <div className="text-[10px] text-zinc-400 font-semibold flex items-center justify-center gap-1.5 py-1">
+                  <span className="text-zinc-500">{t('imageCreatedAt') || 'Created'}:</span>
+                  <span className="text-zinc-300 font-mono bg-zinc-950 px-2 py-0.5 rounded border border-zinc-850/60">
+                    {new Date(status.client_iso_created_at).toLocaleString()}
+                  </span>
+                </div>
+              )}
+
               {status?.client_iso_ready && (
-                <div className="space-y-2">
+                <div className="space-y-2 pt-1">
                   <button
                     type="button"
                     onClick={() => {
@@ -498,9 +417,9 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                       setSuccessMsg('');
                       setShowIssueModal(true);
                     }}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm tracking-wide shadow-lg transition-all cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs tracking-wide shadow-lg transition-all cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
                   >
-                    <Cpu size={18} />
+                    <Cpu size={14} />
                     {t('issueKioskBtn') || 'Issue Kiosk'}
                   </button>
 
@@ -512,15 +431,11 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                       fetchKiosks();
                       setShowHistoryModal(true);
                     }}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 rounded-lg font-bold text-sm tracking-wide transition-all cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 rounded-lg font-bold text-xs tracking-wide transition-all cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
                   >
-                    <History size={18} />
+                    <History size={14} />
                     {t('showIssuedIsosBtn') || 'Show Created ISOs'}
                   </button>
-
-                  <p className="text-center text-[10px] text-zinc-550 mt-2 leading-relaxed">
-                    {t('issueKioskDesc') || 'Creates a personalized kiosk with a unique dynamic pairing token.'}
-                  </p>
                 </div>
               )}
             </div>

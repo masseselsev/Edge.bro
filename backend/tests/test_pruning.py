@@ -52,13 +52,13 @@ def test_prune_legacy_fallback(mock_exists, mock_run, mock_session, session_fact
     print("Nodes in DB before run:", [n.hostname for n in db.query(models.Node).all()])
     db.close()
     
-    mock_run.return_value = MagicMock(returncode=0)
+    mock_run.return_value = MagicMock(returncode=0, stdout='{"archives": []}')
     
     res = global_daily_prune()
     print("Subprocess run calls:", [call[0][0] for call in mock_run.call_args_list])
     
-    # Check that subprocess.run was called for prune (1), compact (1) and permission fixes (3)
-    assert mock_run.call_count == 5
+    # Check that subprocess.run was called for prune (1), compact (1), db sync (1) and permission fixes (3)
+    assert mock_run.call_count == 6
     
     # First call: prune
     prune_args = mock_run.call_args_list[0][0][0]
@@ -106,7 +106,7 @@ def test_prune_global_custom_strategies(mock_exists, mock_run, mock_session, ses
     db.commit()
     db.close()
     
-    mock_run.return_value = MagicMock(returncode=0)
+    mock_run.return_value = MagicMock(returncode=0, stdout='{"archives": []}')
     
     global_daily_prune()
     
@@ -185,7 +185,7 @@ def test_prune_group_override(mock_exists, mock_run, mock_session, session_facto
     test_db.commit()
     test_db.close()
     
-    mock_run.return_value = MagicMock(returncode=0)
+    mock_run.return_value = MagicMock(returncode=0, stdout='{"archives": []}')
     
     global_daily_prune()
     

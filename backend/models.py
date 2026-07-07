@@ -165,6 +165,8 @@ class Kiosk(Base):
     last_seen = Column(DateTime, nullable=True)
     contact = Column(String, nullable=True)
     comment = Column(Text, nullable=True)
+    target_ip = Column(String, nullable=True)
+    rebuild_required = Column(Boolean, default=False, nullable=False)
 
 
 

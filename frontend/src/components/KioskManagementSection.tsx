@@ -19,6 +19,8 @@ interface Kiosk {
   comment: string | null;
   iso_exists?: boolean;
   auth_token?: string | null;
+  target_ip: string | null;
+  rebuild_required: boolean;
 }
 
 interface KioskManagementSectionProps {
@@ -62,9 +64,49 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
   const [editContact, setEditContact] = useState('');
   const [editComment, setEditComment] = useState('');
 
+  // Update Target IP Modal state
+  const [showIpModal, setShowIpModal] = useState(false);
+  const [targetIpToUpdate, setTargetIpToUpdate] = useState('');
+  const [ipKioskId, setIpKioskId] = useState<number | null>(null);
+
   // Key display modal state
   const [generatedKey, setGeneratedKey] = useState('');
   const [copied, setCopied] = useState(false);
+
+  const handleUpdateIpClick = (kiosk: Kiosk) => {
+    setIpKioskId(kiosk.id);
+    setTargetIpToUpdate(kiosk.target_ip || '');
+    setError('');
+    setShowIpModal(true);
+  };
+
+  const handleUpdateIpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ipKioskId) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/iso/kiosks/${ipKioskId}/update_ip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target_ip: targetIpToUpdate.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Failed to update kiosk target IP');
+      }
+      setShowIpModal(false);
+      setIpKioskId(null);
+      fetchKiosks();
+      window.dispatchEvent(new CustomEvent('kiosks-updated'));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const fetchKiosks = async () => {
     try {
@@ -296,8 +338,39 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                       <div className="font-bold text-zinc-200">
                         {kiosk.name || <span className="text-zinc-500 italic">{t('unnamedKiosk') || 'Unnamed Kiosk'}</span>}
                       </div>
+                      
+                      {/* Target IP & Rebuild badge */}
+                      <div className="text-[10px] mt-1.5 flex flex-wrap items-center gap-2">
+                        {kiosk.target_ip && (
+                          <span className="inline-flex items-center gap-1 text-zinc-400 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800/80">
+                            <Server size={10} className="text-zinc-500" />
+                            <span className="text-[9px] font-mono text-zinc-350">{kiosk.target_ip}</span>
+                            <button
+                              onClick={() => handleUpdateIpClick(kiosk)}
+                              className="hover:text-indigo-400 transition-colors cursor-pointer"
+                              title={t('changeTargetIp') || 'Change Target IP'}
+                            >
+                              <Edit2 size={10} className="text-zinc-500 hover:text-indigo-400 ml-0.5" />
+                            </button>
+                          </span>
+                        )}
+                        {kiosk.rebuild_required && (
+                          <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+                            {t('rebuildRequired') || 'Rebuild Required'}
+                            <button
+                              onClick={() => handleRecreateIso(kiosk.id)}
+                              className="ml-1 text-amber-400 hover:text-white transition-colors cursor-pointer"
+                              title={t('rebuildNow') || 'Rebuild ISO Now'}
+                            >
+                              <RefreshCw size={10} className="hover:rotate-180 duration-500 transition-transform" />
+                            </button>
+                          </span>
+                        )}
+                      </div>
+
                       {(kiosk.contact || kiosk.comment) && (
-                        <div className="text-[10px] text-zinc-400 mt-1 space-y-0.5">
+                        <div className="text-[10px] text-zinc-400 mt-1.5 space-y-0.5">
                           {kiosk.contact && (
                             <div className="flex items-center gap-1">
                               <span className="text-zinc-500 font-semibold">{t('kioskContact') || 'Contact'}:</span>
@@ -412,10 +485,15 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                         {/* Re-create ISO */}
                         <button
                           onClick={() => handleRecreateIso(kiosk.id)}
-                          className="w-[85px] py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis"
+                          className={`w-[85px] py-1 rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center justify-center gap-1 ${
+                            kiosk.rebuild_required
+                              ? 'bg-amber-600 hover:bg-amber-500 text-white animate-pulse shadow-amber-500/20 shadow-md'
+                              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                          }`}
                           title="Recreate ISO image"
                         >
-                          {t('kioskActionRecreate')}
+                          <RefreshCw size={10} className={kiosk.rebuild_required ? 'animate-spin-slow' : ''} />
+                          {t('kioskActionRecreate') || 'Recreate'}
                         </button>
 
                         {/* Edit Kiosk */}
@@ -497,6 +575,56 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                   onClick={() => {
                     setShowEditModal(false);
                     setEditingKiosk(null);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  {t('cancel') || 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  {submitting ? t('saving') : (t('saveLabel') || 'Save')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Update Target IP Modal */}
+      {showIpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4 animate-modal-in">
+            <div>
+              <h3 className="text-base font-bold text-zinc-50">{t('updateTargetIpTitle') || 'Update Kiosk Target IP'}</h3>
+              <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">
+                {t('updateTargetIpSub') || 'Specify custom orchestrator IP address for this client'}
+              </p>
+            </div>
+            
+            <form onSubmit={handleUpdateIpSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('targetIpLabel') || 'Target IP Address'}</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 192.168.1.100"
+                  value={targetIpToUpdate}
+                  onChange={(e) => setTargetIpToUpdate(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none transition-colors"
+                />
+              </div>
+
+              {error && <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">{error}</div>}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowIpModal(false);
+                    setIpKioskId(null);
                   }}
                   className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
                 >

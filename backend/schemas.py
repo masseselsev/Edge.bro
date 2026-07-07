@@ -195,7 +195,8 @@ class KioskBase(BaseModel):
     kiosk_id: Optional[str] = None
     contact: Optional[str] = None
     comment: Optional[str] = None
-
+    target_ip: Optional[str] = None
+    rebuild_required: bool = False
 
 
 class KioskCreate(KioskBase):
@@ -288,12 +289,17 @@ class KioskIssueRequest(BaseModel):
     name: str
     contact: str
     comment: Optional[str] = None
+    target_ip: Optional[str] = None
 
 
 class KioskUpdate(BaseModel):
     name: Optional[str] = None
     contact: Optional[str] = None
     comment: Optional[str] = None
+
+
+class KioskIpUpdateRequest(BaseModel):
+    target_ip: str
 
 
 class AutoHandshakeRequest(BaseModel):
