@@ -77,15 +77,20 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const [activeTab, setActiveTab] = useState<'info' | 'logs'>('info');
   const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
   const [selectedLogId, setSelectedLogId] = useState<string>('');
+  const [haspStatus, setHaspStatus] = useState<{
+    status: string;
+    features: any[];
+  } | null>(null);
 
   const fetchNodeDetails = async () => {
     setLoading(true);
     try {
-      const [nRes, hRes, gRes, tlRes] = await Promise.all([
+      const [nRes, hRes, gRes, tlRes, haspRes] = await Promise.all([
         fetch('/api/nodes'),
         fetch(`/api/nodes/${nodeId}/history`),
         fetch('/api/groups'),
-        fetch(`/api/nodes/${nodeId}/task-logs`)
+        fetch(`/api/nodes/${nodeId}/task-logs`),
+        fetch(`/api/nodes/${nodeId}/hasp-status`)
       ]);
 
       if (nRes.ok) {
@@ -125,6 +130,11 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
         } else {
           setTaskLogs([]);
         }
+      }
+
+      if (haspRes && haspRes.ok) {
+        const haspData = await haspRes.json();
+        setHaspStatus(haspData);
       }
     } catch (err) {
       console.error("Failed to load node details:", err);
@@ -447,26 +457,86 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
           {(node.status === 'RESTORED' || (node.hasp_runtime_version && node.hasp_runtime_version !== 'None')) && (
             <div className="bg-indigo-950/20 border border-indigo-500/25 rounded-2xl p-5 space-y-3.5 shadow-lg shadow-indigo-950/10 animate-fade-in">
-              <div className="flex items-center gap-2.5 text-indigo-400 font-bold text-sm">
-                <Info className="h-5 w-5" />
-                <span>{node.status === 'RESTORED' ? t('statusRestored') : 'Sentinel LDK Licensing'}</span>
+              <div className="flex items-center justify-between border-b border-indigo-500/15 pb-3">
+                <div className="flex items-center gap-2.5 text-indigo-400 font-bold text-sm">
+                  <Info className="h-5 w-5" />
+                  <span>{node.status === 'RESTORED' ? t('statusRestored') : 'Sentinel LDK Licensing'}</span>
+                </div>
+                {haspStatus && (
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                    haspStatus.status === 'active' ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500/20' :
+                    haspStatus.status === 'expired' ? 'bg-amber-500/25 text-amber-400 border border-amber-500/20' :
+                    haspStatus.status === 'clone_detected' ? 'bg-red-500/25 text-red-400 border border-red-500/30 animate-pulse' :
+                    haspStatus.status === 'disabled' ? 'bg-red-500/25 text-red-400 border border-red-500/30' :
+                    haspStatus.status === 'no_license' ? 'bg-zinc-500/25 text-zinc-400 border border-zinc-500/20' :
+                    'bg-zinc-500/20 text-zinc-500 border border-zinc-800'
+                  }`}>
+                    {haspStatus.status.replace('_', ' ')}
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                {t('downloadFingerprintHelp') || 'To activate the license, download the fingerprint (C2V) file from the node:'}
-              </p>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <code className="flex-1 bg-zinc-950 px-3 py-2.5 rounded-lg text-xs text-zinc-300 font-mono select-all border border-zinc-850/80">
-                  /var/hasplm/fingerprint
-                </code>
-                <a
-                  href={`/api/nodes/${node.id}/hasp-fingerprint`}
-                  download
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition shadow-md shadow-indigo-900/15 cursor-pointer"
-                >
-                  <Terminal className="h-4 w-4" />
-                  {t('downloadC2vFile')}
-                </a>
+
+              {haspStatus && haspStatus.status === 'clone_detected' && (
+                <div className="p-3 bg-red-950/25 border border-red-500/20 text-red-400 text-xs rounded-xl flex items-start gap-2.5">
+                  <span className="font-bold">Warning:</span>
+                  <span>Sentinel runtime has detected a hardware change (Clone Detected). Storage, licensing, and database are disabled. Re-provisioning or fresh activation is required.</span>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  {t('downloadFingerprintHelp') || 'To activate the license, download the fingerprint (C2V) file from the node:'}
+                </p>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <code className="flex-1 bg-zinc-950 px-3 py-2.5 rounded-lg text-xs text-zinc-300 font-mono select-all border border-zinc-850/80">
+                    /var/hasplm/fingerprint
+                  </code>
+                  <a
+                    href={`/api/nodes/${node.id}/hasp-fingerprint`}
+                    download
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition shadow-md shadow-indigo-900/15 cursor-pointer"
+                  >
+                    <Terminal className="h-4 w-4" />
+                    {t('downloadC2vFile')}
+                  </a>
+                </div>
               </div>
+
+              {haspStatus && haspStatus.features && haspStatus.features.length > 0 && (
+                <div className="pt-2 border-t border-indigo-500/10 space-y-2">
+                  <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider block">
+                    Active License Features ({haspStatus.features.length})
+                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {haspStatus.features.map((feat: any) => (
+                      <div 
+                        key={feat.id} 
+                        className={`p-2.5 rounded-lg text-xs flex items-center justify-between border ${
+                          feat.unusable === '0' 
+                            ? 'bg-emerald-950/10 border-emerald-500/15 text-emerald-300' 
+                            : 'bg-zinc-900/20 border-zinc-800/80 text-zinc-400'
+                        }`}
+                      >
+                        <div className="truncate pr-2">
+                          <span className="font-bold block truncate">
+                            {feat.name}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 block truncate">
+                            FID: {feat.id} • Product: {feat.product_name} ({feat.product_id})
+                          </span>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold shrink-0 ${
+                          feat.unusable === '0' 
+                            ? 'bg-emerald-500/15 text-emerald-400' 
+                            : 'bg-zinc-800 text-zinc-500'
+                        }`}>
+                          {feat.lic_type.includes('Perpetual') ? 'Perpetual' : feat.lic_type}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

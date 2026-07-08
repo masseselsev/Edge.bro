@@ -332,6 +332,22 @@ class AuditLogResponse(BaseModel):
         from_attributes = True
 
 
+class HaspFeatureResponse(BaseModel):
+    id: str
+    name: Optional[str] = None
+    product_name: Optional[str] = None
+    product_id: Optional[str] = None
+    lic_type: Optional[str] = None
+    unusable: str
+    key_id: str
+
+
+class HaspStatusResponse(BaseModel):
+    status: str
+    features: List[HaspFeatureResponse] = []
+
+
+
 
 
 

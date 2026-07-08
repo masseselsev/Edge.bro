@@ -226,3 +226,93 @@ def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_us
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch fingerprint: {str(e)}")
+
+
+def parse_sentinel_json_blocks(raw_text: str) -> list:
+    import json
+    import re
+    objs = []
+    for block in re.findall(r'\{[^{}]+\}', raw_text):
+        try:
+            block_clean = re.sub(r'\s+', ' ', block)
+            objs.append(json.loads(block_clean))
+        except Exception:
+            continue
+    return objs
+
+
+@router.get("/nodes/{node_id}/hasp-status", response_model=schemas.HaspStatusResponse)
+def get_node_hasp_status(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    """
+    Retrieves the live Sentinel HASP license activation status and features list from the node.
+    """
+    import re
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+        
+    if not node.hasp_runtime_version or node.hasp_runtime_version == "None":
+        return {"status": "inactive", "features": []}
+        
+    ssh_cmd = [
+        "ssh", "-o", "StrictHostKeyChecking=no",
+        "-p", str(node.ssh_port),
+        "-i", "/root/.ssh/id_ed25519",
+        f"root@{node.ip_address}",
+        "curl -s --connect-timeout 3 http://localhost:1947/_int_/tab_dev.html && echo '---FEATURES_SEPARATOR---' && curl -s --connect-timeout 3 http://localhost:1947/_int_/tab_feat.html"
+    ]
+    
+    try:
+        res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=8)
+        if res.returncode != 0 or not res.stdout.strip():
+            return {"status": "unreachable", "features": []}
+            
+        parts = res.stdout.split('---FEATURES_SEPARATOR---')
+        dev_section = parts[0] if len(parts) > 0 else ""
+        feat_section = parts[1] if len(parts) > 1 else ""
+        
+        devices = parse_sentinel_json_blocks(dev_section)
+        features = parse_sentinel_json_blocks(feat_section)
+        
+        real_devices = [d for d in devices if d.get("haspid") and d.get("haspid") != "0"]
+        real_features = [f for f in features if f.get("fid") is not None]
+        
+        if not real_devices:
+            return {"status": "no_license", "features": []}
+            
+        is_cloned = any(d.get("cloned") != "0" for d in real_devices)
+        is_disabled = any(d.get("key_disabled") != "0" for d in real_devices)
+        
+        if is_cloned:
+            status_str = "clone_detected"
+        elif is_disabled:
+            status_str = "disabled"
+        else:
+            active_features = [f for f in real_features if f.get("fid") != "0"]
+            if active_features and all(f.get("unusable") != "0" for f in active_features):
+                status_str = "expired"
+            else:
+                status_str = "active"
+                
+        # Format features list
+        formatted_features = []
+        for f in real_features:
+            lic_clean = re.sub(r'<[^<]+?>', ' ', f.get("lic", "")).strip()
+            lic_clean = re.sub(r'\s+', ' ', lic_clean)
+            
+            formatted_features.append({
+                "id": str(f.get("fid")),
+                "name": f.get("fn") or "Unnamed Feature",
+                "product_name": f.get("prname") or "N/A",
+                "product_id": str(f.get("prid")) if f.get("prid") else "N/A",
+                "lic_type": lic_clean,
+                "unusable": str(f.get("unusable", "0")),
+                "key_id": str(f.get("haspid", ""))
+            })
+            
+        return {
+            "status": status_str,
+            "features": formatted_features
+        }
+    except Exception:
+        return {"status": "unreachable", "features": []}

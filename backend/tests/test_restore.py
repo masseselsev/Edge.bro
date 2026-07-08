@@ -426,3 +426,64 @@ def test_patch_network_configs_preserves_static_and_aliases(
     assert "auto lo" in written_content
 
 
+from routers.restore import get_node_hasp_status
+
+def test_get_node_hasp_status_inactive(db_session):
+    node = models.Node(
+        hostname="inactive-node",
+        ip_address="127.0.0.101",
+        hasp_runtime_version=None
+    )
+    db_session.add(node)
+    db_session.commit()
+    
+    res = get_node_hasp_status(node_id=node.id, db=db_session, current_user=None)
+    assert res["status"] == "inactive"
+    assert res["features"] == []
+
+
+@patch("subprocess.run")
+def test_get_node_hasp_status_active_ok(mock_run, db_session):
+    node = models.Node(
+        hostname="active-node",
+        ip_address="127.0.0.102",
+        hasp_runtime_version="10.21"
+    )
+    db_session.add(node)
+    db_session.commit()
+    
+    # Mock successful curl command
+    mock_run.return_value = MagicMock(
+        returncode=0,
+        stdout='''
+        /*JSON:devices*/
+        {
+        "haspid":"20201509922950385",
+        "cloned":"0",
+        "key_disabled":"0",
+        "locked":"1"
+        }
+        ---FEATURES_SEPARATOR---
+        /*JSON:features*/
+        {
+        "fid":"2002",
+        "fn":"EDGE LPR",
+        "lic":"Expiration Date<br>Thu Jan 1, 2026",
+        "unusable":"0",
+        "haspid":"20201509922950385",
+        "prname":"Edge-S",
+        "prid":"1554"
+        }
+        '''
+    )
+    
+    res = get_node_hasp_status(node_id=node.id, db=db_session, current_user=None)
+    assert res["status"] == "active"
+    assert len(res["features"]) == 1
+    assert res["features"][0]["id"] == "2002"
+    assert res["features"][0]["name"] == "EDGE LPR"
+    assert res["features"][0]["unusable"] == "0"
+    assert "Expiration Date Thu Jan 1, 2026" in res["features"][0]["lic_type"]
+
+
+
