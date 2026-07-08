@@ -73,6 +73,8 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         if result["status"] == "SUCCESS":
             # 6b. Recreate PostgreSQL log directories if they point to custom locations
             recreate_postgres_log_dirs(task_id, "/mnt/target")
+            node.status = "RESTORED"
+            db.commit()
             return {"status": "SUCCESS"}
         else:
             return result
