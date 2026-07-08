@@ -75,8 +75,20 @@ The system is fully containerized and uses a decoupled architecture to manage co
     - **Each additional similar node (Cross-node deduplication)**: saves up to **97%** for identical/cloned nodes (adding only **~100 - 200 MB** for the same device under a different name) and saves about **20% - 30%** of space for nodes with minor system configuration and package differences.
     - **Incremental backups**: of running systems tend towards only **~100 - 200 MB** of unique incremental data per backup run (storing only unique logs, cache differences, and database states).
     - This yields a massive overall storage footprint reduction for fleets running similar base images, with incremental runs remaining extremely lightweight.
-- **Configurable Global Exclusions**: In the **Orchestrator Settings** tab in the web UI, you can configure a comma-separated list of directories to exclude from backups (e.g. temporary/virtual mounts or heavy log/data folders).
-  - **Default Exclusions**: `/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*`
+
+- **Configurable Global Exclusions**: In the **Orchestrator Settings** tab in the web UI, you can configure granular exclusion path patterns (e.g. temporary/virtual mounts or heavy log/data folders). The settings are stored in a structured JSON database dictionary format (`{"pattern": "/var/tmp/*", "comment": "Temporary files"}`) supporting both custom exclusion rules and comments. The list is displayed in a dedicated side-by-side right-hand card with auto-stretching height, complete with instant delete actions.
+  - **Default Exclusions**:
+    - `/dev/*` — System devices
+    - `/proc/*` — Virtual process filesystem
+    - `/sys/*` — Sysfs system info
+    - `/run/*` — Transient runtime files
+    - `/mnt/*` — Mounted filesystems
+    - `/media/*` — Removable media mounts
+    - `/lost+found` — Recovered filesystem fragments
+    - `/var/log/edge/*` — Edge app logs
+    - `/var/opt/edge/blobstore/*` — Local media files storage
+    - `/var/spool/edge/*` — Edge spool directory
+
 - **Intelligent Queue Scheduling & Dynamic Concurrency**:
   - **Dynamic Concurrency Scaling**: Automatically dynamically computes and scales up the group's concurrency limit if the remaining time in the backup window is too short to complete all pending backups, ensuring all scheduled devices finish their runs on time.
   - **Bandwidth-Aware Concurrency Capping**: Automatically caps the group's concurrency limit if a low `upload_rate_limit` is set (allocating at least 2 MiB/s per backup stream), preventing edge site network choking.
@@ -105,6 +117,12 @@ The system is fully containerized and uses a decoupled architecture to manage co
 - **QR Webcam Configuration**: Integrates a browser webcam feed reader using `jsQR` to dynamically scan WireGuard VPN configuration profiles, along with a fallback manual configuration text container.
 - **Persistence on USB**: Saves configured NetworkManager profiles (`.nmconnection`) and WireGuard configs (`wg0.conf`) to `/media/usb-data` at system boot, assigning proper `0600` permissions and ownership (`root:root`) to pass NetworkManager daemon security validation checks.
 - **Control APIs**: Provides backend endpoints to poll active VPN tunnel statistics (`wg show wg0 dump`), reload NM connections (`nmcli connection reload`), and toggle active status (`up`/`down`).
+
+### 7. Sentinel LDK License Management
+- **Automated Version Auditing**: Automatically queries, parses, and persists target Sentinel LDK versions (`hasp_runtime_version`) during initial provisioning bootstrap.
+- **Licensing Card Overlay**: A dedicated licensing card displays license status badges (Active, Expired, Clone Detected, Disabled) in real-time inside the Node Details modal whenever Sentinel is active on a node. The monitoring container is collapsible and collapsed by default to optimize space.
+- **Genuine C2V/Fingerprint Downloader**: Securely compiles node fingerprints directly from target edge devices using `/opt/edge/bin/hasp_update lf` and `/opt/edge/bin/hasp_update i` commands via SSH (falling back to the local Sentinel ACC HTTP API or file validation if CLI is unavailable) and exposes a download button in the dashboard interface.
+- **V2C Update Applier**: Allows operators to drag-and-drop or upload `.V2C` licence keys from the dashboard, executing `hasp_update u` remotely via SSH on the node (with API/web fallback mechanisms in place).
 
 ---
 

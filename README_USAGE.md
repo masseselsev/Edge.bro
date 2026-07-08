@@ -198,9 +198,40 @@ Instead of copying the entire fleet repository history (which could consume hund
 3. The system will connect to the central orchestrator and present the Flasher interface.
 4. Select the local disk of the node and the desired backup snapshot. The restoration process will flash the system directly to the node's internal disk.
 
+
 ---
 
-## 7. Detailed List of Orchestrator Changes to Client Nodes
+## 7. Sentinel LDK License Management (USB HASP Keys)
+
+For edge nodes utilizing Sentinel HASP software licensing (LDK runtime), Edge B.R.O. provides fully automated detection, diagnostics, backup exclusions, and license update capabilities.
+
+### 7.1 Version Detection & Status Badges
+During the initial **Bootstrap** phase, the orchestrator executes automated version checking and extracts the active `hasp_runtime_version` from the target node.
+- If Sentinel is detected and active, a collapsible **Sentinel LDK License Info** card appears inside the **Node Details** modal (collapsed by default).
+- The card displays the key ID and real-time status badges:
+  - **Active** (Green): License is valid and working.
+  - **Expired** (Orange): License timeframe has passed.
+  - **Clone Detected** (Red): Sentinel detected unauthorized system copying.
+  - **Disabled** (Grey): Hardware key or daemon is offline.
+
+### 7.2 Downloading C2V (Fingerprint Files)
+To request license updates from Sentinel vendors, you must supply a Client-to-Vendor (`.C2V`) fingerprint file.
+1. Click the node name in the **Fleet** tab to open the details modal.
+2. Expand the **Sentinel LDK License Info** card.
+3. Click the **Download C2V Fingerprint** button.
+4. The system triggers the official `/opt/edge/bin/hasp_update lf` command to fetch the active HASP ID, followed by `hasp_update i <hasp_id>` via SSH to generate a clean, official C2V payload. (If the CLI binaries are missing, it falls back to the ACC API `http://127.0.0.1:1947` endpoints).
+5. The C2V file is downloaded directly to your administrator machine.
+
+### 7.3 Applying V2C (License Updates)
+Once you receive the `.V2C` update file from the vendor:
+1. Open the node details modal and expand the Sentinel card.
+2. Select or drag-and-drop the `.V2C` file into the upload zone.
+3. The orchestrator streams the V2C update file to the target node's filesystem and applies it by executing `/opt/edge/bin/hasp_update u <file>.V2C` under SSH.
+4. The card status refreshes automatically to reflect the newly updated license parameters.
+
+---
+
+## 8. Detailed List of Orchestrator Changes to Client Nodes
 
 Throughout its lifecycle, the orchestrator performs a strictly defined set of non-destructive operations on remote nodes, installing only the dependencies necessary for its operation:
 

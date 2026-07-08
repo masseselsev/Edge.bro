@@ -81,9 +81,9 @@ function LanguageSelector() {
   };
 
   const labels: Record<Language, string> = {
-    en: 'English (EN)',
-    ru: 'Русский (RU)',
-    uk: 'Українська (UA)'
+    en: 'English',
+    ru: 'Русский',
+    uk: 'Українська'
   };
 
   return (

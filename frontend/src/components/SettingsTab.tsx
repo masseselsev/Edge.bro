@@ -599,7 +599,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                 {t('globalExclusionsLabel')}
               </h3>
               <p className="text-xs text-zinc-400 leading-relaxed">
-                {t('globalExclusionsDesc') || 'Configure patterns for files and directories that should be excluded from all backup snapshots.'}
+                {t('globalExclusionsDesc')}
               </p>
 
               <div className="flex flex-col gap-2 p-2 bg-zinc-950/60 border border-zinc-800 rounded-lg">
@@ -612,14 +612,14 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                     <button
                       type="button"
                       onClick={() => setGlobalExclusions(globalExclusions.filter((item) => item.pattern !== ex.pattern))}
-                      className="text-zinc-500 hover:text-rose-450 font-bold ml-1 transition-colors cursor-pointer text-sm shrink-0"
+                      className="text-zinc-500 hover:text-rose-455 font-bold ml-1 transition-colors cursor-pointer text-sm shrink-0"
                     >
                       ×
                     </button>
                   </div>
                 ))}
                 {globalExclusions.length === 0 && (
-                  <span className="text-zinc-650 text-xs italic p-1">No exclusions added</span>
+                  <span className="text-zinc-650 text-xs italic p-1">{t('noExclusions')}</span>
                 )}
               </div>
 
@@ -627,14 +627,14 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                 <div className="flex flex-col gap-2">
                   <input
                     type="text"
-                    placeholder="Pattern (e.g. /var/tmp/*)"
+                    placeholder={t('exclusionPatternPlaceholder') || 'Pattern (e.g. /var/tmp/*)'}
                     value={newExclusionInput}
                     onChange={(e) => setNewExclusionInput(e.target.value)}
                     className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none font-mono"
                   />
                   <input
                     type="text"
-                    placeholder="Comment (e.g. Temporary files)"
+                    placeholder={t('exclusionCommentPlaceholder') || 'Comment (e.g. Temporary files)'}
                     value={newExclusionComment}
                     onChange={(e) => setNewExclusionComment(e.target.value)}
                     className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
@@ -653,7 +653,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                   }}
                   className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs transition-colors cursor-pointer"
                 >
-                  {t('addButton') || 'Add Excluded Path'}
+                  {t('addExclusionButton')}
                 </button>
               </div>
             </div>
