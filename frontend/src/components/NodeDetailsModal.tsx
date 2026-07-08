@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Play, Pause, Edit, Cpu, HardDrive, Cpu as MemIcon, Info, RefreshCw, Save, Database, History, Terminal, Calendar, Upload } from 'lucide-react';
+import { X, Play, Pause, Edit, Cpu, HardDrive, Cpu as MemIcon, Info, RefreshCw, Save, Database, History, Terminal, Calendar, Upload, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import type { Language } from '../i18n/translations';
 import NodeConsoleLogs from './NodeConsoleLogs';
@@ -84,6 +84,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const [selectedLicenseFile, setSelectedLicenseFile] = useState<File | null>(null);
   const [applyingLicense, setApplyingLicense] = useState(false);
   const [licenseMessage, setLicenseMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [sentinelExpanded, setSentinelExpanded] = useState(false);
 
   const fetchNodeDetails = async () => {
     setLoading(true);
@@ -489,30 +490,42 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
           {(node.status === 'RESTORED' || (node.hasp_runtime_version && node.hasp_runtime_version !== 'None')) && (
             <div className="bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-500/25 rounded-2xl p-5 space-y-3.5 shadow-lg shadow-indigo-950/10 animate-fade-in">
-              <div className="flex items-center justify-between border-b border-indigo-500/15 pb-3">
+              <div 
+                className="flex items-center justify-between border-b border-indigo-500/15 pb-3 cursor-pointer select-none hover:opacity-90 transition"
+                onClick={() => setSentinelExpanded(!sentinelExpanded)}
+              >
                 <div className="flex items-center gap-2.5 text-indigo-500 dark:text-indigo-400 font-bold text-sm">
                   <Info className="h-5 w-5" />
                   <span>{node.status === 'RESTORED' ? t('statusRestored') : 'Sentinel LDK Licensing'}</span>
                 </div>
-                {haspStatus && (
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                    haspStatus.status === 'active' ? 'hasp-badge-active' :
-                    haspStatus.status === 'expired' ? 'hasp-badge-expired' :
-                    haspStatus.status === 'clone_detected' ? 'hasp-badge-danger animate-pulse' :
-                    haspStatus.status === 'disabled' ? 'hasp-badge-danger' :
-                    'hasp-badge-neutral'
-                  }`}>
-                    {haspStatus.status.replace('_', ' ')}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {haspStatus && (
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                      haspStatus.status === 'active' ? 'hasp-badge-active' :
+                      haspStatus.status === 'expired' ? 'hasp-badge-expired' :
+                      haspStatus.status === 'clone_detected' ? 'hasp-badge-danger animate-pulse' :
+                      haspStatus.status === 'disabled' ? 'hasp-badge-danger' :
+                      'hasp-badge-neutral'
+                    }`}>
+                      {haspStatus.status.replace('_', ' ')}
+                    </span>
+                  )}
+                  {sentinelExpanded ? (
+                    <ChevronUp className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
+                  )}
+                </div>
               </div>
 
-              {haspStatus && haspStatus.status === 'clone_detected' && (
-                <div className="p-3 bg-red-105 dark:bg-red-950/25 border border-red-200 dark:border-red-500/20 text-red-800 dark:text-red-400 text-xs rounded-xl flex items-start gap-2.5">
-                  <span className="font-bold">Warning:</span>
-                  <span>Sentinel runtime has detected a hardware change (Clone Detected). Storage, licensing, and database are disabled. Re-provisioning or fresh activation is required.</span>
-                </div>
-              )}
+              {sentinelExpanded && (
+                <>
+                  {haspStatus && haspStatus.status === 'clone_detected' && (
+                    <div className="p-3 bg-red-105 dark:bg-red-950/25 border border-red-200 dark:border-red-500/20 text-red-800 dark:text-red-400 text-xs rounded-xl flex items-start gap-2.5">
+                      <span className="font-bold">Warning:</span>
+                      <span>Sentinel runtime has detected a hardware change (Clone Detected). Storage, licensing, and database are disabled. Re-provisioning or fresh activation is required.</span>
+                    </div>
+                  )}
 
               {/* Fingerprint retrieval and download */}
               <div className="space-y-2">
@@ -621,8 +634,10 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                   </div>
                 </div>
               )}
-            </div>
+            </>
           )}
+        </div>
+      )}
 
           {/* Backup History Datatable */}
           <NodeBackupHistory
