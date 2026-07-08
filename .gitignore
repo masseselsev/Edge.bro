@@ -43,6 +43,10 @@ docs/
 *.db
 .worktrees/
 
+# Scheduler dev/test tools
+backend/core/scheduler_large_scale_test.py
+backend/core/scheduler_simulator.py
+
 # Celery Beat
 celerybeat-schedule*
 
