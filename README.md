@@ -40,7 +40,7 @@ The system is fully containerized and uses a decoupled architecture to manage co
 
 ### Components:
 1. **React SPA Frontend (Port 7777)**: Responsive, dark-themed dashboard mapped to tabs (Fleet, Flasher, History, Live-USB Client, Settings). Supports multi-language translation (English, Russian, Ukrainian) with a premium animated language selector dropdown. Displays stats (de-duplication ratios, total space) and features a terminal console overlay to stream execution logs in real-time.
-2. **FastAPI Backend (Port 8000)**: Serves RESTful APIs, implements the IP parser (supporting CIDR, lists, and ranges), validates drive type configurations, and tracks active jobs.
+2. **FastAPI Backend (Port 8000)**: Serves RESTful APIs, implements the IP parser (supporting CIDR, lists, and ranges), validates drive type configurations, and tracks active jobs. To enable correct connection configurations inside isolated Docker environments, it dynamically resolves the host's actual physical and VPN IP addresses (excluding docker loopbacks and virtual bridge adapters like `docker0`, `br-*`, and `veth*`) by querying the host network namespace via `/host/proc/1/net/` network tables.
 3. **Celery Worker (Privileged Host-Device Mode)**: Subscribed to task queues to execute playbooks and perform flashing partition commands (requires access to `/dev` of the local orchestrator node during flashing).
 4. **Borg SSH Server (Port 12345)**: Isolated central repository environment where edge node public keys are automatically appended to `/home/borg/.ssh/authorized_keys` under forced command restrictions (`command="borg serve --restrict-to-path ..."`).
 5. **Redis**: In-memory task queue broker and result backend.
