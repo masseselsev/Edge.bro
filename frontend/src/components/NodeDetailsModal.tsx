@@ -27,6 +27,7 @@ interface Node {
   memory_info: string | null;
   edge_version: string | null;
   notes: string | null;
+  hasp_runtime_version: string | null;
   is_backup_running?: boolean;
   backup_progress?: number;
   backup_task_id?: string | null;
@@ -279,7 +280,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           {activeTab === 'info' && (
             <>
               {/* Hardware Specs Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
             <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
               <Cpu className="h-8 w-8 text-cyan-400/90" />
               <div>
@@ -316,6 +317,16 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                 <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('edgeVersion')}</span>
                 <span className="text-xs font-semibold text-zinc-200 block mt-0.5">
                   {node.edge_version || 'UNKNOWN'}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
+              <Database className="h-8 w-8 text-indigo-400/90" />
+              <div>
+                <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('sentinelRuntimeVersion') || 'Sentinel Runtime'}</span>
+                <span className="text-xs font-semibold text-zinc-200 block mt-0.5" title={node.hasp_runtime_version || 'None'}>
+                  {node.hasp_runtime_version || 'None'}
                 </span>
               </div>
             </div>
@@ -433,6 +444,31 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               </button>
             </div>
           </div>
+
+          {node.status === 'RESTORED' && (
+            <div className="bg-indigo-950/20 border border-indigo-500/25 rounded-2xl p-5 space-y-3.5 shadow-lg shadow-indigo-950/10 animate-fade-in">
+              <div className="flex items-center gap-2.5 text-indigo-400 font-bold text-sm">
+                <Info className="h-5 w-5" />
+                <span>{t('statusRestored')}</span>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                {t('downloadFingerprintHelp') || 'To activate the license, download the fingerprint (C2V) file from the node:'}
+              </p>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <code className="flex-1 bg-zinc-950 px-3 py-2.5 rounded-lg text-xs text-zinc-300 font-mono select-all border border-zinc-850/80">
+                  /var/hasplm/fingerprint
+                </code>
+                <a
+                  href={`/api/nodes/${node.id}/hasp-fingerprint`}
+                  download
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition shadow-md shadow-indigo-900/15 cursor-pointer"
+                >
+                  <Terminal className="h-4 w-4" />
+                  {t('downloadC2vFile')}
+                </a>
+              </div>
+            </div>
+          )}
 
           {/* Backup History Datatable */}
           <NodeBackupHistory

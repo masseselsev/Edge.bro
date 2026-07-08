@@ -94,6 +94,11 @@ export function NodeRow({
         label: t('readyOk'), icon: <CheckCircle size={14} />, title: t('reRunPrepareDisk'),
         onClick: () => onRunPrepare(node.id, node.hostname)
       },
+      RESTORED: {
+        bg: "bg-indigo-500/10 hover:bg-indigo-500/20", text: "text-indigo-400", border: "border-indigo-500/20",
+        label: t('statusRestored') || "Restored (Awaiting License Activation)", icon: <CheckCircle size={14} />, title: t('restoredNodeTooltip') || "This node has been restored. Awaiting license activation.",
+        onClick: () => onShowProvision(node)
+      },
       NEEDS_FIX: {
         bg: "bg-amber-500/10 hover:bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/20",
         label: t('needsFixPrepare'), icon: <AlertTriangle size={14} />, title: t('runPrepareDisk'),

@@ -618,7 +618,12 @@ export const translations: Record<Language, Record<string, string>> = {
     vpnProfileHint: 'Scan a WireGuard QR code or paste standard configuration file text manually.',
     imageCreatedAt: 'Image Created',
     baseImageTitle: 'Base Image Note',
-    baseImageInstruction: 'This is the base offline client system. Changing configurations here updates the template. After compiling a new base image, any custom kiosks below should be regenerated to inherit the updates.'
+    baseImageInstruction: 'This is the base offline client system. Changing configurations here updates the template. After compiling a new base image, any custom kiosks below should be regenerated to inherit the updates.',
+    sentinelRuntimeVersion: 'Sentinel Runtime Version',
+    statusRestored: 'Restored (Awaiting License Activation)',
+    downloadFingerprintHelp: 'To activate the license, download the fingerprint (C2V) file from the node:',
+    downloadC2vFile: 'Download C2V Fingerprint File',
+    restoredNodeTooltip: 'This node has been restored. Awaiting license activation.'
   },
   ru: {
     // Navigation / Tabs
@@ -1236,7 +1241,12 @@ export const translations: Record<Language, Record<string, string>> = {
     vpnProfileHint: 'Отсканируйте QR-код WireGuard или вставьте текст стандартного файла конфигурации вручную.',
     imageCreatedAt: 'Дата создания образа',
     baseImageTitle: 'Базовый образ',
-    baseImageInstruction: 'Это базовый образ системы офлайн-клиента. Изменение настроек здесь обновляет общий шаблон. После сборки базового образа необходимо пересобрать киоски ниже, чтобы применить изменения.'
+    baseImageInstruction: 'Это базовый образ системы офлайн-клиента. Изменение настроек здесь обновляет общий шаблон. После сборки базового образа необходимо пересобрать киоски ниже, чтобы применить изменения.',
+    sentinelRuntimeVersion: 'Версия Sentinel Runtime',
+    statusRestored: 'Восстановлен (Ожидает активации лицензии)',
+    downloadFingerprintHelp: 'Для активации лицензии скачайте файл отпечатка (C2V) с узла:',
+    downloadC2vFile: 'Скачать файл отпечатка C2V',
+    restoredNodeTooltip: 'Этот узел был восстановлен. Ожидается активация лицензии.'
   },
   uk: {
     // Navigation / Tabs
@@ -1851,6 +1861,11 @@ export const translations: Record<Language, Record<string, string>> = {
     vpnProfileHint: 'Відсканируйте QR-код WireGuard або вставте текст стандартного файлу конфігурації вручну.',
     imageCreatedAt: 'Дата створення образу',
     baseImageTitle: 'Базовий образ',
-    baseImageInstruction: 'Це базовий образ системи офлайн-клієнта. Зміна налаштувань тут оновлює загальний шаблон. Після збирання базового образу необхідно перезібрати кіоски нижче, щоб застосувати зміни.'
+    baseImageInstruction: 'Це базовий образ системи офлайн-клієнта. Зміна налаштувань тут оновлює загальний шаблон. Після збирання базового образу необхідно перезібрати кіоски нижче, щоб застосувати зміни.',
+    sentinelRuntimeVersion: 'Версія Sentinel Runtime',
+    statusRestored: 'Відновлено (Очікує на активацію ліцензії)',
+    downloadFingerprintHelp: 'Для активації ліцензії завантажте файл відбитка (C2V) з вузла:',
+    downloadC2vFile: 'Завантажити файл відбитка C2V',
+    restoredNodeTooltip: 'Цей вузол був відновлений. Очікується активація ліцензії.'
   }
 };

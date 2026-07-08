@@ -24,7 +24,8 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [policyKeepLast, setPolicyKeepLast] = useState(5);
   const [policyWithinValue, setPolicyWithinValue] = useState(3);
   const [policyWithinUnit, setPolicyWithinUnit] = useState<'d' | 'w' | 'm' | 'y'>('m');
-  const [globalExclusions, setGlobalExclusions] = useState('/dev/*,/proc/*,/sys/*,/run/*,/mnt/*');
+  const [globalExclusions, setGlobalExclusions] = useState<string[]>([]);
+  const [newExclusionInput, setNewExclusionInput] = useState('');
   const [orchestratorIp, setOrchestratorIp] = useState('');
   const [availableIps, setAvailableIps] = useState<string[]>([]);
   const [manualIps, setManualIps] = useState<string[]>([]);
@@ -112,7 +113,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           setPolicyKeepMonthly(data.keep_monthly ?? 6);
         }
 
-        setGlobalExclusions(data.global_exclusions);
+        setGlobalExclusions(data.global_exclusions || []);
         setOrchestratorIp(data.orchestrator_ip || '');
         setAvailableIps(data.available_ips || []);
         setLanguageState(data.language || 'en');
@@ -488,14 +489,47 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('globalExclusionsLabel')}</label>
-                <textarea
-                  rows={3}
-                  value={globalExclusions}
-                  onChange={(e) => setGlobalExclusions(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm font-mono focus:border-indigo-500 focus:outline-none"
-                />
+              <div className="space-y-3">
+                <label className="block text-xs font-semibold text-zinc-400 mb-1">{t('globalExclusionsLabel')}</label>
+                <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto p-2 bg-zinc-950/60 border border-zinc-800 rounded-lg">
+                  {globalExclusions.map((ex) => (
+                    <div key={ex} className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 border border-zinc-850 rounded-md text-xs font-mono text-zinc-300">
+                      <span>{ex}</span>
+                      <button
+                        type="button"
+                        onClick={() => setGlobalExclusions(globalExclusions.filter((item) => item !== ex))}
+                        className="text-zinc-500 hover:text-rose-400 font-bold ml-1 transition-colors cursor-pointer text-sm"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {globalExclusions.length === 0 && (
+                    <span className="text-zinc-650 text-xs italic">No exclusions added</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. /var/tmp/* or /opt/logs"
+                    value={newExclusionInput}
+                    onChange={(e) => setNewExclusionInput(e.target.value)}
+                    className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = newExclusionInput.trim();
+                      if (val && !globalExclusions.includes(val)) {
+                        setGlobalExclusions([...globalExclusions, val]);
+                      }
+                      setNewExclusionInput('');
+                    }}
+                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    {t('addButton') || 'Add'}
+                  </button>
+                </div>
               </div>
             </div>
 
