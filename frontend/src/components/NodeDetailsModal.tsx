@@ -591,7 +591,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                   <span className="text-[10px] uppercase font-bold text-zinc-500 dark:text-zinc-400 tracking-wider block">
                     Active License Features ({haspStatus.features.length})
                   </span>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-0.5 max-h-60 overflow-y-auto pr-1">
                     {haspStatus.features.map((feat: any) => (
                       <div 
                         key={feat.id} 
@@ -605,7 +605,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                           <span className="font-bold block truncate">
                             {feat.name}
                           </span>
-                          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 block truncate">
+                          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 block">
                             FID: {feat.id} • Product: {feat.product_name} ({feat.product_id})
                           </span>
                         </div>
