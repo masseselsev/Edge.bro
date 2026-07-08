@@ -192,3 +192,37 @@ def trigger_restore(payload: schemas.RestoreRequest, request: Request = None, db
     from database import log_user_action
     log_user_action(db, current_user.username, "Trigger Restore", f"Triggered bare-metal flashing restore of node '{node.hostname}' using archive '{payload.archive_name}' onto target device '{payload.target_dev}'", request)
     return {"message": "Restore flashing process started.", "task_id": task.id}
+
+
+@router.get("/nodes/{node_id}/hasp-fingerprint")
+def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    """
+    Downloads the Sentinel HASP C2V fingerprint file from the node via SSH.
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    
+    import subprocess
+    from fastapi.responses import Response
+    
+    ssh_cmd = [
+        "ssh", "-o", "StrictHostKeyChecking=no",
+        "-p", str(node.ssh_port),
+        "-i", "/root/.ssh/id_ed25519",
+        f"root@{node.ip_address}",
+        "cat /var/hasplm/fingerprint 2>/dev/null || cat /var/hasplm/*.c2v 2>/dev/null || echo 'NO_FINGERPRINT'"
+    ]
+    try:
+        res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=10)
+        content = res.stdout.strip()
+        if not content or content == "NO_FINGERPRINT":
+            raise HTTPException(status_code=400, detail="Fingerprint file not found on node. Make sure the node is booted and Sentinel runtime is active.")
+        
+        return Response(
+            content=content,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f"attachment; filename={node.hostname}_fingerprint.c2v"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch fingerprint: {str(e)}")
