@@ -50,7 +50,8 @@ def get_local_ips():
                         mask_val = int(mask_hex, 16)
                         dest_int = struct.unpack(">I", struct.pack("<I", dest_val))[0]
                         mask_int = struct.unpack(">I", struct.pack("<I", mask_val))[0]
-                        routes.append((iface, dest_int, mask_int))
+                        if mask_int > 0:
+                            routes.append((iface, dest_int, mask_int))
                     except Exception:
                         pass
 
