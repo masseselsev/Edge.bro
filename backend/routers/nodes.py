@@ -102,10 +102,18 @@ def get_nodes(db: Session = Depends(get_db), current_user = Depends(require_kios
                 else:
                     start_time = int(val_str)
                 
-                import time
-                import math
-                elapsed = max(0, int(time.time()) - start_time)
-                progress = max(0, min(99, int(100 * (1 - math.exp(-elapsed / 45.0)))))
+                if running_task_id:
+                    from celery_app import celery_app
+                    res = celery_app.AsyncResult(running_task_id)
+                    if res.ready():
+                        redis_client.delete(f"backup_running:{node.id}")
+                        is_running = False
+                
+                if is_running:
+                    import time
+                    import math
+                    elapsed = max(0, int(time.time()) - start_time)
+                    progress = max(0, min(99, int(100 * (1 - math.exp(-elapsed / 45.0)))))
         except Exception:
             pass
 
