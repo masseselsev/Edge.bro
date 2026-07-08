@@ -151,6 +151,7 @@ def get_nodes(db: Session = Depends(get_db), current_user = Depends(require_kios
             "cpu_info": node.cpu_info,
             "memory_info": node.memory_info,
             "edge_version": node.edge_version,
+            "hasp_runtime_version": node.hasp_runtime_version,
             "notes": node.notes,
             "is_backup_running": is_running,
             "backup_progress": progress,
