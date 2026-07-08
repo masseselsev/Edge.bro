@@ -496,12 +496,11 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                 </div>
                 {haspStatus && (
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                    haspStatus.status === 'active' ? 'bg-emerald-100 dark:bg-emerald-500/25 text-emerald-800 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20' :
-                    haspStatus.status === 'expired' ? 'bg-amber-100 dark:bg-amber-500/25 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-500/20' :
-                    haspStatus.status === 'clone_detected' ? 'bg-red-100 dark:bg-red-500/25 text-red-800 dark:text-red-400 border-red-200 dark:border-red-500/30 animate-pulse' :
-                    haspStatus.status === 'disabled' ? 'bg-red-100 dark:bg-red-500/25 text-red-800 dark:text-red-400 border-red-200 dark:border-red-500/30' :
-                    haspStatus.status === 'no_license' ? 'bg-zinc-100 dark:bg-zinc-500/25 text-zinc-800 dark:text-zinc-400 border-zinc-200 dark:border-zinc-500/20' :
-                    'bg-zinc-100 dark:bg-zinc-500/20 text-zinc-800 dark:text-zinc-500 border-zinc-200 dark:border-zinc-800'
+                    haspStatus.status === 'active' ? 'hasp-badge-active' :
+                    haspStatus.status === 'expired' ? 'hasp-badge-expired' :
+                    haspStatus.status === 'clone_detected' ? 'hasp-badge-danger animate-pulse' :
+                    haspStatus.status === 'disabled' ? 'hasp-badge-danger' :
+                    'hasp-badge-neutral'
                   }`}>
                     {haspStatus.status.replace('_', ' ')}
                   </span>
