@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Play, Pause, Edit, Cpu, HardDrive, Cpu as MemIcon, Info, RefreshCw, Save, Database, History, Terminal, Calendar } from 'lucide-react';
+import { X, Play, Pause, Edit, Cpu, HardDrive, Cpu as MemIcon, Info, RefreshCw, Save, Database, History, Terminal, Calendar, Upload, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import type { Language } from '../i18n/translations';
 import NodeConsoleLogs from './NodeConsoleLogs';
@@ -27,6 +27,7 @@ interface Node {
   memory_info: string | null;
   edge_version: string | null;
   notes: string | null;
+  hasp_runtime_version: string | null;
   is_backup_running?: boolean;
   backup_progress?: number;
   backup_task_id?: string | null;
@@ -76,15 +77,24 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const [activeTab, setActiveTab] = useState<'info' | 'logs'>('info');
   const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
   const [selectedLogId, setSelectedLogId] = useState<string>('');
+  const [haspStatus, setHaspStatus] = useState<{
+    status: string;
+    features: any[];
+  } | null>(null);
+  const [selectedLicenseFile, setSelectedLicenseFile] = useState<File | null>(null);
+  const [applyingLicense, setApplyingLicense] = useState(false);
+  const [licenseMessage, setLicenseMessage] = useState<{ text: string; isError: boolean } | null>(null);
+  const [sentinelExpanded, setSentinelExpanded] = useState(false);
 
   const fetchNodeDetails = async () => {
     setLoading(true);
     try {
-      const [nRes, hRes, gRes, tlRes] = await Promise.all([
+      const [nRes, hRes, gRes, tlRes, haspRes] = await Promise.all([
         fetch('/api/nodes'),
         fetch(`/api/nodes/${nodeId}/history`),
         fetch('/api/groups'),
-        fetch(`/api/nodes/${nodeId}/task-logs`)
+        fetch(`/api/nodes/${nodeId}/task-logs`),
+        fetch(`/api/nodes/${nodeId}/hasp-status`)
       ]);
 
       if (nRes.ok) {
@@ -125,10 +135,44 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           setTaskLogs([]);
         }
       }
+
+      if (haspRes && haspRes.ok) {
+        const haspData = await haspRes.json();
+        setHaspStatus(haspData);
+      }
     } catch (err) {
       console.error("Failed to load node details:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApplyLicense = async () => {
+    if (!selectedLicenseFile) return;
+    setApplyingLicense(true);
+    setLicenseMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedLicenseFile);
+      
+      const res = await fetch(`/api/nodes/${nodeId}/hasp-license`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        setLicenseMessage({ text: "License applied successfully!", isError: false });
+        setSelectedLicenseFile(null);
+        fetchNodeDetails();
+      } else {
+        setLicenseMessage({ text: data.detail || "Failed to apply license file.", isError: true });
+      }
+    } catch (err: any) {
+      console.error(err);
+      setLicenseMessage({ text: "Error uploading license: " + err.message, isError: true });
+    } finally {
+      setApplyingLicense(false);
     }
   };
 
@@ -279,7 +323,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           {activeTab === 'info' && (
             <>
               {/* Hardware Specs Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
             <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
               <Cpu className="h-8 w-8 text-cyan-400/90" />
               <div>
@@ -316,6 +360,16 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                 <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('edgeVersion')}</span>
                 <span className="text-xs font-semibold text-zinc-200 block mt-0.5">
                   {node.edge_version || 'UNKNOWN'}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
+              <Database className="h-8 w-8 text-indigo-400/90" />
+              <div>
+                <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('sentinelRuntimeVersion') || 'Sentinel Runtime'}</span>
+                <span className="text-xs font-semibold text-zinc-200 block mt-0.5" title={node.hasp_runtime_version || 'None'}>
+                  {node.hasp_runtime_version || 'None'}
                 </span>
               </div>
             </div>
@@ -433,6 +487,157 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               </button>
             </div>
           </div>
+
+          {(node.status === 'RESTORED' || (node.hasp_runtime_version && node.hasp_runtime_version !== 'None')) && (
+            <div className="bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-500/25 rounded-2xl p-5 space-y-3.5 shadow-lg shadow-indigo-950/10 animate-fade-in">
+              <div 
+                className="flex items-center justify-between border-b border-indigo-500/15 pb-3 cursor-pointer select-none hover:opacity-90 transition"
+                onClick={() => setSentinelExpanded(!sentinelExpanded)}
+              >
+                <div className="flex items-center gap-2.5 text-indigo-500 dark:text-indigo-400 font-bold text-sm">
+                  <Info className="h-5 w-5" />
+                  <span>{node.status === 'RESTORED' ? t('statusRestored') : 'Sentinel LDK Licensing'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {haspStatus && (
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                      haspStatus.status === 'active' ? 'hasp-badge-active' :
+                      haspStatus.status === 'expired' ? 'hasp-badge-expired' :
+                      haspStatus.status === 'clone_detected' ? 'hasp-badge-danger animate-pulse' :
+                      haspStatus.status === 'disabled' ? 'hasp-badge-danger' :
+                      'hasp-badge-neutral'
+                    }`}>
+                      {haspStatus.status.replace('_', ' ')}
+                    </span>
+                  )}
+                  {sentinelExpanded ? (
+                    <ChevronUp className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
+                  )}
+                </div>
+              </div>
+
+              {sentinelExpanded && (
+                <>
+                  {haspStatus && haspStatus.status === 'clone_detected' && (
+                    <div className="p-3 bg-red-105 dark:bg-red-950/25 border border-red-200 dark:border-red-500/20 text-red-800 dark:text-red-400 text-xs rounded-xl flex items-start gap-2.5">
+                      <span className="font-bold">Warning:</span>
+                      <span>Sentinel runtime has detected a hardware change (Clone Detected). Storage, licensing, and database are disabled. Re-provisioning or fresh activation is required.</span>
+                    </div>
+                  )}
+
+              {/* Fingerprint retrieval and download */}
+              <div className="space-y-2">
+                <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                  {t('downloadFingerprintHelp') || 'To activate the license, download the fingerprint (C2V) file from the node:'}
+                </p>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <code className="flex-1 bg-zinc-100 dark:bg-zinc-950 px-3 py-2.5 rounded-lg text-xs text-zinc-800 dark:text-zinc-300 font-mono select-all border border-zinc-200 dark:border-zinc-850/80">
+                    /var/hasplm/fingerprint
+                  </code>
+                  <a
+                    href={`/api/nodes/${node.id}/hasp-fingerprint`}
+                    download
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition shadow-md shadow-indigo-900/15 cursor-pointer"
+                  >
+                    <Terminal className="h-4 w-4" />
+                    {t('downloadC2vFile')}
+                  </a>
+                </div>
+              </div>
+
+              {/* Upload license update section */}
+              <div className="pt-3 border-t border-indigo-500/10 space-y-2">
+                <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed font-semibold">
+                  Apply License Update File (.v2c):
+                </p>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <input
+                    type="file"
+                    id="hasp-license-file"
+                    accept=".v2c,.v2cp,.h2r,.r2h,.h2h"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setSelectedLicenseFile(e.target.files[0]);
+                      }
+                    }}
+                  />
+                  <div className="flex-1 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('hasp-license-file')?.click()}
+                      className="px-3 py-2 bg-zinc-100 dark:bg-zinc-950 border border-zinc-250 dark:border-zinc-850/80 text-zinc-800 dark:text-zinc-300 rounded-lg text-xs font-semibold hover:bg-zinc-200 dark:hover:bg-zinc-900 transition flex items-center gap-1.5 shrink-0"
+                    >
+                      <Upload className="h-3.5 w-3.5 text-indigo-400" />
+                      Choose V2C File...
+                    </button>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-[180px]" title={selectedLicenseFile?.name || 'No file selected'}>
+                      {selectedLicenseFile?.name || 'No file selected'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!selectedLicenseFile || applyingLicense}
+                    onClick={handleApplyLicense}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-lg text-xs font-bold transition shadow-md shadow-emerald-900/15 cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    {applyingLicense ? 'Applying...' : 'Apply V2C License'}
+                  </button>
+                </div>
+              </div>
+
+              {licenseMessage && (
+                <div className={`p-2.5 rounded-lg text-xs font-semibold border ${
+                  licenseMessage.isError 
+                    ? 'bg-red-50 dark:bg-red-500/10 text-red-800 dark:text-red-400 border-red-200 dark:border-red-500/20' 
+                    : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+                }`}>
+                  {licenseMessage.text}
+                </div>
+              )}
+
+              {/* Features List */}
+              {haspStatus && haspStatus.features && haspStatus.features.length > 0 && (
+                <div className="pt-2 border-t border-indigo-500/10 space-y-2">
+                  <span className="text-[10px] uppercase font-bold text-zinc-500 dark:text-zinc-400 tracking-wider block">
+                    Active License Features ({haspStatus.features.length})
+                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-0.5 max-h-60 overflow-y-auto pr-1">
+                    {haspStatus.features.map((feat: any) => (
+                      <div 
+                        key={feat.id} 
+                        className={`p-2.5 rounded-lg text-xs flex items-center justify-between border ${
+                          feat.unusable === '0' 
+                            ? 'bg-emerald-50/40 dark:bg-emerald-950/10 border-emerald-100 dark:border-emerald-500/15 text-emerald-800 dark:text-emerald-300' 
+                            : 'bg-zinc-50/50 dark:bg-zinc-900/20 border-zinc-200/60 dark:border-zinc-800/80 text-zinc-500 dark:text-zinc-400'
+                        }`}
+                      >
+                        <div className="truncate pr-2">
+                          <span className="font-bold block truncate">
+                            {feat.name}
+                          </span>
+                          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 block">
+                            FID: {feat.id} • Product: {feat.product_name} ({feat.product_id})
+                          </span>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold shrink-0 ${
+                          feat.unusable === '0' 
+                            ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-400' 
+                            : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-500'
+                        }`}>
+                          {feat.lic_type}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
           {/* Backup History Datatable */}
           <NodeBackupHistory

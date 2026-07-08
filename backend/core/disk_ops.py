@@ -152,7 +152,8 @@ def format_and_restore(
     wipe_mac_bindings: bool,
     network_iface: str,
     total_files: int,
-    log_callback: Callable[[str, Optional[int], Optional[str]], None]
+    log_callback: Callable[[str, Optional[int], Optional[str]], None],
+    exclusions: Optional[List[Any]] = None
 ) -> Dict[str, Any]:
     """
     Core logic for bare-metal restore partition flashing, filesystem formatting,
@@ -389,6 +390,31 @@ def format_and_restore(
             emit_log(f"Mounting partition {part_dev} to {target_path}...", prog=42)
             subprocess.check_call(["mount", part_dev, target_path])
 
+        # Storage Wiping: guarantee Sentinel LDK directories are clean/absent on the target root filesystem
+        parsed_exclusions = []
+        if exclusions:
+            for ex in exclusions:
+                pattern = None
+                if isinstance(ex, dict):
+                    pattern = ex.get("pattern")
+                elif isinstance(ex, str):
+                    pattern = ex
+                if pattern:
+                    pat_stripped = pattern.strip().lstrip("/")
+                    if pat_stripped:
+                        parsed_exclusions.append(pat_stripped)
+
+        # Ensure Sentinel dirs are also in the list if not present, and wipe them
+        for hasp_dir in ["var/hasplm", "etc/hasplm"]:
+            hasp_pattern = f"{hasp_dir}/*"
+            if hasp_pattern not in parsed_exclusions:
+                parsed_exclusions.append(hasp_pattern)
+            
+            target_path = os.path.join(target_mnt, hasp_dir)
+            if os.path.exists(target_path):
+                emit_log(f"Wiping legacy Sentinel LDK directory: {target_path}")
+                shutil.rmtree(target_path, ignore_errors=True)
+
         # 6. Extract Borg Backup
         emit_log(f"Extracting archive {archive_name} into {target_mnt}...", prog=45)
 
@@ -406,9 +432,11 @@ def format_and_restore(
 
         extract_cmd = [
             "stdbuf", "-e0",
-            "borg", "extract", "--numeric-ids", "--sparse", "--progress",
-            f"{repo_path}::{archive_name}"
+            "borg", "extract", "--numeric-ids", "--sparse", "--progress"
         ]
+        for pat in parsed_exclusions:
+            extract_cmd.extend(["--exclude", pat])
+        extract_cmd.append(f"{repo_path}::{archive_name}")
         
         try:
             import pty
@@ -730,6 +758,20 @@ def format_and_restore(
                                     subprocess.run(["chroot", target_mnt, "chmod", "775", log_dir_in_chroot], check=True)
         except Exception as pe_log:
             emit_log(f"WARNING: Failed to recreate custom PostgreSQL log directories: {str(pe_log)}")
+
+        # Reset Loop: Purge old config and re-initialize Sentinel LDK Runtime inside target OS
+        try:
+            dpkg_check = subprocess.run(["chroot", target_mnt, "dpkg-query", "-W", "edge-hasp-eoawt3"], capture_output=True, text=True)
+            if dpkg_check.returncode == 0:
+                emit_log("Re-initializing Sentinel LDK Runtime inside target chroot...")
+                emit_log("Purging old configuration of edge-hasp-eoawt3...")
+                subprocess.run(["chroot", target_mnt, "apt-get", "purge", "-y", "edge-hasp-eoawt3"], capture_output=True)
+                emit_log("Updating package cache and reinstalling edge-hasp-eoawt3...")
+                subprocess.run(["chroot", target_mnt, "apt-get", "update"], capture_output=True)
+                subprocess.run(["chroot", target_mnt, "apt-get", "install", "-y", "edge-hasp-eoawt3"], capture_output=True)
+                emit_log("Sentinel LDK Runtime successfully re-initialized.")
+        except Exception as ae:
+            emit_log(f"WARNING: Failed to reinstall/re-initialize edge-hasp-eoawt3: {str(ae)}")
 
         # 10. Post-Restore verification audit
         emit_log("Starting post-restore audit...")

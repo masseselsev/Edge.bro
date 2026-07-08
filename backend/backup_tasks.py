@@ -330,10 +330,17 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
 
     exclude_args = []
     if settings.global_exclusions:
-        for x in settings.global_exclusions.split(","):
-            ex = x.strip()
-            if ex:
-                exclude_args.append(f"--exclude '{ex}'")
+        for ex in settings.global_exclusions:
+            pattern = None
+            if isinstance(ex, dict):
+                pattern = ex.get("pattern")
+            elif isinstance(ex, str):
+                pattern = ex
+                
+            if pattern:
+                pat_stripped = pattern.strip()
+                if pat_stripped:
+                    exclude_args.append(f"--exclude '{pat_stripped}'")
     exclude_str = " ".join(exclude_args)
 
     # --- Resolve resource settings (group -> global -> hardcoded fallback) ---

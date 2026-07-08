@@ -291,6 +291,8 @@ def run_ansible_playbook(
                     parsed_data["memory_info"] = clean_memory_info(mem_raw)
                 if "EDGE_VERSION:" in line:
                     parsed_data["edge_version"] = line.split("EDGE_VERSION:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                if "HASP_VERSION:" in line:
+                    parsed_data["hasp_runtime_version"] = line.split("HASP_VERSION:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
                 if "PARTITION_LAYOUT_JSON:" in line:
                     parsed_data["partition_layout_raw"] = line.split("PARTITION_LAYOUT_JSON:")[1].strip()
 

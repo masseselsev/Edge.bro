@@ -80,8 +80,14 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     for attr, label in fields:
         old_val = getattr(settings, attr, None)
         new_val = getattr(payload, attr, None)
-        if old_val != new_val:
-            changes.append(f"{label}: '{old_val}' ➔ '{new_val}'")
+        if attr in ("global_exclusions", "server_ips"):
+            old_str = ",".join(old_val) if isinstance(old_val, list) else str(old_val)
+            new_str = ",".join(new_val) if isinstance(new_val, list) else str(new_val)
+            if old_str != new_str:
+                changes.append(f"{label}: '{old_str}' ➔ '{new_str}'")
+        else:
+            if old_val != new_val:
+                changes.append(f"{label}: '{old_val}' ➔ '{new_val}'")
 
     old_policy = settings.retention_policy or {}
     new_policy = payload.retention_policy.model_dump() if payload.retention_policy else {}

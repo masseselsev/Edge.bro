@@ -1,7 +1,7 @@
 import os
 import subprocess
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, File, UploadFile
 from sqlalchemy.orm import Session
 from database import get_db
 import models
@@ -192,3 +192,301 @@ def trigger_restore(payload: schemas.RestoreRequest, request: Request = None, db
     from database import log_user_action
     log_user_action(db, current_user.username, "Trigger Restore", f"Triggered bare-metal flashing restore of node '{node.hostname}' using archive '{payload.archive_name}' onto target device '{payload.target_dev}'", request)
     return {"message": "Restore flashing process started.", "task_id": task.id}
+
+
+@router.get("/nodes/{node_id}/hasp-fingerprint")
+def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    """
+    Downloads the genuine Sentinel HASP C2V fingerprint file from the node using the hasp_update tool.
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    
+    import subprocess
+    import xml.etree.ElementTree as ET
+    from fastapi.responses import Response
+    
+    # 1. Try to list keys with features using the hasp_update tool
+    ssh_cmd_lf = [
+        "ssh", "-o", "StrictHostKeyChecking=no",
+        "-p", str(node.ssh_port),
+        "-i", "/root/.ssh/id_ed25519",
+        f"root@{node.ip_address}",
+        ". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update lf"
+    ]
+    
+    haspid = None
+    try:
+        res_lf = subprocess.run(ssh_cmd_lf, capture_output=True, text=True, timeout=10)
+        if res_lf.returncode == 0 and res_lf.stdout.strip():
+            # Parse XML output to see if there is a connected HASP key
+            root = ET.fromstring(res_lf.stdout.strip())
+            hasp_elem = root.find(".//hasp")
+            if hasp_elem is not None:
+                haspid = hasp_elem.get("id")
+    except Exception:
+        pass  # Fall back to machine fingerprint or other methods if lf failed/parsed incorrectly
+        
+    # 2. Build the command to run hasp_update
+    if haspid:
+        cmd_str = f". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update i {haspid}"
+        filename = f"{node.hostname}_key_{haspid}.c2v"
+    else:
+        cmd_str = ". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update f"
+        filename = f"{node.hostname}_fingerprint.c2v"
+        
+    ssh_cmd_update = [
+        "ssh", "-o", "StrictHostKeyChecking=no",
+        "-p", str(node.ssh_port),
+        "-i", "/root/.ssh/id_ed25519",
+        f"root@{node.ip_address}",
+        cmd_str
+    ]
+    
+    try:
+        res = subprocess.run(ssh_cmd_update, capture_output=True, text=True, timeout=10)
+        content = res.stdout.strip()
+        if not content or "<?xml" not in content:
+            # Secondary fallback: Use ACC HTTP API if hasp_update failed
+            ssh_cmd_acc_list = [
+                "ssh", "-o", "StrictHostKeyChecking=no",
+                "-p", str(node.ssh_port),
+                "-i", "/root/.ssh/id_ed25519",
+                f"root@{node.ip_address}",
+                "curl -s http://127.0.0.1:1947/_int_/tab_dev.html"
+            ]
+            acc_haspid = None
+            acc_vid = "107392"
+            try:
+                res_acc_list = subprocess.run(ssh_cmd_acc_list, capture_output=True, text=True, timeout=10)
+                if res_acc_list.returncode == 0 and res_acc_list.stdout.strip():
+                    blocks = parse_sentinel_json_blocks(res_acc_list.stdout)
+                    for b in blocks:
+                        if "ndx" in b:
+                            if b.get("haspid") and b.get("haspid") != "0":
+                                acc_haspid = b.get("haspid")
+                            if b.get("vid"):
+                                acc_vid = b.get("vid")
+                            elif b.get("ven"):
+                                acc_vid = b.get("ven")
+                            break
+            except Exception:
+                pass
+                
+            if acc_haspid:
+                acc_target = f"http://127.0.0.1:1947/download/my.c2v?{acc_haspid}"
+                filename = f"{node.hostname}_key_{acc_haspid}.c2v"
+            else:
+                acc_target = f"http://127.0.0.1:1947/download/my.fp?{acc_vid}"
+                filename = f"{node.hostname}_fingerprint.c2v"
+                
+            ssh_cmd_acc_download = [
+                "ssh", "-o", "StrictHostKeyChecking=no",
+                "-p", str(node.ssh_port),
+                "-i", "/root/.ssh/id_ed25519",
+                f"root@{node.ip_address}",
+                f"curl -s '{acc_target}'"
+            ]
+            res_acc = subprocess.run(ssh_cmd_acc_download, capture_output=True, text=True, timeout=10)
+            content = res_acc.stdout.strip()
+            
+            if not content or "<?xml" not in content:
+                # Tertiary fallback: file-based cat
+                fallback_cmd = [
+                    "ssh", "-o", "StrictHostKeyChecking=no",
+                    "-p", str(node.ssh_port),
+                    "-i", "/root/.ssh/id_ed25519",
+                    f"root@{node.ip_address}",
+                    "cat /var/hasplm/fingerprint 2>/dev/null || cat /var/hasplm/*.c2v 2>/dev/null || echo 'NO_FINGERPRINT'"
+                ]
+                res_fb = subprocess.run(fallback_cmd, capture_output=True, text=True, timeout=10)
+                content = res_fb.stdout.strip()
+                filename = f"{node.hostname}_fingerprint.c2v"
+                
+                if not content or content == "NO_FINGERPRINT":
+                    raise HTTPException(status_code=400, detail="Fingerprint file not found on node. Make sure the node is booted and Sentinel runtime is active.")
+        
+        return Response(
+            content=content,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Failed to fetch fingerprint: {str(e)}")
+
+
+def parse_sentinel_json_blocks(raw_text: str) -> list:
+    import json
+    import re
+    objs = []
+    for block in re.findall(r'\{[^{}]+\}', raw_text):
+        try:
+            block_clean = re.sub(r'\s+', ' ', block)
+            objs.append(json.loads(block_clean))
+        except Exception:
+            continue
+    return objs
+
+
+@router.get("/nodes/{node_id}/hasp-status", response_model=schemas.HaspStatusResponse)
+def get_node_hasp_status(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    """
+    Retrieves the live Sentinel HASP license activation status and features list from the node.
+    """
+    import re
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+        
+    if not node.hasp_runtime_version or node.hasp_runtime_version == "None":
+        return {"status": "inactive", "features": []}
+        
+    ssh_cmd = [
+        "ssh", "-o", "StrictHostKeyChecking=no",
+        "-p", str(node.ssh_port),
+        "-i", "/root/.ssh/id_ed25519",
+        f"root@{node.ip_address}",
+        "curl -s --connect-timeout 3 http://localhost:1947/_int_/tab_dev.html && echo '---FEATURES_SEPARATOR---' && curl -s --connect-timeout 3 http://localhost:1947/_int_/tab_feat.html"
+    ]
+    
+    try:
+        res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=8)
+        if res.returncode != 0 or not res.stdout.strip():
+            return {"status": "unreachable", "features": []}
+            
+        parts = res.stdout.split('---FEATURES_SEPARATOR---')
+        dev_section = parts[0] if len(parts) > 0 else ""
+        feat_section = parts[1] if len(parts) > 1 else ""
+        
+        devices = parse_sentinel_json_blocks(dev_section)
+        features = parse_sentinel_json_blocks(feat_section)
+        
+        real_devices = [d for d in devices if d.get("haspid") and d.get("haspid") != "0"]
+        real_features = [f for f in features if f.get("fid") is not None]
+        
+        if not real_devices:
+            return {"status": "no_license", "features": []}
+            
+        is_cloned = any(d.get("cloned") != "0" for d in real_devices)
+        is_disabled = any(d.get("key_disabled") != "0" for d in real_devices)
+        
+        if is_cloned:
+            status_str = "clone_detected"
+        elif is_disabled:
+            status_str = "disabled"
+        else:
+            active_features = [f for f in real_features if f.get("fid") != "0"]
+            if active_features and all(f.get("unusable") != "0" for f in active_features):
+                status_str = "expired"
+            else:
+                status_str = "active"
+                
+        # Format features list
+        formatted_features = []
+        for f in real_features:
+            lic_clean = re.sub(r'<[^<]+?>', ' ', f.get("lic", "")).strip()
+            lic_clean = lic_clean.replace("&nbsp;", " ")
+            lic_clean = re.sub(r'\s+', ' ', lic_clean)
+            if "Expiration Date" in lic_clean:
+                lic_clean = lic_clean.replace("Expiration Date", "").replace("23:59", "").strip()
+                lic_clean = f"Exp: {lic_clean}"
+            
+            formatted_features.append({
+                "id": str(f.get("fid")),
+                "name": f.get("fn") or "Unnamed Feature",
+                "product_name": f.get("prname") or "N/A",
+                "product_id": str(f.get("prid")) if f.get("prid") else "N/A",
+                "lic_type": lic_clean,
+                "unusable": str(f.get("unusable", "0")),
+                "key_id": str(f.get("haspid", ""))
+            })
+            
+        return {
+            "status": status_str,
+            "features": formatted_features
+        }
+    except Exception:
+        return {"status": "unreachable", "features": []}
+
+
+@router.post("/nodes/{node_id}/hasp-license")
+async def upload_hasp_license(
+    node_id: int, 
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db), 
+    current_user = Depends(require_admin)
+):
+    """
+    Uploads and applies a Sentinel V2C license file to the node.
+    """
+    import base64
+    import re
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+        
+    # Check file extension case-insensitively!
+    if not file.filename.lower().endswith(('.v2c', '.v2cp', '.h2r', '.r2h', '.h2h')):
+        raise HTTPException(status_code=400, detail="Invalid file extension. Please upload a valid Sentinel license file (V2C).")
+        
+    try:
+        content = await file.read()
+        b64_content = base64.b64encode(content).decode('utf-8')
+        
+        # Try applying via hasp_update CLI, fallback to ACC HTTP Checkin if it fails
+        ssh_cmd = [
+            "ssh", "-o", "StrictHostKeyChecking=no",
+            "-p", str(node.ssh_port),
+            "-i", "/root/.ssh/id_ed25519",
+            f"root@{node.ip_address}",
+            f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
+            f"(. /opt/edge/rc.setenv && /opt/edge/bin/hasp_update u /tmp/license.v2c 2>/dev/null && echo 'CLI_SUCCESS' || echo 'CLI_FAILED') && "
+            f"rm -f /tmp/license.v2c"
+        ]
+        
+        res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=20)
+        if res.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to communicate with node via SSH: {res.stderr}")
+            
+        stdout = res.stdout.strip()
+        
+        if "CLI_SUCCESS" in stdout:
+            return {"status": "success", "message": "License applied successfully via Sentinel hasp_update!"}
+            
+        # Fallback to ACC HTTP Checkin
+        ssh_cmd_acc = [
+            "ssh", "-o", "StrictHostKeyChecking=no",
+            "-p", str(node.ssh_port),
+            "-i", "/root/.ssh/id_ed25519",
+            f"root@{node.ip_address}",
+            f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
+            f"curl -s -F \"check_in_file=@/tmp/license.v2c\" http://localhost:1947/_int_/checkin_file.html && "
+            f"rm -f /tmp/license.v2c"
+        ]
+        
+        res_acc = subprocess.run(ssh_cmd_acc, capture_output=True, text=True, timeout=20)
+        if res_acc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to communicate with node via SSH fallback: {res_acc.stderr}")
+            
+        stdout_acc = res_acc.stdout
+        
+        error_match = re.search(r'var error\s*=\s*(\d+);', stdout_acc)
+        ext_match = re.search(r'var acc_extended_error\s*=\s*"([^"]*)";', stdout_acc)
+        
+        error_code = int(error_match.group(1)) if error_match else 0
+        extended_error = ext_match.group(1) if ext_match else "0"
+        
+        if error_code != 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Attach/Update license failed (Sentinel error code: {error_code}, ext: {extended_error})."
+            )
+            
+        return {"status": "success", "message": "License applied successfully via ACC HTTP checkin fallback!"}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Error applying license file: {str(e)}")
