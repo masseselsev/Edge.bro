@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import logging
 import redis
+import time
 from sqlalchemy.orm import Session
 import models
 from backup_tasks import run_backup_task
@@ -349,11 +350,12 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
                     logger.info(f"Retrying failed backup for {node.hostname} (last failed at {latest_fail.timestamp})")
 
 
-            # Set redis lock to mark running (this is released by the Celery task on completion)
-            redis_client.setex(f"backup_running:{node.id}", 86400, "1")
-            group_running_counts[gid] += 1
-            triggered_count += 1
-
             # Trigger backup task
             logger.info(f"Queue scheduler triggering backup for node {node.hostname} (Group limit: {effective_concurrency}, running: {group_running_counts[gid]})")
-            run_backup_task.delay(node.id, comment=f"Automated scheduler execution (Group: {group.name})")
+            task = run_backup_task.delay(node.id, comment=f"Automated scheduler execution (Group: {group.name})")
+            
+            # Set redis lock to mark running (this is released by the Celery task on completion)
+            # Store the current timestamp and task ID in the lock value.
+            redis_client.setex(f"backup_running:{node.id}", 86400, f"{int(time.time())}:{task.id}")
+            group_running_counts[gid] += 1
+            triggered_count += 1
