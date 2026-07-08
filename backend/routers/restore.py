@@ -197,78 +197,115 @@ def trigger_restore(payload: schemas.RestoreRequest, request: Request = None, db
 @router.get("/nodes/{node_id}/hasp-fingerprint")
 def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
-    Downloads the genuine Sentinel HASP C2V fingerprint file from the node by querying the Sentinel ACC.
+    Downloads the genuine Sentinel HASP C2V fingerprint file from the node using the hasp_update tool.
     """
     node = db.query(models.Node).filter(models.Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     
     import subprocess
+    import xml.etree.ElementTree as ET
     from fastapi.responses import Response
     
-    # 1. Fetch devices list JSON from Sentinel ACC
-    ssh_cmd_list = [
+    # 1. Try to list keys with features using the hasp_update tool
+    ssh_cmd_lf = [
         "ssh", "-o", "StrictHostKeyChecking=no",
         "-p", str(node.ssh_port),
         "-i", "/root/.ssh/id_ed25519",
         f"root@{node.ip_address}",
-        "curl -s http://127.0.0.1:1947/_int_/tab_dev.html"
+        ". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update lf"
     ]
     
     haspid = None
-    vid = "107392"  # default Vendor ID
-    
     try:
-        res_list = subprocess.run(ssh_cmd_list, capture_output=True, text=True, timeout=10)
-        if res_list.returncode == 0 and res_list.stdout.strip():
-            blocks = parse_sentinel_json_blocks(res_list.stdout)
-            # Find the first block that has device info (usually has haspid or vid)
-            for b in blocks:
-                if "ndx" in b:
-                    if b.get("haspid") and b.get("haspid") != "0":
-                        haspid = b.get("haspid")
-                    if b.get("vid"):
-                        vid = b.get("vid")
-                    elif b.get("ven"):
-                        vid = b.get("ven")
-                    break
+        res_lf = subprocess.run(ssh_cmd_lf, capture_output=True, text=True, timeout=10)
+        if res_lf.returncode == 0 and res_lf.stdout.strip():
+            # Parse XML output to see if there is a connected HASP key
+            root = ET.fromstring(res_lf.stdout.strip())
+            hasp_elem = root.find(".//hasp")
+            if hasp_elem is not None:
+                haspid = hasp_elem.get("id")
     except Exception:
-        pass  # Fall back to defaults on any parsing error
+        pass  # Fall back to machine fingerprint or other methods if lf failed/parsed incorrectly
         
-    # 2. Build curl command based on detected key status
+    # 2. Build the command to run hasp_update
     if haspid:
-        curl_target = f"http://127.0.0.1:1947/download/my.c2v?{haspid}"
+        cmd_str = f". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update i {haspid}"
         filename = f"{node.hostname}_key_{haspid}.c2v"
     else:
-        curl_target = f"http://127.0.0.1:1947/download/my.fp?{vid}"
+        cmd_str = ". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update f"
         filename = f"{node.hostname}_fingerprint.c2v"
         
-    ssh_cmd_download = [
+    ssh_cmd_update = [
         "ssh", "-o", "StrictHostKeyChecking=no",
         "-p", str(node.ssh_port),
         "-i", "/root/.ssh/id_ed25519",
         f"root@{node.ip_address}",
-        f"curl -s '{curl_target}'"
+        cmd_str
     ]
     
     try:
-        res = subprocess.run(ssh_cmd_download, capture_output=True, text=True, timeout=10)
+        res = subprocess.run(ssh_cmd_update, capture_output=True, text=True, timeout=10)
         content = res.stdout.strip()
         if not content or "<?xml" not in content:
-            # Fallback to local files if curl failed or returned non-XML
-            fallback_cmd = [
+            # Secondary fallback: Use ACC HTTP API if hasp_update failed
+            ssh_cmd_acc_list = [
                 "ssh", "-o", "StrictHostKeyChecking=no",
                 "-p", str(node.ssh_port),
                 "-i", "/root/.ssh/id_ed25519",
                 f"root@{node.ip_address}",
-                "cat /var/hasplm/fingerprint 2>/dev/null || cat /var/hasplm/*.c2v 2>/dev/null || echo 'NO_FINGERPRINT'"
+                "curl -s http://127.0.0.1:1947/_int_/tab_dev.html"
             ]
-            res_fb = subprocess.run(fallback_cmd, capture_output=True, text=True, timeout=10)
-            content = res_fb.stdout.strip()
-            filename = f"{node.hostname}_fingerprint.c2v"
+            acc_haspid = None
+            acc_vid = "107392"
+            try:
+                res_acc_list = subprocess.run(ssh_cmd_acc_list, capture_output=True, text=True, timeout=10)
+                if res_acc_list.returncode == 0 and res_acc_list.stdout.strip():
+                    blocks = parse_sentinel_json_blocks(res_acc_list.stdout)
+                    for b in blocks:
+                        if "ndx" in b:
+                            if b.get("haspid") and b.get("haspid") != "0":
+                                acc_haspid = b.get("haspid")
+                            if b.get("vid"):
+                                acc_vid = b.get("vid")
+                            elif b.get("ven"):
+                                acc_vid = b.get("ven")
+                            break
+            except Exception:
+                pass
+                
+            if acc_haspid:
+                acc_target = f"http://127.0.0.1:1947/download/my.c2v?{acc_haspid}"
+                filename = f"{node.hostname}_key_{acc_haspid}.c2v"
+            else:
+                acc_target = f"http://127.0.0.1:1947/download/my.fp?{acc_vid}"
+                filename = f"{node.hostname}_fingerprint.c2v"
+                
+            ssh_cmd_acc_download = [
+                "ssh", "-o", "StrictHostKeyChecking=no",
+                "-p", str(node.ssh_port),
+                "-i", "/root/.ssh/id_ed25519",
+                f"root@{node.ip_address}",
+                f"curl -s '{acc_target}'"
+            ]
+            res_acc = subprocess.run(ssh_cmd_acc_download, capture_output=True, text=True, timeout=10)
+            content = res_acc.stdout.strip()
             
-            if not content or content == "NO_FINGERPRINT":
-                raise HTTPException(status_code=400, detail="Fingerprint file not found on node. Make sure the node is booted and Sentinel runtime is active.")
+            if not content or "<?xml" not in content:
+                # Tertiary fallback: file-based cat
+                fallback_cmd = [
+                    "ssh", "-o", "StrictHostKeyChecking=no",
+                    "-p", str(node.ssh_port),
+                    "-i", "/root/.ssh/id_ed25519",
+                    f"root@{node.ip_address}",
+                    "cat /var/hasplm/fingerprint 2>/dev/null || cat /var/hasplm/*.c2v 2>/dev/null || echo 'NO_FINGERPRINT'"
+                ]
+                res_fb = subprocess.run(fallback_cmd, capture_output=True, text=True, timeout=10)
+                content = res_fb.stdout.strip()
+                filename = f"{node.hostname}_fingerprint.c2v"
+                
+                if not content or content == "NO_FINGERPRINT":
+                    raise HTTPException(status_code=400, detail="Fingerprint file not found on node. Make sure the node is booted and Sentinel runtime is active.")
         
         return Response(
             content=content,
