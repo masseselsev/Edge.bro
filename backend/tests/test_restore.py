@@ -483,7 +483,7 @@ def test_get_node_hasp_status_active_ok(mock_run, db_session):
     assert res["features"][0]["id"] == "2002"
     assert res["features"][0]["name"] == "EDGE LPR"
     assert res["features"][0]["unusable"] == "0"
-    assert "Expiration Date Thu Jan 1, 2026" in res["features"][0]["lic_type"]
+    assert "Exp: Thu Jan 1, 2026" in res["features"][0]["lic_type"]
 
 
 

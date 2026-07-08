@@ -1,7 +1,7 @@
 import os
 import subprocess
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, File, UploadFile
 from sqlalchemy.orm import Session
 from database import get_db
 import models
@@ -298,7 +298,11 @@ def get_node_hasp_status(node_id: int, db: Session = Depends(get_db), current_us
         formatted_features = []
         for f in real_features:
             lic_clean = re.sub(r'<[^<]+?>', ' ', f.get("lic", "")).strip()
+            lic_clean = lic_clean.replace("&nbsp;", " ")
             lic_clean = re.sub(r'\s+', ' ', lic_clean)
+            if "Expiration Date" in lic_clean:
+                lic_clean = lic_clean.replace("Expiration Date", "").replace("23:59", "").strip()
+                lic_clean = f"Exp: {lic_clean}"
             
             formatted_features.append({
                 "id": str(f.get("fid")),
@@ -316,3 +320,61 @@ def get_node_hasp_status(node_id: int, db: Session = Depends(get_db), current_us
         }
     except Exception:
         return {"status": "unreachable", "features": []}
+
+
+@router.post("/nodes/{node_id}/hasp-license")
+async def upload_hasp_license(
+    node_id: int, 
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db), 
+    current_user = Depends(require_admin)
+):
+    """
+    Uploads and applies a Sentinel V2C license file to the node.
+    """
+    import base64
+    import re
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+        
+    if not file.filename.endswith(('.v2c', '.v2cp', '.h2r', '.r2h', '.h2h')):
+        raise HTTPException(status_code=400, detail="Invalid file extension. Please upload a valid Sentinel license file (V2C).")
+        
+    try:
+        content = await file.read()
+        b64_content = base64.b64encode(content).decode('utf-8')
+        
+        ssh_cmd = [
+            "ssh", "-o", "StrictHostKeyChecking=no",
+            "-p", str(node.ssh_port),
+            "-i", "/root/.ssh/id_ed25519",
+            f"root@{node.ip_address}",
+            f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
+            f"curl -s -F \"check_in_file=@/tmp/license.v2c\" http://localhost:1947/_int_/checkin_file.html && "
+            f"rm -f /tmp/license.v2c"
+        ]
+        
+        res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=20)
+        if res.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to communicate with node via SSH: {res.stderr}")
+            
+        stdout = res.stdout
+        
+        error_match = re.search(r'var error\s*=\s*(\d+);', stdout)
+        ext_match = re.search(r'var acc_extended_error\s*=\s*"([^"]*)";', stdout)
+        
+        error_code = int(error_match.group(1)) if error_match else 0
+        extended_error = ext_match.group(1) if ext_match else "0"
+        
+        if error_code != 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Attach/Update license failed (Sentinel error code: {error_code}, ext: {extended_error})."
+            )
+            
+        return {"status": "success", "message": "License applied successfully!"}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Error applying license file: {str(e)}")

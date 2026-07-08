@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Play, Pause, Edit, Cpu, HardDrive, Cpu as MemIcon, Info, RefreshCw, Save, Database, History, Terminal, Calendar } from 'lucide-react';
+import { X, Play, Pause, Edit, Cpu, HardDrive, Cpu as MemIcon, Info, RefreshCw, Save, Database, History, Terminal, Calendar, Upload } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import type { Language } from '../i18n/translations';
 import NodeConsoleLogs from './NodeConsoleLogs';
@@ -81,6 +81,9 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
     status: string;
     features: any[];
   } | null>(null);
+  const [selectedLicenseFile, setSelectedLicenseFile] = useState<File | null>(null);
+  const [applyingLicense, setApplyingLicense] = useState(false);
+  const [licenseMessage, setLicenseMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
   const fetchNodeDetails = async () => {
     setLoading(true);
@@ -140,6 +143,35 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
       console.error("Failed to load node details:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApplyLicense = async () => {
+    if (!selectedLicenseFile) return;
+    setApplyingLicense(true);
+    setLicenseMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedLicenseFile);
+      
+      const res = await fetch(`/api/nodes/${nodeId}/hasp-license`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        setLicenseMessage({ text: "License applied successfully!", isError: false });
+        setSelectedLicenseFile(null);
+        fetchNodeDetails();
+      } else {
+        setLicenseMessage({ text: data.detail || "Failed to apply license file.", isError: true });
+      }
+    } catch (err: any) {
+      console.error(err);
+      setLicenseMessage({ text: "Error uploading license: " + err.message, isError: true });
+    } finally {
+      setApplyingLicense(false);
     }
   };
 
@@ -456,20 +488,20 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           </div>
 
           {(node.status === 'RESTORED' || (node.hasp_runtime_version && node.hasp_runtime_version !== 'None')) && (
-            <div className="bg-indigo-950/20 border border-indigo-500/25 rounded-2xl p-5 space-y-3.5 shadow-lg shadow-indigo-950/10 animate-fade-in">
+            <div className="bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-500/25 rounded-2xl p-5 space-y-3.5 shadow-lg shadow-indigo-950/10 animate-fade-in">
               <div className="flex items-center justify-between border-b border-indigo-500/15 pb-3">
-                <div className="flex items-center gap-2.5 text-indigo-400 font-bold text-sm">
+                <div className="flex items-center gap-2.5 text-indigo-500 dark:text-indigo-400 font-bold text-sm">
                   <Info className="h-5 w-5" />
                   <span>{node.status === 'RESTORED' ? t('statusRestored') : 'Sentinel LDK Licensing'}</span>
                 </div>
                 {haspStatus && (
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
-                    haspStatus.status === 'active' ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500/20' :
-                    haspStatus.status === 'expired' ? 'bg-amber-500/25 text-amber-400 border border-amber-500/20' :
-                    haspStatus.status === 'clone_detected' ? 'bg-red-500/25 text-red-400 border border-red-500/30 animate-pulse' :
-                    haspStatus.status === 'disabled' ? 'bg-red-500/25 text-red-400 border border-red-500/30' :
-                    haspStatus.status === 'no_license' ? 'bg-zinc-500/25 text-zinc-400 border border-zinc-500/20' :
-                    'bg-zinc-500/20 text-zinc-500 border border-zinc-800'
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    haspStatus.status === 'active' ? 'bg-emerald-100 dark:bg-emerald-500/25 text-emerald-800 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20' :
+                    haspStatus.status === 'expired' ? 'bg-amber-100 dark:bg-amber-500/25 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-500/20' :
+                    haspStatus.status === 'clone_detected' ? 'bg-red-100 dark:bg-red-500/25 text-red-800 dark:text-red-400 border-red-200 dark:border-red-500/30 animate-pulse' :
+                    haspStatus.status === 'disabled' ? 'bg-red-100 dark:bg-red-500/25 text-red-800 dark:text-red-400 border-red-200 dark:border-red-500/30' :
+                    haspStatus.status === 'no_license' ? 'bg-zinc-100 dark:bg-zinc-500/25 text-zinc-800 dark:text-zinc-400 border-zinc-200 dark:border-zinc-500/20' :
+                    'bg-zinc-100 dark:bg-zinc-500/20 text-zinc-800 dark:text-zinc-500 border-zinc-200 dark:border-zinc-800'
                   }`}>
                     {haspStatus.status.replace('_', ' ')}
                   </span>
@@ -477,18 +509,19 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               </div>
 
               {haspStatus && haspStatus.status === 'clone_detected' && (
-                <div className="p-3 bg-red-950/25 border border-red-500/20 text-red-400 text-xs rounded-xl flex items-start gap-2.5">
+                <div className="p-3 bg-red-105 dark:bg-red-950/25 border border-red-200 dark:border-red-500/20 text-red-800 dark:text-red-400 text-xs rounded-xl flex items-start gap-2.5">
                   <span className="font-bold">Warning:</span>
                   <span>Sentinel runtime has detected a hardware change (Clone Detected). Storage, licensing, and database are disabled. Re-provisioning or fresh activation is required.</span>
                 </div>
               )}
 
+              {/* Fingerprint retrieval and download */}
               <div className="space-y-2">
-                <p className="text-xs text-zinc-400 leading-relaxed">
+                <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
                   {t('downloadFingerprintHelp') || 'To activate the license, download the fingerprint (C2V) file from the node:'}
                 </p>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                  <code className="flex-1 bg-zinc-950 px-3 py-2.5 rounded-lg text-xs text-zinc-300 font-mono select-all border border-zinc-850/80">
+                  <code className="flex-1 bg-zinc-100 dark:bg-zinc-950 px-3 py-2.5 rounded-lg text-xs text-zinc-800 dark:text-zinc-300 font-mono select-all border border-zinc-200 dark:border-zinc-850/80">
                     /var/hasplm/fingerprint
                   </code>
                   <a
@@ -502,9 +535,61 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                 </div>
               </div>
 
+              {/* Upload license update section */}
+              <div className="pt-3 border-t border-indigo-500/10 space-y-2">
+                <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed font-semibold">
+                  Apply License Update File (.v2c):
+                </p>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <input
+                    type="file"
+                    id="hasp-license-file"
+                    accept=".v2c,.v2cp,.h2r,.r2h,.h2h"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setSelectedLicenseFile(e.target.files[0]);
+                      }
+                    }}
+                  />
+                  <div className="flex-1 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('hasp-license-file')?.click()}
+                      className="px-3 py-2 bg-zinc-100 dark:bg-zinc-950 border border-zinc-250 dark:border-zinc-850/80 text-zinc-800 dark:text-zinc-300 rounded-lg text-xs font-semibold hover:bg-zinc-200 dark:hover:bg-zinc-900 transition flex items-center gap-1.5 shrink-0"
+                    >
+                      <Upload className="h-3.5 w-3.5 text-indigo-400" />
+                      Choose V2C File...
+                    </button>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-[180px]" title={selectedLicenseFile?.name || 'No file selected'}>
+                      {selectedLicenseFile?.name || 'No file selected'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!selectedLicenseFile || applyingLicense}
+                    onClick={handleApplyLicense}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-lg text-xs font-bold transition shadow-md shadow-emerald-900/15 cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    {applyingLicense ? 'Applying...' : 'Apply V2C License'}
+                  </button>
+                </div>
+              </div>
+
+              {licenseMessage && (
+                <div className={`p-2.5 rounded-lg text-xs font-semibold border ${
+                  licenseMessage.isError 
+                    ? 'bg-red-50 dark:bg-red-500/10 text-red-800 dark:text-red-400 border-red-200 dark:border-red-500/20' 
+                    : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+                }`}>
+                  {licenseMessage.text}
+                </div>
+              )}
+
+              {/* Features List */}
               {haspStatus && haspStatus.features && haspStatus.features.length > 0 && (
                 <div className="pt-2 border-t border-indigo-500/10 space-y-2">
-                  <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider block">
+                  <span className="text-[10px] uppercase font-bold text-zinc-500 dark:text-zinc-400 tracking-wider block">
                     Active License Features ({haspStatus.features.length})
                   </span>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
@@ -513,24 +598,24 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                         key={feat.id} 
                         className={`p-2.5 rounded-lg text-xs flex items-center justify-between border ${
                           feat.unusable === '0' 
-                            ? 'bg-emerald-950/10 border-emerald-500/15 text-emerald-300' 
-                            : 'bg-zinc-900/20 border-zinc-800/80 text-zinc-400'
+                            ? 'bg-emerald-50/40 dark:bg-emerald-950/10 border-emerald-100 dark:border-emerald-500/15 text-emerald-800 dark:text-emerald-300' 
+                            : 'bg-zinc-50/50 dark:bg-zinc-900/20 border-zinc-200/60 dark:border-zinc-800/80 text-zinc-500 dark:text-zinc-400'
                         }`}
                       >
                         <div className="truncate pr-2">
                           <span className="font-bold block truncate">
                             {feat.name}
                           </span>
-                          <span className="text-[10px] text-zinc-500 block truncate">
+                          <span className="text-[10px] text-zinc-500 dark:text-zinc-400 block truncate">
                             FID: {feat.id} • Product: {feat.product_name} ({feat.product_id})
                           </span>
                         </div>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold shrink-0 ${
                           feat.unusable === '0' 
-                            ? 'bg-emerald-500/15 text-emerald-400' 
-                            : 'bg-zinc-800 text-zinc-500'
+                            ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-400' 
+                            : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-500'
                         }`}>
-                          {feat.lic_type.includes('Perpetual') ? 'Perpetual' : feat.lic_type}
+                          {feat.lic_type}
                         </span>
                       </div>
                     ))}
