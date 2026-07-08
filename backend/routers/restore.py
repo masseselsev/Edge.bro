@@ -197,7 +197,7 @@ def trigger_restore(payload: schemas.RestoreRequest, request: Request = None, db
 @router.get("/nodes/{node_id}/hasp-fingerprint")
 def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
-    Downloads the Sentinel HASP C2V fingerprint file from the node via SSH.
+    Downloads the genuine Sentinel HASP C2V fingerprint file from the node by querying the Sentinel ACC.
     """
     node = db.query(models.Node).filter(models.Node.id == node_id).first()
     if not node:
@@ -206,25 +206,78 @@ def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_us
     import subprocess
     from fastapi.responses import Response
     
-    ssh_cmd = [
+    # 1. Fetch devices list JSON from Sentinel ACC
+    ssh_cmd_list = [
         "ssh", "-o", "StrictHostKeyChecking=no",
         "-p", str(node.ssh_port),
         "-i", "/root/.ssh/id_ed25519",
         f"root@{node.ip_address}",
-        "cat /var/hasplm/fingerprint 2>/dev/null || cat /var/hasplm/*.c2v 2>/dev/null || echo 'NO_FINGERPRINT'"
+        "curl -s http://127.0.0.1:1947/_int_/tab_dev.html"
     ]
+    
+    haspid = None
+    vid = "107392"  # default Vendor ID
+    
     try:
-        res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=10)
+        res_list = subprocess.run(ssh_cmd_list, capture_output=True, text=True, timeout=10)
+        if res_list.returncode == 0 and res_list.stdout.strip():
+            blocks = parse_sentinel_json_blocks(res_list.stdout)
+            # Find the first block that has device info (usually has haspid or vid)
+            for b in blocks:
+                if "ndx" in b:
+                    if b.get("haspid") and b.get("haspid") != "0":
+                        haspid = b.get("haspid")
+                    if b.get("vid"):
+                        vid = b.get("vid")
+                    elif b.get("ven"):
+                        vid = b.get("ven")
+                    break
+    except Exception:
+        pass  # Fall back to defaults on any parsing error
+        
+    # 2. Build curl command based on detected key status
+    if haspid:
+        curl_target = f"http://127.0.0.1:1947/download/my.c2v?{haspid}"
+        filename = f"{node.hostname}_key_{haspid}.c2v"
+    else:
+        curl_target = f"http://127.0.0.1:1947/download/my.fp?{vid}"
+        filename = f"{node.hostname}_fingerprint.c2v"
+        
+    ssh_cmd_download = [
+        "ssh", "-o", "StrictHostKeyChecking=no",
+        "-p", str(node.ssh_port),
+        "-i", "/root/.ssh/id_ed25519",
+        f"root@{node.ip_address}",
+        f"curl -s '{curl_target}'"
+    ]
+    
+    try:
+        res = subprocess.run(ssh_cmd_download, capture_output=True, text=True, timeout=10)
         content = res.stdout.strip()
-        if not content or content == "NO_FINGERPRINT":
-            raise HTTPException(status_code=400, detail="Fingerprint file not found on node. Make sure the node is booted and Sentinel runtime is active.")
+        if not content or "<?xml" not in content:
+            # Fallback to local files if curl failed or returned non-XML
+            fallback_cmd = [
+                "ssh", "-o", "StrictHostKeyChecking=no",
+                "-p", str(node.ssh_port),
+                "-i", "/root/.ssh/id_ed25519",
+                f"root@{node.ip_address}",
+                "cat /var/hasplm/fingerprint 2>/dev/null || cat /var/hasplm/*.c2v 2>/dev/null || echo 'NO_FINGERPRINT'"
+            ]
+            res_fb = subprocess.run(fallback_cmd, capture_output=True, text=True, timeout=10)
+            content = res_fb.stdout.strip()
+            filename = f"{node.hostname}_fingerprint.c2v"
+            
+            if not content or content == "NO_FINGERPRINT":
+                raise HTTPException(status_code=400, detail="Fingerprint file not found on node. Make sure the node is booted and Sentinel runtime is active.")
         
         return Response(
             content=content,
             media_type="application/octet-stream",
-            headers={"Content-Disposition": f"attachment; filename={node.hostname}_fingerprint.c2v"}
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
         raise HTTPException(status_code=500, detail=f"Failed to fetch fingerprint: {str(e)}")
 
 
