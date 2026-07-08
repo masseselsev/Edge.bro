@@ -317,20 +317,37 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
             if triggered_count >= free_slots:
                 break
 
-            # Enforce hourly retry limit if failed recently in this window
+            # Determine retry cooldown based on interval type.
+            # For test intervals the cooldown matches the window period;
+            # for production intervals enforce at least 1 hour between retries.
+            if group.interval == "10min":
+                RETRY_COOLDOWN_S = 600    # 10 min
+            elif group.interval == "30min":
+                RETRY_COOLDOWN_S = 1800   # 30 min
+            else:
+                RETRY_COOLDOWN_S = 3600   # 1 hour
+
+            # BUG-FIX: use the *wider* lookback window so that the cooldown
+            # is not bypassed when window_start_dt is a short rolling window
+            # (e.g. now-10min for "10min" groups).  Without this, a failure
+            # just 11 min old falls outside window_start_dt and latest_fail
+            # returns None, letting the scheduler re-trigger immediately.
+            fail_lookback_dt = min(window_start_dt, now - timedelta(seconds=RETRY_COOLDOWN_S))
+
             latest_fail = db.query(models.BackupHistory).filter(
                 models.BackupHistory.node_id == node.id,
                 models.BackupHistory.status == "FAILED",
-                models.BackupHistory.timestamp >= window_start_dt
+                models.BackupHistory.timestamp >= fail_lookback_dt
             ).order_by(models.BackupHistory.timestamp.desc()).first()
 
             if latest_fail:
                 time_since_fail = (now - latest_fail.timestamp).total_seconds()
-                if time_since_fail < 3600:
-                    # Enforce hourly delay
+                if time_since_fail < RETRY_COOLDOWN_S:
+                    # Enforce cooldown delay — do not retry yet
                     continue
                 else:
                     logger.info(f"Retrying failed backup for {node.hostname} (last failed at {latest_fail.timestamp})")
+
 
             # Set redis lock to mark running (this is released by the Celery task on completion)
             redis_client.setex(f"backup_running:{node.id}", 86400, "1")
