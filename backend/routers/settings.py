@@ -18,20 +18,83 @@ def get_version():
 
 def get_local_ips():
     import socket
-    ips = []
-    try:
-        for interface in socket.getifaddrs():
-            addr = interface.addr
-            if addr and addr.family == socket.AF_INET:
-                ip = addr.address
-                if ip != "127.0.0.1":
-                    ips.append(ip)
-    except Exception:
+    import struct
+    import os
+
+    exclude_prefixes = ("br-", "docker", "veth", "lo", "virbr", "kube", "cali", "flannel")
+
+    def ip_to_int(ip_str):
         try:
-            hostname = socket.gethostname()
-            ips = [socket.gethostbyname(hostname)]
+            return struct.unpack(">I", socket.inet_aton(ip_str))[0]
+        except Exception:
+            return 0
+
+    ips = []
+    
+    # Try reading host's network interfaces from process 1 network namespace (since /proc is mapped to /host/proc)
+    if os.path.exists("/host/proc/1/net/fib_trie") and os.path.exists("/host/proc/1/net/route"):
+        try:
+            routes = []
+            with open("/host/proc/1/net/route", "r") as f:
+                lines = f.readlines()
+            for line in lines[1:]:
+                parts = line.strip().split()
+                if len(parts) >= 8:
+                    iface = parts[0]
+                    if any(iface.startswith(prefix) for prefix in exclude_prefixes):
+                        continue
+                    dest_hex = parts[1]
+                    mask_hex = parts[7]
+                    try:
+                        dest_val = int(dest_hex, 16)
+                        mask_val = int(mask_hex, 16)
+                        dest_int = struct.unpack(">I", struct.pack("<I", dest_val))[0]
+                        mask_int = struct.unpack(">I", struct.pack("<I", mask_val))[0]
+                        routes.append((iface, dest_int, mask_int))
+                    except Exception:
+                        pass
+
+            trie_ips = []
+            with open("/host/proc/1/net/fib_trie", "r") as f:
+                lines = f.readlines()
+            current_ip = None
+            for line in lines:
+                line = line.strip()
+                if "|--" in line:
+                    parts = line.split("|--")
+                    if len(parts) > 1:
+                        current_ip = parts[1].strip()
+                elif "/32 host LOCAL" in line:
+                    if current_ip and current_ip != "127.0.0.1":
+                        trie_ips.append(current_ip)
+
+            for ip in set(trie_ips):
+                ip_int = ip_to_int(ip)
+                for iface, dest_int, mask_int in routes:
+                    if (ip_int & mask_int) == dest_int:
+                        ips.append(ip)
+                        break
         except Exception:
             pass
+
+    # Fallback to standard socket.getifaddrs() or container hostname lookup
+    if not ips:
+        try:
+            for interface in socket.getifaddrs():
+                if any(interface.name.startswith(prefix) for prefix in exclude_prefixes):
+                    continue
+                addr = interface.addr
+                if addr and addr.family == socket.AF_INET:
+                    ip = addr.address
+                    if ip != "127.0.0.1":
+                        ips.append(ip)
+        except Exception:
+            try:
+                hostname = socket.gethostname()
+                ips = [socket.gethostbyname(hostname)]
+            except Exception:
+                pass
+
     return sorted(list(set(ips)))
 
 
