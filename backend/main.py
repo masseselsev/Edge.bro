@@ -159,15 +159,19 @@ def upgrade_settings(db: Session):
             '/var/log/journal/*', '/var/log/**/*.gz', '/var/log/**/*.1'
         ]
         
-        # If database value is a string (legacy data before migration ran, or in test harness),
-        # parse it as comma-separated to safely upgrade.
-        current_exclusions = settings.global_exclusions
-        if isinstance(current_exclusions, str):
-            current_exclusions = [x.strip() for x in current_exclusions.split(",") if x.strip()]
-            
-        if current_exclusions in old_defaults:
+        if not settings.global_exclusions:
             settings.global_exclusions = new_default
             db.commit()
+        else:
+            # If database value is a string (legacy data before migration ran, or in test harness),
+            # parse it as comma-separated to safely upgrade.
+            current_exclusions = settings.global_exclusions
+            if isinstance(current_exclusions, str):
+                current_exclusions = [x.strip() for x in current_exclusions.split(",") if x.strip()]
+                
+            if current_exclusions in old_defaults:
+                settings.global_exclusions = new_default
+                db.commit()
 
 
 # Include routers
