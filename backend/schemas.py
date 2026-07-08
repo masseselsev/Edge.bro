@@ -12,13 +12,18 @@ class RetentionPolicySchema(BaseModel):
     within_unit: str = Field(default='m')  # 'd', 'w', 'm', 'y'
 
 
+class ExclusionSchema(BaseModel):
+    pattern: str
+    comment: str
+
+
 class SettingsBase(BaseModel):
     borg_ssh_port: int = Field(default=12345, ge=1, le=65535)
     borg_repo_path: str = Field(default='/data/borg')
     keep_daily: int = Field(default=7, ge=0)
     keep_weekly: int = Field(default=4, ge=0)
     keep_monthly: int = Field(default=6, ge=0)
-    global_exclusions: str = Field(default='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/blobstore/*,/var/spool/edge/*,/var/log/journal/*,/var/log/**/*.gz,/var/log/**/*.1')
+    global_exclusions: List[ExclusionSchema] = Field(default=[])
     orchestrator_ip: str = Field(default='')
     timezone: str = Field(default='Browser Local')
     language: str = Field(default='en')
@@ -110,6 +115,7 @@ class NodeResponse(BaseModel):
     memory_info: Optional[str] = None
     edge_version: Optional[str] = None
     notes: Optional[str] = None
+    hasp_runtime_version: Optional[str] = None
     is_backup_running: Optional[bool] = False
     backup_progress: Optional[int] = 0
     backup_task_id: Optional[str] = None

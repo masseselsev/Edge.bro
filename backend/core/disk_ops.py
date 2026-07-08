@@ -152,7 +152,8 @@ def format_and_restore(
     wipe_mac_bindings: bool,
     network_iface: str,
     total_files: int,
-    log_callback: Callable[[str, Optional[int], Optional[str]], None]
+    log_callback: Callable[[str, Optional[int], Optional[str]], None],
+    exclusions: Optional[List[Any]] = None
 ) -> Dict[str, Any]:
     """
     Core logic for bare-metal restore partition flashing, filesystem formatting,
@@ -390,7 +391,25 @@ def format_and_restore(
             subprocess.check_call(["mount", part_dev, target_path])
 
         # Storage Wiping: guarantee Sentinel LDK directories are clean/absent on the target root filesystem
+        parsed_exclusions = []
+        if exclusions:
+            for ex in exclusions:
+                pattern = None
+                if isinstance(ex, dict):
+                    pattern = ex.get("pattern")
+                elif isinstance(ex, str):
+                    pattern = ex
+                if pattern:
+                    pat_stripped = pattern.strip().lstrip("/")
+                    if pat_stripped:
+                        parsed_exclusions.append(pat_stripped)
+
+        # Ensure Sentinel dirs are also in the list if not present, and wipe them
         for hasp_dir in ["var/hasplm", "etc/hasplm"]:
+            hasp_pattern = f"{hasp_dir}/*"
+            if hasp_pattern not in parsed_exclusions:
+                parsed_exclusions.append(hasp_pattern)
+            
             target_path = os.path.join(target_mnt, hasp_dir)
             if os.path.exists(target_path):
                 emit_log(f"Wiping legacy Sentinel LDK directory: {target_path}")
@@ -413,11 +432,11 @@ def format_and_restore(
 
         extract_cmd = [
             "stdbuf", "-e0",
-            "borg", "extract", "--numeric-ids", "--sparse", "--progress",
-            "--exclude", "var/hasplm/*",
-            "--exclude", "etc/hasplm/*",
-            f"{repo_path}::{archive_name}"
+            "borg", "extract", "--numeric-ids", "--sparse", "--progress"
         ]
+        for pat in parsed_exclusions:
+            extract_cmd.extend(["--exclude", pat])
+        extract_cmd.append(f"{repo_path}::{archive_name}")
         
         try:
             import pty

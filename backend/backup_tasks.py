@@ -329,15 +329,18 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         log_to_task(task_id, f"Repository initialization check warning: {str(e)}")
 
     exclude_args = []
-    # Hardcoded Sentinel LDK/HASP exclusions to prevent license clone lockouts
-    exclude_args.append("--exclude 'var/hasplm/*'")
-    exclude_args.append("--exclude 'etc/hasplm/*'")
-
     if settings.global_exclusions:
         for ex in settings.global_exclusions:
-            ex_stripped = ex.strip()
-            if ex_stripped:
-                exclude_args.append(f"--exclude '{ex_stripped}'")
+            pattern = None
+            if isinstance(ex, dict):
+                pattern = ex.get("pattern")
+            elif isinstance(ex, str):
+                pattern = ex
+                
+            if pattern:
+                pat_stripped = pattern.strip()
+                if pat_stripped:
+                    exclude_args.append(f"--exclude '{pat_stripped}'")
     exclude_str = " ".join(exclude_args)
 
     # --- Resolve resource settings (group -> global -> hardcoded fallback) ---

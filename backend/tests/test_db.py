@@ -168,9 +168,21 @@ def test_upgrade_settings(db_session):
     from main import upgrade_settings
     
     new_default = [
-        '/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*', '/media/*', '/lost+found',
-        '/var/log/edge/*', '/var/opt/edge/blobstore/*', '/var/spool/edge/*',
-        '/var/log/journal/*', '/var/log/**/*.gz', '/var/log/**/*.1'
+        {"pattern": "/dev/*", "comment": "System devices"},
+        {"pattern": "/proc/*", "comment": "Virtual process filesystem"},
+        {"pattern": "/sys/*", "comment": "Sysfs system info"},
+        {"pattern": "/run/*", "comment": "Transient runtime files"},
+        {"pattern": "/mnt/*", "comment": "Mounted filesystems"},
+        {"pattern": "/media/*", "comment": "Removable media mounts"},
+        {"pattern": "/lost+found", "comment": "Recovered filesystem fragments"},
+        {"pattern": "/var/log/edge/*", "comment": "Edge app logs"},
+        {"pattern": "/var/opt/edge/blobstore/*", "comment": "Local media files storage"},
+        {"pattern": "/var/spool/edge/*", "comment": "Edge spool directory"},
+        {"pattern": "/var/log/journal/*", "comment": "Systemd journal logs"},
+        {"pattern": "/var/log/**/*.gz", "comment": "Compressed rotated logs"},
+        {"pattern": "/var/log/**/*.1", "comment": "Rotated log backups"},
+        {"pattern": "/var/hasplm/*", "comment": "Sentinel HASP licensing data"},
+        {"pattern": "/etc/hasplm/*", "comment": "Sentinel HASP licensing config"}
     ]
     
     # Test case 1: Upgrade from first default
@@ -219,7 +231,7 @@ def test_upgrade_settings(db_session):
     db_session.refresh(s4)
     assert s4.global_exclusions == new_default
 
-    # Test case 5: Custom user setting is NOT upgraded
+    # Test case 5: Custom user setting is NOT upgraded to new defaults, but converted to structure
     db_session.query(models.Settings).delete()
     db_session.commit()
     custom_val = ['/dev/*', '/custom/*']
@@ -228,7 +240,10 @@ def test_upgrade_settings(db_session):
     db_session.commit()
     upgrade_settings(db_session)
     db_session.refresh(s5)
-    assert s5.global_exclusions == custom_val
+    assert s5.global_exclusions == [
+        {"pattern": "/dev/*", "comment": "Custom exclusion"},
+        {"pattern": "/custom/*", "comment": "Custom exclusion"}
+    ]
 
 
 def test_get_all_history(db_session):

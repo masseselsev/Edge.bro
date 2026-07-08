@@ -57,6 +57,11 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             else:
                 log_to_task(task_id, msg, status=status)
 
+        # Get exclusions from settings
+        from models import Settings
+        settings_obj = db.query(Settings).first()
+        exclusions_list = settings_obj.global_exclusions if settings_obj else []
+
         result = format_and_restore(
             target_dev=target_dev,
             partitions=partitions,
@@ -67,7 +72,8 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             wipe_mac_bindings=wipe_mac_bindings,
             network_iface=node.network_iface,
             total_files=total_files,
-            log_callback=logger_callback
+            log_callback=logger_callback,
+            exclusions=exclusions_list
         )
 
         if result["status"] == "SUCCESS":

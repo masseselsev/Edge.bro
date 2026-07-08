@@ -15,7 +15,23 @@ class Settings(Base):
     keep_daily = Column(Integer, default=7, nullable=False)
     keep_weekly = Column(Integer, default=4, nullable=False)
     keep_monthly = Column(Integer, default=6, nullable=False)
-    global_exclusions = Column(Text, default='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/blobstore/*,/var/spool/edge/*,/var/log/journal/*,/var/log/**/*.gz,/var/log/**/*.1', nullable=False)
+    global_exclusions = Column(JSON, nullable=True, default=lambda: [
+        {"pattern": "/dev/*", "comment": "System devices"},
+        {"pattern": "/proc/*", "comment": "Virtual process filesystem"},
+        {"pattern": "/sys/*", "comment": "Sysfs system info"},
+        {"pattern": "/run/*", "comment": "Transient runtime files"},
+        {"pattern": "/mnt/*", "comment": "Mounted filesystems"},
+        {"pattern": "/media/*", "comment": "Removable media mounts"},
+        {"pattern": "/lost+found", "comment": "Recovered filesystem fragments"},
+        {"pattern": "/var/log/edge/*", "comment": "Edge app logs"},
+        {"pattern": "/var/opt/edge/blobstore/*", "comment": "Local media files storage"},
+        {"pattern": "/var/spool/edge/*", "comment": "Edge spool directory"},
+        {"pattern": "/var/log/journal/*", "comment": "Systemd journal logs"},
+        {"pattern": "/var/log/**/*.gz", "comment": "Compressed rotated logs"},
+        {"pattern": "/var/log/**/*.1", "comment": "Rotated log backups"},
+        {"pattern": "/var/hasplm/*", "comment": "Sentinel HASP licensing data"},
+        {"pattern": "/etc/hasplm/*", "comment": "Sentinel HASP licensing config"}
+    ])
     orchestrator_ip = Column(String, default='', nullable=False)
     timezone = Column(String, default='Browser Local', nullable=False)
     language = Column(String, default='en', nullable=False)
@@ -85,6 +101,7 @@ class Node(Base):
     memory_info = Column(String, nullable=True)
     edge_version = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
+    hasp_runtime_version = Column(String, nullable=True)
 
 
 class BackupHistory(Base):

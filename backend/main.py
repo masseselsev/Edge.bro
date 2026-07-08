@@ -154,23 +154,36 @@ def upgrade_settings(db: Session):
             ['/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*', '/media/*', '/lost+found', '/var/log/edge/*', '/var/opt/edge/*', '/var/spool/edge/*', '/var/log/journal/*', '/var/log/**/*.gz', '/var/log/**/*.1']
         ]
         new_default = [
-            '/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*', '/media/*', '/lost+found',
-            '/var/log/edge/*', '/var/opt/edge/blobstore/*', '/var/spool/edge/*',
-            '/var/log/journal/*', '/var/log/**/*.gz', '/var/log/**/*.1'
+            {"pattern": "/dev/*", "comment": "System devices"},
+            {"pattern": "/proc/*", "comment": "Virtual process filesystem"},
+            {"pattern": "/sys/*", "comment": "Sysfs system info"},
+            {"pattern": "/run/*", "comment": "Transient runtime files"},
+            {"pattern": "/mnt/*", "comment": "Mounted filesystems"},
+            {"pattern": "/media/*", "comment": "Removable media mounts"},
+            {"pattern": "/lost+found", "comment": "Recovered filesystem fragments"},
+            {"pattern": "/var/log/edge/*", "comment": "Edge app logs"},
+            {"pattern": "/var/opt/edge/blobstore/*", "comment": "Local media files storage"},
+            {"pattern": "/var/spool/edge/*", "comment": "Edge spool directory"},
+            {"pattern": "/var/log/journal/*", "comment": "Systemd journal logs"},
+            {"pattern": "/var/log/**/*.gz", "comment": "Compressed rotated logs"},
+            {"pattern": "/var/log/**/*.1", "comment": "Rotated log backups"},
+            {"pattern": "/var/hasplm/*", "comment": "Sentinel HASP licensing data"},
+            {"pattern": "/etc/hasplm/*", "comment": "Sentinel HASP licensing config"}
         ]
         
-        if not settings.global_exclusions:
+        current_exclusions = settings.global_exclusions
+        if not current_exclusions:
             settings.global_exclusions = new_default
             db.commit()
         else:
-            # If database value is a string (legacy data before migration ran, or in test harness),
-            # parse it as comma-separated to safely upgrade.
-            current_exclusions = settings.global_exclusions
             if isinstance(current_exclusions, str):
                 current_exclusions = [x.strip() for x in current_exclusions.split(",") if x.strip()]
-                
-            if current_exclusions in old_defaults:
-                settings.global_exclusions = new_default
+            
+            if isinstance(current_exclusions, list) and len(current_exclusions) > 0 and isinstance(current_exclusions[0], str):
+                if current_exclusions in old_defaults:
+                    settings.global_exclusions = new_default
+                else:
+                    settings.global_exclusions = [{"pattern": x, "comment": "Custom exclusion"} for x in current_exclusions]
                 db.commit()
 
 
