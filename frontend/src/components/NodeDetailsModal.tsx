@@ -496,7 +496,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               >
                 <div className="flex items-center gap-2.5 text-indigo-500 dark:text-indigo-400 font-bold text-sm">
                   <Info className="h-5 w-5" />
-                  <span>{node.status === 'RESTORED' ? t('statusRestored') : 'Sentinel LDK Licensing'}</span>
+                  <span>{t('sentinelLicensingLabel')}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {haspStatus && (
@@ -522,8 +522,8 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                 <>
                   {haspStatus && haspStatus.status === 'clone_detected' && (
                     <div className="p-3 bg-red-105 dark:bg-red-950/25 border border-red-200 dark:border-red-500/20 text-red-800 dark:text-red-400 text-xs rounded-xl flex items-start gap-2.5">
-                      <span className="font-bold">Warning:</span>
-                      <span>Sentinel runtime has detected a hardware change (Clone Detected). Storage, licensing, and database are disabled. Re-provisioning or fresh activation is required.</span>
+                      <span className="font-bold">{t('warningLabel')}:</span>
+                      <span>{t('sentinelWarningClone')}</span>
                     </div>
                   )}
 
@@ -550,7 +550,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               {/* Upload license update section */}
               <div className="pt-3 border-t border-indigo-500/10 space-y-2">
                 <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed font-semibold">
-                  Apply License Update File (.v2c):
+                  {t('applyLicenseTitle')}
                 </p>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                   <input
@@ -571,10 +571,10 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                       className="px-3 py-2 bg-zinc-100 dark:bg-zinc-950 border border-zinc-250 dark:border-zinc-850/80 text-zinc-800 dark:text-zinc-300 rounded-lg text-xs font-semibold hover:bg-zinc-200 dark:hover:bg-zinc-900 transition flex items-center gap-1.5 shrink-0"
                     >
                       <Upload className="h-3.5 w-3.5 text-indigo-400" />
-                      Choose V2C File...
+                      {t('chooseV2cFile')}
                     </button>
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-[180px]" title={selectedLicenseFile?.name || 'No file selected'}>
-                      {selectedLicenseFile?.name || 'No file selected'}
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-[180px]" title={selectedLicenseFile?.name || t('noFileSelected')}>
+                      {selectedLicenseFile?.name || t('noFileSelected')}
                     </span>
                   </div>
                   <button
@@ -583,7 +583,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                     onClick={handleApplyLicense}
                     className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-lg text-xs font-bold transition shadow-md shadow-emerald-900/15 cursor-pointer disabled:cursor-not-allowed"
                   >
-                    {applyingLicense ? 'Applying...' : 'Apply V2C License'}
+                    {applyingLicense ? t('applyingLicense') : t('applyV2cButton')}
                   </button>
                 </div>
               </div>
@@ -602,7 +602,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               {haspStatus && haspStatus.features && haspStatus.features.length > 0 && (
                 <div className="pt-2 border-t border-indigo-500/10 space-y-2">
                   <span className="text-[10px] uppercase font-bold text-zinc-500 dark:text-zinc-400 tracking-wider block">
-                    Active License Features ({haspStatus.features.length})
+                    {t('activeLicenseFeatures')} ({haspStatus.features.length})
                   </span>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-0.5 max-h-60 overflow-y-auto pr-1">
                     {haspStatus.features.map((feat: any) => (

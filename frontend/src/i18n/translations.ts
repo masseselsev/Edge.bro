@@ -628,7 +628,16 @@ export const translations: Record<Language, Record<string, string>> = {
     statusRestored: 'Restored (Awaiting License Activation)',
     downloadFingerprintHelp: 'To activate the license, download the fingerprint (C2V) file from the node:',
     downloadC2vFile: 'Download C2V Fingerprint File',
-    restoredNodeTooltip: 'This node has been restored. Awaiting license activation.'
+    restoredNodeTooltip: 'This node has been restored. Awaiting license activation.',
+    sentinelLicensingLabel: 'Sentinel LDK Licensing',
+    sentinelWarningClone: 'Sentinel runtime has detected a hardware change (Clone Detected). Storage, licensing, and database are disabled. Re-provisioning or fresh activation is required.',
+    applyLicenseTitle: 'Apply License Update File (.v2c):',
+    chooseV2cFile: 'Choose V2C File...',
+    noFileSelected: 'No file selected',
+    applyingLicense: 'Applying...',
+    applyV2cButton: 'Apply V2C License',
+    activeLicenseFeatures: 'Active License Features',
+    warningLabel: 'Warning'
   },
   ru: {
     // Navigation / Tabs
@@ -1256,7 +1265,16 @@ export const translations: Record<Language, Record<string, string>> = {
     statusRestored: 'Восстановлен (Ожидает активации лицензии)',
     downloadFingerprintHelp: 'Для активации лицензии скачайте файл отпечатка (C2V) с узла:',
     downloadC2vFile: 'Скачать файл отпечатка C2V',
-    restoredNodeTooltip: 'Этот узел был восстановлен. Ожидается активация лицензии.'
+    restoredNodeTooltip: 'Этот узел был восстановлен. Ожидается активация лицензии.',
+    sentinelLicensingLabel: 'Лицензирование Sentinel LDK',
+    sentinelWarningClone: 'Служба Sentinel обнаружила изменение оборудования (Clone Detected). Хранилище, лицензирование и база данных заблокированы. Требуется повторная привязка или активация.',
+    applyLicenseTitle: 'Применить файл обновления лицензии (.v2c):',
+    chooseV2cFile: 'Выберите файл V2C...',
+    noFileSelected: 'Файл не выбран',
+    applyingLicense: 'Применение...',
+    applyV2cButton: 'Применить V2C лицензию',
+    activeLicenseFeatures: 'Активные фичи лицензии',
+    warningLabel: 'Внимание'
   },
   uk: {
     // Navigation / Tabs
@@ -1881,6 +1899,15 @@ export const translations: Record<Language, Record<string, string>> = {
     statusRestored: 'Відновлено (Очікує на активацію ліцензії)',
     downloadFingerprintHelp: 'Для активації ліцензії завантажте файл відбитка (C2V) з вузла:',
     downloadC2vFile: 'Завантажити файл відбитка C2V',
-    restoredNodeTooltip: 'Цей вузол був відновлений. Очікується активація ліцензії.'
+    restoredNodeTooltip: 'Цей вузол був відновлений. Очікується активація ліцензії.',
+    sentinelLicensingLabel: 'Ліцензування Sentinel LDK',
+    sentinelWarningClone: 'Служба Sentinel виявила зміну обладнання (Clone Detected). Сховище, ліцензування та база даних заблоковані. Потрібна повторна прив\'язка або активація.',
+    applyLicenseTitle: 'Застосувати файл оновлення ліцензії (.v2c):',
+    chooseV2cFile: 'Виберіть файл V2C...',
+    noFileSelected: 'Файл не вибрано',
+    applyingLicense: 'Застосування...',
+    applyV2cButton: 'Застосувати V2C ліцензію',
+    activeLicenseFeatures: 'Активні фічі ліцензії',
+    warningLabel: 'Увага'
   }
 };
