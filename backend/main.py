@@ -148,17 +148,24 @@ def upgrade_settings(db: Session):
             db.commit()
             print("Upgraded default_cpu_quota setting from 10% to 30%.")
         old_defaults = [
-            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*',
-            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*',
-            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*',
-            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*,/var/log/journal/*,/var/log/**/*.gz,/var/log/**/*.1'
+            ['/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*'],
+            ['/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*', '/media/*', '/lost+found', '/var/log/edge/*', '/var/opt/edge/*'],
+            ['/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*', '/media/*', '/lost+found', '/var/log/edge/*', '/var/opt/edge/*', '/var/spool/edge/*'],
+            ['/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*', '/media/*', '/lost+found', '/var/log/edge/*', '/var/opt/edge/*', '/var/spool/edge/*', '/var/log/journal/*', '/var/log/**/*.gz', '/var/log/**/*.1']
         ]
-        new_default = (
-            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,'
-            '/var/log/edge/*,/var/opt/edge/blobstore/*,/var/spool/edge/*,/var/log/journal/*,'
-            '/var/log/**/*.gz,/var/log/**/*.1'
-        )
-        if settings.global_exclusions in old_defaults:
+        new_default = [
+            '/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*', '/media/*', '/lost+found',
+            '/var/log/edge/*', '/var/opt/edge/blobstore/*', '/var/spool/edge/*',
+            '/var/log/journal/*', '/var/log/**/*.gz', '/var/log/**/*.1'
+        ]
+        
+        # If database value is a string (legacy data before migration ran, or in test harness),
+        # parse it as comma-separated to safely upgrade.
+        current_exclusions = settings.global_exclusions
+        if isinstance(current_exclusions, str):
+            current_exclusions = [x.strip() for x in current_exclusions.split(",") if x.strip()]
+            
+        if current_exclusions in old_defaults:
             settings.global_exclusions = new_default
             db.commit()
 

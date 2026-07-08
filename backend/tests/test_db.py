@@ -162,21 +162,21 @@ def test_ensure_orchestrator_ssh_key():
 
 def test_upgrade_settings(db_session):
     """
-    Verify that old default settings values are upgraded to the new default,
+    Verify that old default exclusions values are upgraded to the new default,
     while custom settings are preserved.
     """
     from main import upgrade_settings
     
-    new_default = (
-        '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,'
-        '/var/log/edge/*,/var/opt/edge/blobstore/*,/var/spool/edge/*,/var/log/journal/*,'
-        '/var/log/**/*.gz,/var/log/**/*.1'
-    )
+    new_default = [
+        '/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*', '/media/*', '/lost+found',
+        '/var/log/edge/*', '/var/opt/edge/blobstore/*', '/var/spool/edge/*',
+        '/var/log/journal/*', '/var/log/**/*.gz', '/var/log/**/*.1'
+    ]
     
     # Test case 1: Upgrade from first default
     db_session.query(models.Settings).delete()
     db_session.commit()
-    s1 = models.Settings(global_exclusions='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*')
+    s1 = models.Settings(global_exclusions=['/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*'])
     db_session.add(s1)
     db_session.commit()
     upgrade_settings(db_session)
@@ -186,7 +186,7 @@ def test_upgrade_settings(db_session):
     # Test case 2: Upgrade from second default
     db_session.query(models.Settings).delete()
     db_session.commit()
-    s2 = models.Settings(global_exclusions='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*')
+    s2 = models.Settings(global_exclusions=['/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*', '/media/*', '/lost+found', '/var/log/edge/*', '/var/opt/edge/*'])
     db_session.add(s2)
     db_session.commit()
     upgrade_settings(db_session)
@@ -196,7 +196,7 @@ def test_upgrade_settings(db_session):
     # Test case 3: Upgrade from third default (pre-journal/gz/1 addition)
     db_session.query(models.Settings).delete()
     db_session.commit()
-    s3 = models.Settings(global_exclusions='/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*')
+    s3 = models.Settings(global_exclusions=['/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*', '/media/*', '/lost+found', '/var/log/edge/*', '/var/opt/edge/*', '/var/spool/edge/*'])
     db_session.add(s3)
     db_session.commit()
     upgrade_settings(db_session)
@@ -207,11 +207,11 @@ def test_upgrade_settings(db_session):
     db_session.query(models.Settings).delete()
     db_session.commit()
     s4 = models.Settings(
-        global_exclusions=(
-            '/dev/*,/proc/*,/sys/*,/run/*,/mnt/*,/media/*,/lost+found,'
-            '/var/log/edge/*,/var/opt/edge/*,/var/spool/edge/*,/var/log/journal/*,'
-            '/var/log/**/*.gz,/var/log/**/*.1'
-        )
+        global_exclusions=[
+            '/dev/*', '/proc/*', '/sys/*', '/run/*', '/mnt/*', '/media/*', '/lost+found',
+            '/var/log/edge/*', '/var/opt/edge/*', '/var/spool/edge/*', '/var/log/journal/*',
+            '/var/log/**/*.gz', '/var/log/**/*.1'
+        ]
     )
     db_session.add(s4)
     db_session.commit()
@@ -222,7 +222,7 @@ def test_upgrade_settings(db_session):
     # Test case 5: Custom user setting is NOT upgraded
     db_session.query(models.Settings).delete()
     db_session.commit()
-    custom_val = '/dev/*,/custom/*'
+    custom_val = ['/dev/*', '/custom/*']
     s5 = models.Settings(global_exclusions=custom_val)
     db_session.add(s5)
     db_session.commit()
