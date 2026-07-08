@@ -445,11 +445,11 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
             </div>
           </div>
 
-          {node.status === 'RESTORED' && (
+          {(node.status === 'RESTORED' || (node.hasp_runtime_version && node.hasp_runtime_version !== 'None')) && (
             <div className="bg-indigo-950/20 border border-indigo-500/25 rounded-2xl p-5 space-y-3.5 shadow-lg shadow-indigo-950/10 animate-fade-in">
               <div className="flex items-center gap-2.5 text-indigo-400 font-bold text-sm">
                 <Info className="h-5 w-5" />
-                <span>{t('statusRestored')}</span>
+                <span>{node.status === 'RESTORED' ? t('statusRestored') : 'Sentinel LDK Licensing'}</span>
               </div>
               <p className="text-xs text-zinc-400 leading-relaxed">
                 {t('downloadFingerprintHelp') || 'To activate the license, download the fingerprint (C2V) file from the node:'}
