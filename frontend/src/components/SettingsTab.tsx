@@ -602,7 +602,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                 {t('globalExclusionsDesc') || 'Configure patterns for files and directories that should be excluded from all backup snapshots.'}
               </p>
 
-              <div className="flex flex-col gap-2 max-h-[420px] overflow-y-auto p-2 bg-zinc-950/60 border border-zinc-800 rounded-lg">
+              <div className="flex flex-col gap-2 p-2 bg-zinc-950/60 border border-zinc-800 rounded-lg">
                 {globalExclusions.map((ex) => (
                   <div key={ex.pattern} className="flex items-center justify-between gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-850 rounded-md text-xs">
                     <div className="flex items-center gap-2 truncate mr-2">
