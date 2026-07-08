@@ -250,6 +250,10 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
         if edge_ver:
             node.edge_version = edge_ver
 
+        hasp_ver = res["parsed_data"].get("hasp_runtime_version")
+        if hasp_ver:
+            node.hasp_runtime_version = hasp_ver
+
         # Update hostname if detected
         detected_hostname = res["parsed_data"].get("hostname")
         if detected_hostname:

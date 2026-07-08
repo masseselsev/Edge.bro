@@ -315,6 +315,12 @@
           done
         fi
 
+        # Gather HASP Runtime Package Version
+        hasp_ver="None"
+        if dpkg-query -W -f='${Version}' edge-hasp-eoawt3 >/dev/null 2>&1; then
+          hasp_ver=$(dpkg-query -W -f='${Version}' edge-hasp-eoawt3 2>/dev/null || echo "None")
+        fi
+
         echo "DISK_TYPE:$disk_type"
         echo "EFI_UUID:$efi_uuid"
         echo "INTERFACE:$net_iface"
@@ -324,6 +330,7 @@
         echo "CPU_INFO:$cpu_info"
         echo "MEM_INFO:$mem_info"
         echo "EDGE_VERSION:$edge_ver"
+        echo "HASP_VERSION:$hasp_ver"
         echo "PARTITION_LAYOUT_JSON:$(lsblk -J -b -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT,LABEL,UUID,PARTUUID 2>/dev/null | tr -d '\n')"
       register: sys_info
       changed_when: false
