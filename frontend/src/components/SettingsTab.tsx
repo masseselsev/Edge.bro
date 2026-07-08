@@ -285,363 +285,376 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
       ) : (
         <form onSubmit={handleSave} className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            {/* Left Column: Connection & General Settings */}
-            <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
-              <h3 className="text-sm font-bold text-zinc-50 border-b border-zinc-850 pb-2">
-                {language === 'ru' ? 'Общие настройки' : language === 'uk' ? 'Загальні налаштування' : 'General & Connection'}
-              </h3>
+            {/* Left Column: General & Connection + Global Pruning */}
+            <div className="space-y-6">
+              {/* Connection & General Settings */}
+              <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
+                <h3 className="text-sm font-bold text-zinc-50 border-b border-zinc-850 pb-2">
+                  {language === 'ru' ? 'Общие настройки' : language === 'uk' ? 'Загальні налаштування' : 'General & Connection'}
+                </h3>
 
-              <div className="grid grid-cols-1 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('serverNameLabel') || 'Server Name'}</label>
-                  <input
-                    type="text"
-                    required
-                    value={serverName}
-                    onChange={(e) => setServerName(e.target.value)}
-                    placeholder={t('serverNamePlaceholder') || 'e.g. main-server'}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('borgSshPort')}</label>
-                  <input
-                    type="number"
-                    required
-                    value={sshPort}
-                    onChange={(e) => setSshPort(parseInt(e.target.value))}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('repoLocation')}</label>
-                  <input
-                    type="text"
-                    required
-                    value={repoPath}
-                    onChange={(e) => setRepoPath(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                  />
-                  {hostDataPath && (
-                    <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
-                      {`${t('hostDataPathLabelPrefix') || 'Physical host path (configured in .env): '}${hostDataPath}`}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('compressionMode')}</label>
-                  <SearchableSelect
-                    options={compressionOptions}
-                    value={defaultCompression}
-                    onChange={setDefaultCompression}
-                    placeholder={t('selectCompressionPlaceholder')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('cpuQuota')}</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={400}
-                    value={defaultCpuQuota}
-                    onChange={(e) => setDefaultCpuQuota(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none font-mono"
-                    placeholder="e.g. 50"
-                  />
-                  <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
-                    {t('cpuQuotaHint')}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 mb-1.5 min-h-[16px]">
-                    <label className="block text-xs font-semibold text-zinc-400">{t('systemTimezone')}</label>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        id="useLocalTime"
-                        checked={useLocalTime}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setUseLocalTime(checked);
-                          if (checked) {
-                            try {
-                              const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-                              if (localTz) {
-                                setTimezone(localTz);
-                              }
-                            } catch (err) {}
-                          }
-                        }}
-                        className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
-                      />
-                      <label htmlFor="useLocalTime" className="text-[10px] font-bold text-zinc-500 hover:text-zinc-400 transition-colors uppercase tracking-wider cursor-pointer select-none">
-                        {t('useBrowserLocal')}
-                      </label>
-                    </div>
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('serverNameLabel') || 'Server Name'}</label>
+                    <input
+                      type="text"
+                      required
+                      value={serverName}
+                      onChange={(e) => setServerName(e.target.value)}
+                      placeholder={t('serverNamePlaceholder') || 'e.g. main-server'}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                    />
                   </div>
-                  <SearchableSelect
-                    options={timezoneOptions}
-                    value={timezone}
-                    onChange={setTimezone}
-                    disabled={useLocalTime}
-                    placeholder={t('selectTimezone')}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
-                    {t('maxKioskIsosLabel') || 'Max Kiosk ISOs in Repository'}
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    required
-                    value={maxKioskIsos}
-                    onChange={(e) => setMaxKioskIsos(parseInt(e.target.value) || 5)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                  />
-                  <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
-                    {t('maxKioskIsosSub') || 'Maximum number of issued kiosk ISOs to keep in history before automatic pruning.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mb-4 space-y-3 border border-zinc-800/80 p-4 rounded-xl bg-zinc-950/40">
-                <div>
-                  <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
-                    {t('networkAddressesLabel') || 'Orchestrator Network Addresses'}
-                  </label>
-                  <span className="text-[10px] text-zinc-500 block mt-0.5">
-                    {t('networkAddressesSub') || 'Select the default IP to bake into the next kiosk. Auto-detected (A) and manually added (M) options.'}
-                  </span>
                 </div>
 
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {Array.from(new Set([...availableIps, ...manualIps, ...(orchestratorIp ? [orchestratorIp] : [])])).map((ip) => {
-                    const isAuto = availableIps.includes(ip);
-                    const isDefault = orchestratorIp === ip;
-                    return (
-                      <div key={ip} className="flex items-center justify-between p-2 bg-zinc-900/40 border border-zinc-800 rounded-lg hover:border-zinc-700/55 transition-all">
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="radio"
-                            name="default_ip"
-                            checked={isDefault}
-                            onChange={() => setOrchestratorIp(ip)}
-                            className="rounded-full border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-4 w-4"
-                          />
-                          <span className="text-sm font-semibold text-zinc-100 font-mono">{ip}</span>
-                          {isAuto ? (
-                            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Auto-detected interface">A</span>
-                          ) : (
-                            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" title="Manually added address">M</span>
-                          )}
-                          {isDefault && (
-                            <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-wide">Default</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('borgSshPort')}</label>
+                    <input
+                      type="number"
+                      required
+                      value={sshPort}
+                      onChange={(e) => setSshPort(parseInt(e.target.value))}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('repoLocation')}</label>
+                    <input
+                      type="text"
+                      required
+                      value={repoPath}
+                      onChange={(e) => setRepoPath(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                    />
+                    {hostDataPath && (
+                      <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
+                        {`${t('hostDataPathLabelPrefix') || 'Physical host path (configured in .env): '}${hostDataPath}`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('compressionMode')}</label>
+                    <SearchableSelect
+                      options={compressionOptions}
+                      value={defaultCompression}
+                      onChange={setDefaultCompression}
+                      placeholder={t('selectCompressionPlaceholder')}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('cpuQuota')}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={400}
+                      value={defaultCpuQuota}
+                      onChange={(e) => setDefaultCpuQuota(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none font-mono"
+                      placeholder="e.g. 50"
+                    />
+                    <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
+                      {t('cpuQuotaHint')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 mb-1.5 min-h-[16px]">
+                      <label className="block text-xs font-semibold text-zinc-400">{t('systemTimezone')}</label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          id="useLocalTime"
+                          checked={useLocalTime}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setUseLocalTime(checked);
+                            if (checked) {
+                              try {
+                                const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                                if (localTz) {
+                                  setTimezone(localTz);
+                                }
+                              } catch (err) {}
+                            }
+                          }}
+                          className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                        />
+                        <label htmlFor="useLocalTime" className="text-[10px] font-bold text-zinc-500 hover:text-zinc-400 transition-colors uppercase tracking-wider cursor-pointer select-none">
+                          {t('useBrowserLocal')}
+                        </label>
+                      </div>
+                    </div>
+                    <SearchableSelect
+                      options={timezoneOptions}
+                      value={timezone}
+                      onChange={setTimezone}
+                      disabled={useLocalTime}
+                      placeholder={t('selectTimezone')}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
+                      {t('maxKioskIsosLabel') || 'Max Kiosk ISOs in Repository'}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      required
+                      value={maxKioskIsos}
+                      onChange={(e) => setMaxKioskIsos(parseInt(e.target.value) || 5)}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                    />
+                    <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
+                      {t('maxKioskIsosSub') || 'Maximum number of issued kiosk ISOs to keep in history before automatic pruning.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mb-4 space-y-3 border border-zinc-800/80 p-4 rounded-xl bg-zinc-950/40">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                      {t('networkAddressesLabel') || 'Orchestrator Network Addresses'}
+                    </label>
+                    <span className="text-[10px] text-zinc-500 block mt-0.5">
+                      {t('networkAddressesSub') || 'Select the default IP to bake into the next kiosk. Auto-detected (A) and manually added (M) options.'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {Array.from(new Set([...availableIps, ...manualIps, ...(orchestratorIp ? [orchestratorIp] : [])])).map((ip) => {
+                      const isAuto = availableIps.includes(ip);
+                      const isDefault = orchestratorIp === ip;
+                      return (
+                        <div key={ip} className="flex items-center justify-between p-2 bg-zinc-900/40 border border-zinc-800 rounded-lg hover:border-zinc-700/55 transition-all">
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="default_ip"
+                              checked={isDefault}
+                              onChange={() => setOrchestratorIp(ip)}
+                              className="rounded-full border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-4 w-4"
+                            />
+                            <span className="text-sm font-semibold text-zinc-100 font-mono">{ip}</span>
+                            {isAuto ? (
+                              <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="Auto-detected interface">A</span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20" title="Manually added address">M</span>
+                            )}
+                            {isDefault && (
+                              <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-wide">Default</span>
+                            )}
+                          </div>
+                          {!isAuto && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setManualIps(manualIps.filter((item) => item !== ip));
+                                if (isDefault) setOrchestratorIp('');
+                              }}
+                              className="p-1 hover:bg-rose-500/15 text-rose-400 rounded-md transition-colors cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           )}
                         </div>
-                        {!isAuto && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setManualIps(manualIps.filter((item) => item !== ip));
-                              if (isDefault) setOrchestratorIp('');
-                            }}
-                            className="p-1 hover:bg-rose-500/15 text-rose-400 rounded-md transition-colors cursor-pointer"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
 
-                <div className="flex gap-2 border-t border-zinc-800/60 pt-3">
-                  <input
-                    type="text"
-                    placeholder={t('addCustomIpPlaceholder') || 'e.g. 10.0.0.5 or domain.name'}
-                    value={newIpInput}
-                    onChange={(e) => setNewIpInput(e.target.value)}
-                    className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const val = newIpInput.trim();
-                      if (val && !manualIps.includes(val)) {
-                        setManualIps([...manualIps, val]);
-                        if (!orchestratorIp) setOrchestratorIp(val);
-                      }
-                      setNewIpInput('');
-                    }}
-                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg font-bold text-xs transition-colors cursor-pointer"
-                  >
-                    {t('addButton') || 'Add'}
-                  </button>
+                  <div className="flex gap-2 border-t border-zinc-800/60 pt-3">
+                    <input
+                      type="text"
+                      placeholder={t('addCustomIpPlaceholder') || 'e.g. 10.0.0.5 or domain.name'}
+                      value={newIpInput}
+                      onChange={(e) => setNewIpInput(e.target.value)}
+                      className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = newIpInput.trim();
+                        if (val && !manualIps.includes(val)) {
+                          setManualIps([...manualIps, val]);
+                          if (!orchestratorIp) setOrchestratorIp(val);
+                        }
+                        setNewIpInput('');
+                      }}
+                      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg font-bold text-xs transition-colors cursor-pointer"
+                    >
+                      {t('addButton') || 'Add'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">{t('globalExclusionsLabel')}</label>
-                <div className="flex flex-col gap-2 max-h-56 overflow-y-auto p-2 bg-zinc-950/60 border border-zinc-800 rounded-lg">
-                  {globalExclusions.map((ex) => (
-                    <div key={ex.pattern} className="flex items-center justify-between gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-850 rounded-md text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-indigo-400 font-semibold">{ex.pattern}</span>
-                        <span className="text-zinc-500 italic text-[11px]">— {ex.comment}</span>
+              {/* Global Pruning (Retention Policies) */}
+              <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
+                <h3 className="text-sm font-bold text-zinc-50 border-b border-zinc-850 pb-2">
+                  {t('globalPruning')}
+                </h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  {t('globalPruningDesc') || 'Configure rules for automatic deletion of older snapshots in the archive.'}
+                </p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('retentionType')}</label>
+                    <SearchableSelect
+                      options={policyTypeOptions}
+                      value={policyType}
+                      onChange={setPolicyType}
+                      placeholder={t('selectPolicyTypePlaceholder')}
+                    />
+                  </div>
+
+                  {policyType === 'interval' && (
+                    <div className="grid grid-cols-3 gap-3 animate-fade-in">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepDaily')}</label>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={policyKeepDaily}
+                          onChange={(e) => setPolicyKeepDaily(parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                        />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setGlobalExclusions(globalExclusions.filter((item) => item.pattern !== ex.pattern))}
-                        className="text-zinc-500 hover:text-rose-400 font-bold ml-1 transition-colors cursor-pointer text-sm"
-                      >
-                        ×
-                      </button>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepWeekly')}</label>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={policyKeepWeekly}
+                          onChange={(e) => setPolicyKeepWeekly(parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepMonthly')}</label>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={policyKeepMonthly}
+                          onChange={(e) => setPolicyKeepMonthly(parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
                     </div>
-                  ))}
-                  {globalExclusions.length === 0 && (
-                    <span className="text-zinc-650 text-xs italic p-1">No exclusions added</span>
+                  )}
+
+                  {policyType === 'count' && (
+                    <div className="animate-fade-in">
+                      <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('keepLastLabel')}</label>
+                      <input
+                        type="number"
+                        required
+                        min={1}
+                        value={policyKeepLast}
+                        onChange={(e) => setPolicyKeepLast(parseInt(e.target.value) || 1)}
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  {policyType === 'timeframe' && (
+                    <div className="grid grid-cols-3 gap-3 animate-fade-in">
+                      <div className="col-span-2">
+                        <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('keepWithinLabel')}</label>
+                        <input
+                          type="number"
+                          required
+                          min={1}
+                          value={policyWithinValue}
+                          onChange={(e) => setPolicyWithinValue(parseInt(e.target.value) || 1)}
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-400 mb-1.5">&nbsp;</label>
+                        <SearchableSelect
+                          options={unitOptions}
+                          value={policyWithinUnit}
+                          onChange={setPolicyWithinUnit}
+                          placeholder={t('selectUnitPlaceholder')}
+                        />
+                      </div>
+                    </div>
                   )}
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2">
+              </div>
+            </div>
+
+            {/* Right Column: Global File Exclusion Paths */}
+            <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
+              <h3 className="text-sm font-bold text-zinc-50 border-b border-zinc-850 pb-2">
+                {t('globalExclusionsLabel')}
+              </h3>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                {t('globalExclusionsDesc') || 'Configure patterns for files and directories that should be excluded from all backup snapshots.'}
+              </p>
+
+              <div className="flex flex-col gap-2 max-h-[420px] overflow-y-auto p-2 bg-zinc-950/60 border border-zinc-800 rounded-lg">
+                {globalExclusions.map((ex) => (
+                  <div key={ex.pattern} className="flex items-center justify-between gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-850 rounded-md text-xs">
+                    <div className="flex items-center gap-2 truncate mr-2">
+                      <span className="font-mono text-indigo-400 font-semibold truncate select-all">{ex.pattern}</span>
+                      <span className="text-zinc-500 italic text-[11px] truncate">— {ex.comment}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setGlobalExclusions(globalExclusions.filter((item) => item.pattern !== ex.pattern))}
+                      className="text-zinc-500 hover:text-rose-450 font-bold ml-1 transition-colors cursor-pointer text-sm shrink-0"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                {globalExclusions.length === 0 && (
+                  <span className="text-zinc-650 text-xs italic p-1">No exclusions added</span>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2 border-t border-zinc-800/60 pt-3">
+                <div className="flex flex-col gap-2">
                   <input
                     type="text"
                     placeholder="Pattern (e.g. /var/tmp/*)"
                     value={newExclusionInput}
                     onChange={(e) => setNewExclusionInput(e.target.value)}
-                    className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none font-mono"
+                    className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none font-mono"
                   />
                   <input
                     type="text"
                     placeholder="Comment (e.g. Temporary files)"
                     value={newExclusionComment}
                     onChange={(e) => setNewExclusionComment(e.target.value)}
-                    className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const pattern = newExclusionInput.trim();
-                      const comment = newExclusionComment.trim() || 'Custom exclusion';
-                      if (pattern && !globalExclusions.some(item => item.pattern === pattern)) {
-                        setGlobalExclusions([...globalExclusions, { pattern, comment }]);
-                      }
-                      setNewExclusionInput('');
-                      setNewExclusionComment('');
-                    }}
-                    className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs transition-colors cursor-pointer"
-                  >
-                    {t('addButton') || 'Add'}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column: Global Pruning (Retention Policies) */}
-            <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
-              <h3 className="text-sm font-bold text-zinc-50 border-b border-zinc-850 pb-2">
-                {t('globalPruning')}
-              </h3>
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                {t('globalPruningDesc') || 'Configure rules for automatic deletion of older snapshots in the archive.'}
-              </p>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('retentionType')}</label>
-                  <SearchableSelect
-                    options={policyTypeOptions}
-                    value={policyType}
-                    onChange={setPolicyType}
-                    placeholder={t('selectPolicyTypePlaceholder')}
+                    className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:border-indigo-500 focus:outline-none"
                   />
                 </div>
-
-                {policyType === 'interval' && (
-                  <div className="grid grid-cols-3 gap-3 animate-fade-in">
-                    <div>
-                      <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepDaily')}</label>
-                      <input
-                        type="number"
-                        required
-                        min={0}
-                        value={policyKeepDaily}
-                        onChange={(e) => setPolicyKeepDaily(parseInt(e.target.value) || 0)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepWeekly')}</label>
-                      <input
-                        type="number"
-                        required
-                        min={0}
-                        value={policyKeepWeekly}
-                        onChange={(e) => setPolicyKeepWeekly(parseInt(e.target.value) || 0)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepMonthly')}</label>
-                      <input
-                        type="number"
-                        required
-                        min={0}
-                        value={policyKeepMonthly}
-                        onChange={(e) => setPolicyKeepMonthly(parseInt(e.target.value) || 0)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {policyType === 'count' && (
-                  <div className="animate-fade-in">
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('keepLastLabel')}</label>
-                    <input
-                      type="number"
-                      required
-                      min={1}
-                      value={policyKeepLast}
-                      onChange={(e) => setPolicyKeepLast(parseInt(e.target.value) || 1)}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                    />
-                  </div>
-                )}
-
-                {policyType === 'timeframe' && (
-                  <div className="grid grid-cols-3 gap-3 animate-fade-in">
-                    <div className="col-span-2">
-                      <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('keepWithinLabel')}</label>
-                      <input
-                        type="number"
-                        required
-                        min={1}
-                        value={policyWithinValue}
-                        onChange={(e) => setPolicyWithinValue(parseInt(e.target.value) || 1)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-400 mb-1.5">&nbsp;</label>
-                      <SearchableSelect
-                        options={unitOptions}
-                        value={policyWithinUnit}
-                        onChange={setPolicyWithinUnit}
-                        placeholder={t('selectUnitPlaceholder')}
-                      />
-                    </div>
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const pattern = newExclusionInput.trim();
+                    const comment = newExclusionComment.trim() || 'Custom exclusion';
+                    if (pattern && !globalExclusions.some(item => item.pattern === pattern)) {
+                      setGlobalExclusions([...globalExclusions, { pattern, comment }]);
+                    }
+                    setNewExclusionInput('');
+                    setNewExclusionComment('');
+                  }}
+                  className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs transition-colors cursor-pointer"
+                >
+                  {t('addButton') || 'Add Excluded Path'}
+                </button>
               </div>
             </div>
           </div>
