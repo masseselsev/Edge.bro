@@ -428,14 +428,36 @@ async def upload_hasp_license(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
         
-    if not file.filename.endswith(('.v2c', '.v2cp', '.h2r', '.r2h', '.h2h')):
+    # Check file extension case-insensitively!
+    if not file.filename.lower().endswith(('.v2c', '.v2cp', '.h2r', '.r2h', '.h2h')):
         raise HTTPException(status_code=400, detail="Invalid file extension. Please upload a valid Sentinel license file (V2C).")
         
     try:
         content = await file.read()
         b64_content = base64.b64encode(content).decode('utf-8')
         
+        # Try applying via hasp_update CLI, fallback to ACC HTTP Checkin if it fails
         ssh_cmd = [
+            "ssh", "-o", "StrictHostKeyChecking=no",
+            "-p", str(node.ssh_port),
+            "-i", "/root/.ssh/id_ed25519",
+            f"root@{node.ip_address}",
+            f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
+            f"(. /opt/edge/rc.setenv && /opt/edge/bin/hasp_update u /tmp/license.v2c 2>/dev/null && echo 'CLI_SUCCESS' || echo 'CLI_FAILED') && "
+            f"rm -f /tmp/license.v2c"
+        ]
+        
+        res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=20)
+        if res.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to communicate with node via SSH: {res.stderr}")
+            
+        stdout = res.stdout.strip()
+        
+        if "CLI_SUCCESS" in stdout:
+            return {"status": "success", "message": "License applied successfully via Sentinel hasp_update!"}
+            
+        # Fallback to ACC HTTP Checkin
+        ssh_cmd_acc = [
             "ssh", "-o", "StrictHostKeyChecking=no",
             "-p", str(node.ssh_port),
             "-i", "/root/.ssh/id_ed25519",
@@ -445,14 +467,14 @@ async def upload_hasp_license(
             f"rm -f /tmp/license.v2c"
         ]
         
-        res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=20)
-        if res.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"Failed to communicate with node via SSH: {res.stderr}")
+        res_acc = subprocess.run(ssh_cmd_acc, capture_output=True, text=True, timeout=20)
+        if res_acc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to communicate with node via SSH fallback: {res_acc.stderr}")
             
-        stdout = res.stdout
+        stdout_acc = res_acc.stdout
         
-        error_match = re.search(r'var error\s*=\s*(\d+);', stdout)
-        ext_match = re.search(r'var acc_extended_error\s*=\s*"([^"]*)";', stdout)
+        error_match = re.search(r'var error\s*=\s*(\d+);', stdout_acc)
+        ext_match = re.search(r'var acc_extended_error\s*=\s*"([^"]*)";', stdout_acc)
         
         error_code = int(error_match.group(1)) if error_match else 0
         extended_error = ext_match.group(1) if ext_match else "0"
@@ -463,7 +485,7 @@ async def upload_hasp_license(
                 detail=f"Attach/Update license failed (Sentinel error code: {error_code}, ext: {extended_error})."
             )
             
-        return {"status": "success", "message": "License applied successfully!"}
+        return {"status": "success", "message": "License applied successfully via ACC HTTP checkin fallback!"}
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
