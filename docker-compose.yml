@@ -75,6 +75,7 @@ services:
       - iso-cache:/opt/data/iso_cache
       - frontend-build:/opt/frontend_build
       - ./payload_client:/payload_client
+      - /proc:/host/proc:ro
     depends_on:
       - db
       - redis
