@@ -154,7 +154,8 @@ def format_and_restore(
     total_files: int,
     log_callback: Callable[[str, Optional[int], Optional[str]], None],
     exclusions: Optional[List[Any]] = None,
-    orchestrator_ip: Optional[str] = None
+    orchestrator_ip: Optional[str] = None,
+    available_server_ips: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Core logic for bare-metal restore partition flashing, filesystem formatting,
@@ -906,29 +907,35 @@ def format_and_restore(
         emit_log("Post-restore verification audit passed.")
 
         # Setup one-time startup checkin script on restored node
-        if orchestrator_ip:
+        targets = []
+        if available_server_ips:
+            targets = [ip.strip() for ip in available_server_ips.split(",") if ip.strip()]
+        if orchestrator_ip and orchestrator_ip not in targets:
+            targets.append(orchestrator_ip)
+
+        if targets:
             emit_log("Configuring one-time post-restore checkin script on target system...")
             try:
+                targets_bash = " ".join(f'"{ip}"' for ip in targets)
                 checkin_sh_path = os.path.join(target_mnt, "usr", "local", "bin", "edge-restore-checkin.sh")
                 checkin_sh_content = (
                     "#!/bin/bash\n"
-                    "# Wait for network interface to be up and have an IP address\n"
-                    "for i in {1..30}; do\n"
-                    f"    if ping -c 1 -W 1 {orchestrator_ip} >/dev/null 2>&1; then\n"
-                    "        break\n"
+                    f"SERVER_IPS=({targets_bash})\n\n"
+                    "for ip in \"${SERVER_IPS[@]}\"; do\n"
+                    "    if ping -c 1 -W 1 \"$ip\" >/dev/null 2>&1; then\n"
+                    "        HOSTNAME=$(hostname)\n"
+                    "        IP_ADDR=$(ip route get \"$ip\" | awk '{{print $7; exit}}')\n\n"
+                    "        res=$(curl -s -X POST -H \"Content-Type: application/json\" \\\n"
+                    "                   -d \"{\\\"hostname\\\": \\\"$HOSTNAME\\\", \\\"ip_address\\\": \\\"$IP_ADDR\\\"}\" \\\n"
+                    "                   \"http://$ip/api/nodes/checkin-restored\")\n\n"
+                    "        if [[ \"$res\" == *\"success\"* ]]; then\n"
+                    "            systemctl disable edge-restore-checkin.service\n"
+                    "            rm -f /etc/systemd/system/edge-restore-checkin.service\n"
+                    "            rm -f /usr/local/bin/edge-restore-checkin.sh\n"
+                    "            exit 0\n"
+                    "        fi\n"
                     "    fi\n"
-                    "    sleep 2\n"
-                    "done\n\n"
-                    "# Send checkin request\n"
-                    "HOSTNAME=$(hostname)\n"
-                    f"IP_ADDR=$(ip route get {orchestrator_ip} | awk '{{print $7; exit}}')\n\n"
-                    "curl -s -X POST -H \"Content-Type: application/json\" \\\n"
-                    "     -d \"{\\\"hostname\\\": \\\"$HOSTNAME\\\", \\\"ip_address\\\": \\\"$IP_ADDR\\\"}\" \\\n"
-                    f"     http://{orchestrator_ip}:8000/api/nodes/checkin-restored\n\n"
-                    "# Disable and self-destruct\n"
-                    "systemctl disable edge-restore-checkin.service\n"
-                    "rm -f /etc/systemd/system/edge-restore-checkin.service\n"
-                    "rm -f /usr/local/bin/edge-restore-checkin.sh\n"
+                    "done\n"
                 )
                 os.makedirs(os.path.dirname(checkin_sh_path), exist_ok=True)
                 with open(checkin_sh_path, "w") as f:

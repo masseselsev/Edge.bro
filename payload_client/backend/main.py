@@ -311,6 +311,7 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
             {"name": "storage", "mount": "/var/opt/edge", "fstype": "ext4", "label": "edgestor", "uuid": "", "size_bytes": 0}
         ]
 
+    available_ips_str = ",".join(available_server_ips) if 'available_server_ips' in globals() and available_server_ips else ""
     try:
         format_and_restore(
             target_dev=req.target_dev,
@@ -323,7 +324,8 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
             network_iface="eth0",
             total_files=0,
             log_callback=log_callback,
-            orchestrator_ip=orchestrator_ip
+            orchestrator_ip=orchestrator_ip,
+            available_server_ips=available_ips_str
         )
     except Exception as e:
         log_callback(f"FATAL EXCEPTION: {str(e)}", status="FAILED")

@@ -65,6 +65,9 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         if not orchestrator_ip:
             orchestrator_ip = os.getenv("ORCHESTRATOR_IP")
 
+        server_ips = settings_obj.server_ips if settings_obj else None
+        available_ips = ",".join(server_ips) if server_ips else None
+
         result = format_and_restore(
             target_dev=target_dev,
             partitions=partitions,
@@ -77,7 +80,8 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             total_files=total_files,
             log_callback=logger_callback,
             exclusions=exclusions_list,
-            orchestrator_ip=orchestrator_ip
+            orchestrator_ip=orchestrator_ip,
+            available_server_ips=available_ips
         )
 
         if result["status"] == "SUCCESS":
