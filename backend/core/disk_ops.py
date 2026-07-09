@@ -927,7 +927,7 @@ def format_and_restore(
                     "        IP_ADDR=$(ip route get \"$ip\" | awk '{{print $7; exit}}')\n\n"
                     "        res=$(curl -s -X POST -H \"Content-Type: application/json\" \\\n"
                     "                   -d \"{\\\"hostname\\\": \\\"$HOSTNAME\\\", \\\"ip_address\\\": \\\"$IP_ADDR\\\"}\" \\\n"
-                    "                   \"http://$ip/api/nodes/checkin-restored\")\n\n"
+                    "                   \"http://$ip:8000/api/nodes/checkin-restored\")\n\n"
                     "        if [[ \"$res\" == *\"success\"* ]]; then\n"
                     "            systemctl disable edge-restore-checkin.service\n"
                     "            rm -f /etc/systemd/system/edge-restore-checkin.service\n"
