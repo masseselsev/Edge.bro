@@ -26,9 +26,10 @@ interface Kiosk {
 
 interface KioskManagementSectionProps {
   onViewLogs?: (taskId: string, title: string) => void;
+  baseIsoCreatedAt?: string | null;
 }
 
-export default function KioskManagementSection({ onViewLogs }: KioskManagementSectionProps) {
+export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }: KioskManagementSectionProps) {
   const { t, language } = useTranslation();
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [loading, setLoading] = useState(true);
@@ -451,8 +452,38 @@ export default function KioskManagementSection({ onViewLogs }: KioskManagementSe
                     <td className="py-3.5 px-4 text-zinc-350 font-mono">
                       {kiosk.approved_at ? new Date(kiosk.approved_at).toLocaleString() : <span className="text-zinc-650">—</span>}
                     </td>
-                    <td className="py-3.5 px-4 text-zinc-350 font-mono">
-                      {kiosk.iso_built_at ? new Date(kiosk.iso_built_at).toLocaleString() : <span className="text-zinc-650">—</span>}
+                    <td className="py-3.5 px-4">
+                      {kiosk.iso_built_at ? (
+                        <div className="space-y-1">
+                          <div className="font-mono text-zinc-350">
+                            {new Date(kiosk.iso_built_at).toLocaleString()}
+                          </div>
+                          {baseIsoCreatedAt && (() => {
+                            const builtMs = new Date(kiosk.iso_built_at!).getTime();
+                            const baseMs = new Date(baseIsoCreatedAt).getTime();
+                            const isFresh = builtMs >= baseMs;
+                            return isFresh ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 uppercase"
+                                title={t('isoFreshTooltip') || 'Built on current base ISO'}
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                {t('isoFreshLabel') || 'Fresh'}
+                              </span>
+                            ) : (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-500/15 text-amber-400 border border-amber-500/25 uppercase"
+                                title={t('isoOldTooltip') || 'Built on an outdated base ISO — re-create recommended'}
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                                {t('isoOldLabel') || 'Old'}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      ) : (
+                        <span className="text-zinc-650">—</span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-zinc-300 font-mono">
                       {kiosk.ip_address || <span className="text-zinc-600">—</span>}
