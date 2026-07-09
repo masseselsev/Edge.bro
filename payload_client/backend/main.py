@@ -322,7 +322,8 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
             wipe_mac_bindings=req.wipe_mac_bindings,
             network_iface="eth0",
             total_files=0,
-            log_callback=log_callback
+            log_callback=log_callback,
+            orchestrator_ip=orchestrator_ip
         )
     except Exception as e:
         log_callback(f"FATAL EXCEPTION: {str(e)}", status="FAILED")

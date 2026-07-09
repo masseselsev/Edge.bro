@@ -61,6 +61,9 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         from models import Settings
         settings_obj = db.query(Settings).first()
         exclusions_list = settings_obj.global_exclusions if settings_obj else []
+        orchestrator_ip = settings_obj.orchestrator_ip if settings_obj else None
+        if not orchestrator_ip:
+            orchestrator_ip = os.getenv("ORCHESTRATOR_IP")
 
         result = format_and_restore(
             target_dev=target_dev,
@@ -73,7 +76,8 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
             network_iface=node.network_iface,
             total_files=total_files,
             log_callback=logger_callback,
-            exclusions=exclusions_list
+            exclusions=exclusions_list,
+            orchestrator_ip=orchestrator_ip
         )
 
         if result["status"] == "SUCCESS":
