@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '../context/TranslationContext';
-import { Trash2, Plus, Key } from 'lucide-react';
+import { Trash2, Plus, Key, Edit2 } from 'lucide-react';
 
 interface Credential {
   id: string;
@@ -22,6 +22,7 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [commentInput, setCommentInput] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const handleAdd = (e: React.FormEvent) => {
@@ -35,18 +36,28 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
       return;
     }
 
-    const newCred: Credential = {
-      id: `cred_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      username,
-      password,
-      comment,
-    };
+    if (editingId) {
+      const updatedCreds = credentials.map(c => {
+        if (c.id === editingId) {
+          return { ...c, username, password, comment };
+        }
+        return c;
+      });
+      onChange(updatedCreds, defaultId);
+      setEditingId(null);
+    } else {
+      const newCred: Credential = {
+        id: `cred_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        username,
+        password,
+        comment,
+      };
+      const updatedCreds = [...credentials, newCred];
+      // If it's the first credential, make it default automatically
+      const newDefaultId = credentials.length === 0 ? newCred.id : defaultId;
+      onChange(updatedCreds, newDefaultId);
+    }
 
-    const updatedCreds = [...credentials, newCred];
-    // If it's the first credential, make it default automatically
-    const newDefaultId = credentials.length === 0 ? newCred.id : defaultId;
-
-    onChange(updatedCreds, newDefaultId);
     setUsernameInput('');
     setPasswordInput('');
     setCommentInput('');
@@ -66,6 +77,14 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
     onChange(credentials, id);
   };
 
+  const handleEditClick = (cred: Credential) => {
+    setEditingId(cred.id);
+    setUsernameInput(cred.username);
+    setPasswordInput(cred.password);
+    setCommentInput(cred.comment || '');
+    setError('');
+  };
+
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
@@ -80,8 +99,9 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
           ) : (
             credentials.map((cred) => {
               const isDefault = defaultId === cred.id;
+              const isEditingThis = editingId === cred.id;
               return (
-                <div key={cred.id} className="flex items-center justify-between p-2.5 bg-zinc-950 border border-zinc-800/80 rounded-lg hover:border-zinc-700/65 transition-all">
+                <div key={cred.id} className={`flex items-center justify-between p-2.5 border rounded-lg transition-all ${isEditingThis ? 'bg-indigo-950/20 border-indigo-500/50 shadow-md' : 'bg-zinc-950 border-zinc-800/80 hover:border-zinc-700/65'}`}>
                   <div className="flex items-center gap-3">
                     <input
                       type="radio"
@@ -100,12 +120,20 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
                       <span className="text-xs text-zinc-400 font-mono">{cred.password}</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     {isDefault && (
                       <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-wide">
                         {t('defaultCredentialsLabel')}
                       </span>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => handleEditClick(cred)}
+                      className="p-1 hover:bg-zinc-800 text-zinc-450 hover:text-indigo-400 rounded-md transition-colors cursor-pointer"
+                      title={t('edit') || 'Edit'}
+                    >
+                      <Edit2 size={13} />
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleDelete(cred.id)}
@@ -159,13 +187,30 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
 
           {error && <p className="text-[10px] text-rose-400">{error}</p>}
 
-          <button
-            type="submit"
-            className="w-full py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-100 rounded-lg font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <Plus size={13} />
-            {t('addCredentialBtn')}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Plus size={13} />
+              {editingId ? t('saveChanges') : t('addCredentialBtn')}
+            </button>
+            {editingId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingId(null);
+                  setUsernameInput('');
+                  setPasswordInput('');
+                  setCommentInput('');
+                  setError('');
+                }}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 rounded-lg font-bold text-xs transition-colors cursor-pointer"
+              >
+                {t('cancel')}
+              </button>
+            )}
+          </div>
         </form>
 
         <div className="flex justify-end pt-2 border-t border-zinc-850">
