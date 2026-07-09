@@ -87,7 +87,7 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
                     />
                     <div className="flex flex-col">
                       <span className="text-sm font-semibold text-zinc-250 font-mono">{cred.username}</span>
-                      <span className="text-[10px] text-zinc-500 font-mono">••••••••</span>
+                      <span className="text-xs text-zinc-400 font-mono">{cred.password}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -126,7 +126,7 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
             <div>
               <label className="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1 pl-0.5">{t('passwordLabel')}</label>
               <input
-                type="password"
+                type="text"
                 required
                 placeholder="e.g. admin"
                 value={passwordInput}
