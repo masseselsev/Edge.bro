@@ -503,11 +503,14 @@ def get_node_task_logs(node_id: int, db: Session = Depends(get_db), current_user
     return db.query(models.TaskLog).filter(models.TaskLog.node_id == node_id).order_by(models.TaskLog.created_at.desc()).limit(20).all()
 
 
-def apply_saved_license_task(node_id: int):
+def apply_saved_license_task(node_id: int, db: Session = None):
     """Background task to apply a saved base64 V2C license over SSH to a restored node."""
-    from database import SessionLocal
     import base64
-    db = SessionLocal()
+    should_close = False
+    if db is None:
+        from database import SessionLocal
+        db = SessionLocal()
+        should_close = True
     node = db.query(models.Node).filter(models.Node.id == node_id).first()
     if not node or not node.hasp_license_v2c:
         return
@@ -546,6 +549,9 @@ def apply_saved_license_task(node_id: int):
             db.commit()
     except Exception as e:
         print(f"Error applying saved license to node {node_id}: {e}")
+    finally:
+        if should_close:
+            db.close()
 
 
 @router.post("/checkin-restored")

@@ -520,7 +520,7 @@ def test_node_checkin_restored_flow(db_session, monkeypatch):
     monkeypatch.setattr(routers.restore, "get_node_hasp_status", lambda node_id, db, current_user: {"status": "active", "features": []})
 
     # Call background task directly
-    apply_saved_license_task(node.id)
+    apply_saved_license_task(node.id, db=db_session)
 
     db_session.refresh(node)
     assert node.status == "READY"
