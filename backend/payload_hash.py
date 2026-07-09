@@ -6,8 +6,12 @@ logger = logging.getLogger(__name__)
 
 HASH_FILE = "/opt/data/iso_cache/payload_hash.txt"
 
-# All source paths that contribute to the Compiled Offline Client ISO.
-# Any change in these files should trigger a rebuild.
+# Source paths that go INTO the Compiled Offline Client ISO.
+# IMPORTANT: Only /payload_client/ paths here — /app/ paths differ between
+# the backend and worker containers (hot-reload mount vs baked image), which
+# would cause spurious hash mismatches on every restart.
+# disk_ops.py, network.py, version.py are stable: their changes always come
+# bundled with a new borg binary or payload_client update anyway.
 SOURCE_PATHS = [
     "/payload_client/backend",
     "/payload_client/systemd",
@@ -15,41 +19,85 @@ SOURCE_PATHS = [
     "/payload_client/kiosk-launcher.sh",
     "/payload_client/kiosk-storage-setup.sh",
     "/payload_client/init-bottom-copy-payload.sh",
+]
+
+# Large binaries: hash by size + first/last 64KB only (fast, still reliable).
+BINARY_PATHS = [
     "/payload_client/bin/borg",
+]
+
+# Small /app/ files that are shared into the ISO — hash full content but
+# only from canonical paths that are the same in both backend and worker.
+APP_SHARED_FILES = [
     "/app/core/disk_ops.py",
     "/app/routers/network.py",
     "/app/version.py",
 ]
 
+# Skip these when walking directories (generated files that change on import)
+SKIP_DIRS = {"__pycache__"}
+SKIP_EXTS = {".pyc", ".pyo"}
+
 
 def _hash_file(h, path: str) -> None:
-    """Hash file contents into h, silently skip unreadable files."""
+    """Hash full file contents into h, skip unreadable files silently."""
     try:
         with open(path, "rb") as f:
             for chunk in iter(lambda: f.read(65536), b""):
                 h.update(chunk)
     except Exception as exc:
-        logger.debug(f"payload_hash: skipping unreadable file {path}: {exc}")
+        logger.debug(f"payload_hash: skipping {path}: {exc}")
+
+
+def _hash_binary_fast(h, path: str) -> None:
+    """Hash a large binary by size + first 64KB + last 64KB (fast fingerprint)."""
+    try:
+        size = os.path.getsize(path)
+        h.update(path.encode())
+        h.update(size.to_bytes(8, "little"))
+        with open(path, "rb") as f:
+            h.update(f.read(65536))
+            if size > 65536:
+                f.seek(-min(65536, size), 2)
+                h.update(f.read(65536))
+    except Exception as exc:
+        logger.debug(f"payload_hash: skipping binary {path}: {exc}")
 
 
 def compute_payload_hash() -> str:
     """
-    Walk all SOURCE_PATHS and compute a single SHA256 digest over their
-    sorted file contents. Returns a 64-char hex string.
+    Compute SHA256 over all payload source files. Deterministic and fast:
+    - Directories: walk sorted, skip __pycache__ and .pyc files
+    - Large binaries: size + first/last 64KB only
+    - Small shared /app/ files: full content
+    Returns a 64-char hex string.
     """
     h = hashlib.sha256()
+
     for path in sorted(SOURCE_PATHS):
         if os.path.isfile(path):
-            # Also include the relative path itself so renames are detected
             h.update(path.encode())
             _hash_file(h, path)
         elif os.path.isdir(path):
             for root, dirs, files in os.walk(path):
-                dirs.sort()  # deterministic order
+                # Skip __pycache__ and similar generated directories
+                dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
                 for fname in sorted(files):
+                    if os.path.splitext(fname)[1] in SKIP_EXTS:
+                        continue
                     full = os.path.join(root, fname)
                     h.update(full.encode())
                     _hash_file(h, full)
+
+    for path in sorted(BINARY_PATHS):
+        if os.path.isfile(path):
+            _hash_binary_fast(h, path)
+
+    for path in sorted(APP_SHARED_FILES):
+        if os.path.isfile(path):
+            h.update(path.encode())
+            _hash_file(h, path)
+
     return h.hexdigest()
 
 
