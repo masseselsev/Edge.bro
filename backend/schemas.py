@@ -21,6 +21,7 @@ class CredentialSchema(BaseModel):
     id: str
     username: str
     password: str
+    comment: str = ""
 
 
 class SettingsBase(BaseModel):

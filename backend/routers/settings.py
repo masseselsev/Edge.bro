@@ -111,7 +111,7 @@ def get_settings(db: Session = Depends(get_db), current_user: models.User = Depe
         db.commit()
     
     if not settings.bootstrap_credentials:
-        settings.bootstrap_credentials = [{"id": "default", "username": "user", "password": "admin"}]
+        settings.bootstrap_credentials = [{"id": "default", "username": "user", "password": "admin", "comment": "Default"}]
         settings.default_credentials_id = "default"
         db.commit()
     

@@ -7,6 +7,7 @@ interface Credential {
   id: string;
   username: string;
   password: string;
+  comment?: string;
 }
 
 interface CredentialsModalProps {
@@ -20,12 +21,14 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
   const { t } = useTranslation();
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+  const [commentInput, setCommentInput] = useState('');
   const [error, setError] = useState('');
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     const username = usernameInput.trim();
     const password = passwordInput.trim();
+    const comment = commentInput.trim();
 
     if (!username || !password) {
       setError(t('fillAllFields') || 'Please fill in both fields');
@@ -36,6 +39,7 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
       id: `cred_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       username,
       password,
+      comment,
     };
 
     const updatedCreds = [...credentials, newCred];
@@ -45,6 +49,7 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
     onChange(updatedCreds, newDefaultId);
     setUsernameInput('');
     setPasswordInput('');
+    setCommentInput('');
     setError('');
   };
 
@@ -86,7 +91,12 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
                       className="rounded-full border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-4 w-4"
                     />
                     <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-zinc-250 font-mono">{cred.username}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold text-zinc-250 font-mono">{cred.username}</span>
+                        {cred.comment && (
+                          <span className="text-[10px] text-zinc-500 italic font-medium">({cred.comment})</span>
+                        )}
+                      </div>
                       <span className="text-xs text-zinc-400 font-mono">{cred.password}</span>
                     </div>
                   </div>
@@ -134,6 +144,17 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
                 className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-150 text-xs focus:border-indigo-500 focus:outline-none"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1 pl-0.5">{t('kioskComment')}</label>
+            <input
+              type="text"
+              placeholder="e.g. Default OS login"
+              value={commentInput}
+              onChange={(e) => setCommentInput(e.target.value)}
+              className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-150 text-xs focus:border-indigo-500 focus:outline-none"
+            />
           </div>
 
           {error && <p className="text-[10px] text-rose-400">{error}</p>}

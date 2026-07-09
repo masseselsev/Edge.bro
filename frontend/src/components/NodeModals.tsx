@@ -30,7 +30,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
   const [autoDetectHostname, setAutoDetectHostname] = useState(false);
   const [forceOrchestratorProxy, setForceOrchestratorProxy] = useState(false);
 
-  const [credentials, setCredentials] = useState<{ id: string, username: string, password: string }[]>([]);
+  const [credentials, setCredentials] = useState<{ id: string, username: string, password: string, comment?: string }[]>([]);
   const [selectedCredId, setSelectedCredId] = useState('manual');
 
   React.useEffect(() => {
@@ -153,7 +153,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
               >
                 {credentials.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.username}
+                    {c.username}{c.comment ? ` (${c.comment})` : ''}
                   </option>
                 ))}
                 <option value="manual">{t('manualInputSelect')}</option>
@@ -233,7 +233,7 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
   const [password, setPassword] = useState('admin');
   const [forceOrchestratorProxy, setForceOrchestratorProxy] = useState(false);
 
-  const [credentials, setCredentials] = useState<{ id: string, username: string, password: string }[]>([]);
+  const [credentials, setCredentials] = useState<{ id: string, username: string, password: string, comment?: string }[]>([]);
   const [selectedCredId, setSelectedCredId] = useState('manual');
 
   React.useEffect(() => {
@@ -315,7 +315,7 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
               >
                 {credentials.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.username}
+                    {c.username}{c.comment ? ` (${c.comment})` : ''}
                   </option>
                 ))}
                 <option value="manual">{t('manualInputSelect')}</option>

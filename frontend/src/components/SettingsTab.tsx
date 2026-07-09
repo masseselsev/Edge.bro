@@ -38,7 +38,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [hostDataPath, setHostDataPath] = useState<string | null>(null);
   const [maxKioskIsos, setMaxKioskIsos] = useState(5);
   const [serverName, setServerName] = useState('orchestrator');
-  const [bootstrapCredentials, setBootstrapCredentials] = useState<{ id: string, username: string, password: string }[]>([]);
+  const [bootstrapCredentials, setBootstrapCredentials] = useState<{ id: string, username: string, password: string, comment?: string }[]>([]);
   const [defaultCredentialsId, setDefaultCredentialsId] = useState('');
   const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState(false);
   const [credUsernameInput, setCredUsernameInput] = useState('');
