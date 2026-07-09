@@ -366,6 +366,12 @@ class HaspStatusResponse(BaseModel):
     features: List[HaspFeatureResponse] = []
 
 
+class NodeCheckinRequest(BaseModel):
+    hostname: str
+    ip_address: Optional[str] = None
+
+
+
 
 
 

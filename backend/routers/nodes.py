@@ -5,7 +5,7 @@ import redis
 import json
 import datetime
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from database import get_db
 import models
@@ -501,3 +501,77 @@ def get_node_task_logs(node_id: int, db: Session = Depends(get_db), current_user
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
     return db.query(models.TaskLog).filter(models.TaskLog.node_id == node_id).order_by(models.TaskLog.created_at.desc()).limit(20).all()
+
+
+def apply_saved_license_task(node_id: int):
+    """Background task to apply a saved base64 V2C license over SSH to a restored node."""
+    from database import SessionLocal
+    import base64
+    db = SessionLocal()
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node or not node.hasp_license_v2c:
+        return
+        
+    try:
+        b64_content = node.hasp_license_v2c
+        ssh_cmd = [
+            "ssh", "-o", "StrictHostKeyChecking=no",
+            "-p", str(node.ssh_port),
+            "-i", "/root/.ssh/id_ed25519",
+            f"root@{node.ip_address}",
+            f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
+            f"(. /opt/edge/rc.setenv && /opt/edge/bin/hasp_update u /tmp/license.v2c 2>/dev/null && echo 'CLI_SUCCESS' || echo 'CLI_FAILED') && "
+            f"rm -f /tmp/license.v2c"
+        ]
+        res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=30)
+        
+        # Fallback to ACC HTTP checkin if CLI fails
+        if res.returncode != 0 or "CLI_SUCCESS" not in res.stdout:
+            ssh_cmd_acc = [
+                "ssh", "-o", "StrictHostKeyChecking=no",
+                "-p", str(node.ssh_port),
+                "-i", "/root/.ssh/id_ed25519",
+                f"root@{node.ip_address}",
+                f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
+                f"curl -s -F \"check_in_file=@/tmp/license.v2c\" http://localhost:1947/_int_/checkin_file.html && "
+                f"rm -f /tmp/license.v2c"
+            ]
+            subprocess.run(ssh_cmd_acc, capture_output=True, timeout=30)
+            
+        # Re-fetch new HASP details to update Node status
+        from routers.restore import get_node_hasp_status
+        get_node_hasp_status(node_id=node.id, db=db, current_user=None)
+    except Exception as e:
+        print(f"Error applying saved license to node {node_id}: {e}")
+
+
+@router.post("/checkin-restored")
+def checkin_restored_node(
+    req: schemas.NodeCheckinRequest,
+    background_tasks: BackgroundTasks,
+    request: Request = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Called by a restored node on first boot to notify orchestrator
+    and automatically request/apply its saved Sentinel HASP license.
+    """
+    node = db.query(models.Node).filter(models.Node.hostname == req.hostname).first()
+    if not node and req.ip_address:
+        node = db.query(models.Node).filter(models.Node.ip_address == req.ip_address).first()
+    if not node and request and request.client:
+        node = db.query(models.Node).filter(models.Node.ip_address == request.client.host).first()
+        
+    if not node:
+        raise HTTPException(status_code=404, detail="Restored node not matched with any registered node.")
+        
+    # Log audit event
+    from database import log_user_action
+    log_user_action(db, "System: Restored Node", "Restored Node Checkin", f"Node '{node.hostname}' checked in after bare-metal restore", request)
+    
+    # Trigger auto-activation if saved license is present in DB
+    if node.hasp_license_v2c:
+        background_tasks.add_task(apply_saved_license_task, node.id)
+        return {"status": "success", "message": "Node check-in accepted. HASP license application triggered."}
+        
+    return {"status": "success", "message": "Node check-in accepted. No saved HASP license found."}

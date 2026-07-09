@@ -44,10 +44,11 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
     if now is None:
         now = datetime.utcnow()  # Naive UTC datetime to match db timestamps
 
-    # 1. Fetch all nodes that are assigned to a group and not paused
+    # 1. Fetch all nodes that are assigned to a group, not paused, and fully ready
     nodes = db.query(models.Node).filter(
         models.Node.group_id.isnot(None),
-        models.Node.backup_paused == False
+        models.Node.backup_paused == False,
+        models.Node.status == "READY"
     ).all()
 
     if not nodes:

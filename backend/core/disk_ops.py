@@ -903,8 +903,60 @@ def format_and_restore(
                 expected_target = f"LABEL={label}" if label else f"UUID={uuid}"
                 if expected_target not in fstab_content:
                     raise ValueError(f"Post-restore verification audit failed: /etc/fstab is missing '{expected_target}' mapping.")
-
         emit_log("Post-restore verification audit passed.")
+
+        # Setup one-time startup checkin script on restored node
+        if orchestrator_ip:
+            emit_log("Configuring one-time post-restore checkin script on target system...")
+            try:
+                checkin_sh_path = os.path.join(target_mnt, "usr", "local", "bin", "edge-restore-checkin.sh")
+                checkin_sh_content = (
+                    "#!/bin/bash\n"
+                    "# Wait for network interface to be up and have an IP address\n"
+                    "for i in {1..30}; do\n"
+                    f"    if ping -c 1 -W 1 {orchestrator_ip} >/dev/null 2>&1; then\n"
+                    "        break\n"
+                    "    fi\n"
+                    "    sleep 2\n"
+                    "done\n\n"
+                    "# Send checkin request\n"
+                    "HOSTNAME=$(hostname)\n"
+                    f"IP_ADDR=$(ip route get {orchestrator_ip} | awk '{{print $7; exit}}')\n\n"
+                    "curl -s -X POST -H \"Content-Type: application/json\" \\\n"
+                    "     -d \"{\\\"hostname\\\": \\\"$HOSTNAME\\\", \\\"ip_address\\\": \\\"$IP_ADDR\\\"}\" \\\n"
+                    f"     http://{orchestrator_ip}:8000/api/nodes/checkin-restored\n\n"
+                    "# Disable and self-destruct\n"
+                    "systemctl disable edge-restore-checkin.service\n"
+                    "rm -f /etc/systemd/system/edge-restore-checkin.service\n"
+                    "rm -f /usr/local/bin/edge-restore-checkin.sh\n"
+                )
+                os.makedirs(os.path.dirname(checkin_sh_path), exist_ok=True)
+                with open(checkin_sh_path, "w") as f:
+                    f.write(checkin_sh_content)
+                os.chmod(checkin_sh_path, 0o755)
+
+                checkin_service_path = os.path.join(target_mnt, "etc", "systemd", "system", "edge-restore-checkin.service")
+                checkin_service_content = """[Unit]
+Description=One-time Post-Restore Orchestrator Checkin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/edge-restore-checkin.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+"""
+                with open(checkin_service_path, "w") as f:
+                    f.write(checkin_service_content)
+
+                # Enable the service inside the chroot
+                subprocess.run(["chroot", target_mnt, "systemctl", "enable", "edge-restore-checkin.service"], capture_output=True)
+                emit_log("One-time post-restore checkin service successfully installed.")
+            except Exception as checkin_err:
+                emit_log(f"WARNING: Failed to configure post-restore checkin script: {checkin_err}")
 
         # Unmount virtual filesystems
         emit_log("Unmounting virtual filesystems...")

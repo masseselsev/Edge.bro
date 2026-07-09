@@ -486,4 +486,47 @@ def test_get_node_hasp_status_active_ok(mock_run, db_session):
     assert "Exp: Thu Jan 1, 2026" in res["features"][0]["lic_type"]
 
 
+def test_node_checkin_restored_flow(db_session, monkeypatch):
+    import subprocess
+    from routers.nodes import apply_saved_license_task
+    
+    # 1. Create a node with RESTORED status and a saved license
+    node = models.Node(
+        hostname="WS-RESTORED-TEST",
+        ip_address="192.168.222.99",
+        ssh_port=22,
+        status="RESTORED",
+        hasp_runtime_version="10.21",
+        hasp_license_v2c="fake_base64_v2c_content"
+    )
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+
+    # Mock subprocess.run for SSH license application
+    ssh_calls = []
+    def mock_run(cmd, *args, **kwargs):
+        ssh_calls.append(cmd)
+        class MockCompletedProcess:
+            returncode = 0
+            stdout = "CLI_SUCCESS"
+            stderr = ""
+        return MockCompletedProcess()
+        
+    monkeypatch.setattr(subprocess, "run", mock_run)
+
+    # Mock get_node_hasp_status to return active
+    import routers.restore
+    monkeypatch.setattr(routers.restore, "get_node_hasp_status", lambda node_id, db, current_user: {"status": "active", "features": []})
+
+    # Call background task directly
+    apply_saved_license_task(node.id)
+
+    db_session.refresh(node)
+    assert node.status == "READY"
+    assert len(ssh_calls) == 1
+    assert "fake_base64_v2c_content" in ssh_calls[0][-1]
+
+
+
 

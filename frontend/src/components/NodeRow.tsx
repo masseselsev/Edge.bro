@@ -95,8 +95,8 @@ export function NodeRow({
         onClick: () => onRunPrepare(node.id, node.hostname)
       },
       RESTORED: {
-        bg: "bg-indigo-500/10 hover:bg-indigo-500/20", text: "text-indigo-400", border: "border-indigo-500/20",
-        label: t('statusRestored') || "Restored (Awaiting License Activation)", icon: <CheckCircle size={14} />, title: t('restoredNodeTooltip') || "This node has been restored. Awaiting license activation.",
+        bg: "bg-indigo-500/10 hover:bg-indigo-500/20", text: "text-indigo-400", border: "border-indigo-500/30",
+        label: "RESTORED", icon: <CheckCircle size={14} />, title: "Licence update needed",
         onClick: () => onShowProvision(node)
       },
       NEEDS_FIX: {
@@ -121,7 +121,7 @@ export function NodeRow({
     return (
       <button
         onClick={config.onClick}
-        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${config.bg} ${config.text} ${config.border}`}
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${config.bg} ${config.text} ${config.border} ${node.status === 'RESTORED' ? 'animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''}`}
         title={config.title}
       >
         {config.icon} {config.label}

@@ -436,6 +436,10 @@ async def upload_hasp_license(
         content = await file.read()
         b64_content = base64.b64encode(content).decode('utf-8')
         
+        # Save license in database for auto-application after flasher restore
+        node.hasp_license_v2c = b64_content
+        db.commit()
+        
         # Try applying via hasp_update CLI, fallback to ACC HTTP Checkin if it fails
         ssh_cmd = [
             "ssh", "-o", "StrictHostKeyChecking=no",
@@ -454,6 +458,8 @@ async def upload_hasp_license(
         stdout = res.stdout.strip()
         
         if "CLI_SUCCESS" in stdout:
+            node.status = "READY"
+            db.commit()
             return {"status": "success", "message": "License applied successfully via Sentinel hasp_update!"}
             
         # Fallback to ACC HTTP Checkin
@@ -485,6 +491,8 @@ async def upload_hasp_license(
                 detail=f"Attach/Update license failed (Sentinel error code: {error_code}, ext: {extended_error})."
             )
             
+        node.status = "READY"
+        db.commit()
         return {"status": "success", "message": "License applied successfully via ACC HTTP checkin fallback!"}
     except Exception as e:
         if isinstance(e, HTTPException):

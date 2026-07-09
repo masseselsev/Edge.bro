@@ -104,6 +104,7 @@ class Node(Base):
     edge_version = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     hasp_runtime_version = Column(String, nullable=True)
+    hasp_license_v2c = Column(Text, nullable=True)
 
 
 class BackupHistory(Base):
