@@ -528,5 +528,36 @@ def test_node_checkin_restored_flow(db_session, monkeypatch):
     assert "fake_base64_v2c_content" in ssh_calls[0][-1]
 
 
+def test_checkin_restored_endpoint_flow(db_session, monkeypatch):
+    from routers.nodes import checkin_restored_node
+    import schemas
+    
+    # Create node in READY status
+    node = models.Node(
+        hostname="WS-CHECKIN-TEST",
+        ip_address="192.168.222.98",
+        status="READY"
+    )
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+
+    class MockBackgroundTasks:
+        def __init__(self):
+            self.tasks = []
+        def add_task(self, func, *args, **kwargs):
+            self.tasks.append((func, args, kwargs))
+            
+    bg_tasks = MockBackgroundTasks()
+    req = schemas.NodeCheckinRequest(hostname="WS-CHECKIN-TEST", ip_address="192.168.222.98")
+    
+    res = checkin_restored_node(req, background_tasks=bg_tasks, request=None, db=db_session)
+    assert res["status"] == "success"
+    
+    db_session.refresh(node)
+    assert node.status == "RESTORED"
+
+
+
 
 

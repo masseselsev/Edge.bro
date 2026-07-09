@@ -578,6 +578,10 @@ def checkin_restored_node(
     from database import log_user_action
     log_user_action(db, "System: Restored Node", "Restored Node Checkin", f"Node '{node.hostname}' checked in after bare-metal restore", request)
     
+    # Update status to RESTORED to indicate license update is needed
+    node.status = "RESTORED"
+    db.commit()
+    
     # Trigger auto-activation if saved license is present in DB
     if node.hasp_license_v2c:
         background_tasks.add_task(apply_saved_license_task, node.id)
