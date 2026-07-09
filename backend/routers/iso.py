@@ -232,15 +232,40 @@ def get_iso_status(auth = Depends(require_admin)):
     except Exception:
         total, free = 0, 0
 
+    # Check if an ISO_GEN rebuild task is actively running
+    from sqlalchemy.orm import Session as _Session
+    _db = SessionLocal()
+    try:
+        active_regen = _db.query(models.TaskLog).filter(
+            models.TaskLog.task_type == "ISO_GEN",
+            models.TaskLog.status == "RUNNING"
+        ).first()
+        client_iso_rebuilding = bool(active_regen) and client_exists
+    finally:
+        _db.close()
+
+    # Check payload hash mismatch (stale) — only when not already rebuilding
+    client_iso_stale = False
+    if client_exists and not client_iso_rebuilding:
+        try:
+            from payload_hash import compute_payload_hash, read_stored_hash
+            stored = read_stored_hash()
+            client_iso_stale = compute_payload_hash() != (stored or "")
+        except Exception:
+            pass
+
     return {
         "base_iso_cached": base_exists or client_exists,
         "base_iso_progress": progress,
         "base_iso_speed": speed_str,
         "client_iso_ready": client_exists,
         "client_iso_created_at": client_created_at,
+        "client_iso_rebuilding": client_iso_rebuilding,
+        "client_iso_stale": client_iso_stale,
         "iso_cache_free_space": free,
         "iso_cache_total_space": total
     }
+
 
 import subprocess
 from fastapi.responses import StreamingResponse

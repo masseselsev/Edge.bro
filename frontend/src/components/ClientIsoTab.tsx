@@ -12,6 +12,8 @@ interface IsoStatus {
   iso_cache_free_space?: number;
   iso_cache_total_space?: number;
   client_iso_created_at?: string;
+  client_iso_rebuilding?: boolean;
+  client_iso_stale?: boolean;
 }
 
 const formatBytes = (bytes: number) => {
@@ -391,8 +393,27 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                 <div>
                   <div className="text-xs font-bold text-zinc-50">{t('compiledOfflineClient') || 'Compiled Template ISO'}</div>
                   <div className="text-[10px] text-zinc-500 font-mono">technician_client_v1.iso</div>
+                  {status?.client_iso_rebuilding && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <svg className="animate-spin h-2.5 w-2.5 text-amber-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                      </svg>
+                      <span className="text-[9px] text-amber-400 font-semibold">
+                        {t('rebuildingStatus') || 'Source files changed — rebuilding...'}
+                      </span>
+                    </div>
+                  )}
                 </div>
-                {status?.client_iso_ready ? (
+                {status?.client_iso_rebuilding ? (
+                  <span className="px-1.5 py-0.5 text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded uppercase animate-pulse">
+                    {t('rebuildingLabel') || 'Rebuilding'}
+                  </span>
+                ) : status?.client_iso_stale ? (
+                  <span className="px-1.5 py-0.5 text-[9px] font-bold bg-amber-500/10 text-amber-500 border border-amber-600/30 rounded uppercase">
+                    {t('outdatedLabel') || 'Outdated'}
+                  </span>
+                ) : status?.client_iso_ready ? (
                   <span className="px-1.5 py-0.5 text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded uppercase">{t('readyLabel') || 'Ready'}</span>
                 ) : (
                   <span className="px-1.5 py-0.5 text-[9px] font-bold bg-zinc-800 text-zinc-400 border border-zinc-700 rounded uppercase">{t('notFoundLabel') || 'Not Found'}</span>

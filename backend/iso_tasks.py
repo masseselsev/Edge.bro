@@ -549,7 +549,15 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         ], on_log_line=on_repack_line)
 
         log_to_task(task_id, "[PROGRESS] 100:Client ISO generated successfully!", status="SUCCESS")
-        
+
+        # Persist payload hash so future restarts can detect if sources changed
+        try:
+            from payload_hash import compute_payload_hash, write_stored_hash
+            write_stored_hash(compute_payload_hash())
+            logger.info("Payload source hash updated after successful build.")
+        except Exception as hash_err:
+            logger.warning(f"Failed to write payload hash after build: {hash_err}")
+
         # Auto-regenerate any existing approved kiosks to build on top of the new base ISO
         try:
             db_reg = SessionLocal()
