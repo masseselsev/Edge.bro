@@ -459,8 +459,13 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                             {new Date(kiosk.iso_built_at).toLocaleString()}
                           </div>
                           {baseIsoCreatedAt && (() => {
-                            const builtMs = new Date(kiosk.iso_built_at!).getTime();
-                            const baseMs = new Date(baseIsoCreatedAt).getTime();
+                            // Normalize to UTC: backend stores iso_built_at as naive UTC (no 'Z'),
+                            // JS new Date() without a TZ suffix treats it as LOCAL time — wrong.
+                            // Append 'Z' if no timezone marker is present.
+                            const normalizeUTC = (s: string) =>
+                              /[Zz]$|[+-]\d{2}:\d{2}$/.test(s) ? s : s + 'Z';
+                            const builtMs = new Date(normalizeUTC(kiosk.iso_built_at!)).getTime();
+                            const baseMs = new Date(normalizeUTC(baseIsoCreatedAt)).getTime();
                             const isFresh = builtMs >= baseMs;
                             return isFresh ? (
                               <span
