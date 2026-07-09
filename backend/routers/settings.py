@@ -109,6 +109,12 @@ def get_settings(db: Session = Depends(get_db), current_user: models.User = Depe
         settings = models.Settings()
         db.add(settings)
         db.commit()
+    
+    if not settings.bootstrap_credentials:
+        settings.bootstrap_credentials = [{"id": "default", "username": "user", "password": "admin"}]
+        settings.default_credentials_id = "default"
+        db.commit()
+    
     settings.available_ips = get_local_ips()
     import os
     settings.borg_host_data_path = os.getenv("BORG_HOST_DATA_PATH", "borg-data")

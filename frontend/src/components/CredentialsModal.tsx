@@ -151,9 +151,9 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-bold text-zinc-350 bg-zinc-800 hover:bg-zinc-750 rounded-lg transition-colors cursor-pointer"
+            className="px-4 py-2 text-xs font-bold text-zinc-350 bg-zinc-800 hover:bg-zinc-750 rounded-lg transition-colors cursor-pointer animate-fade-in"
           >
-            {t('cancel')}
+            {t('ok')}
           </button>
         </div>
       </div>
