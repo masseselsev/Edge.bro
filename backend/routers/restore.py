@@ -364,7 +364,7 @@ def get_node_hasp_status(node_id: int, db: Session = Depends(get_db), current_us
         devices = parse_sentinel_json_blocks(dev_section)
         features = parse_sentinel_json_blocks(feat_section)
         
-        real_devices = [d for d in devices if d.get("haspid") and d.get("haspid") != "0"]
+        real_devices = [d for d in devices if d.get("haspid") and d.get("haspid") != "0" and d.get("typ") != "placeholder"]
         real_features = [f for f in features if f.get("fid") is not None]
         
         if not real_devices:
@@ -379,7 +379,9 @@ def get_node_hasp_status(node_id: int, db: Session = Depends(get_db), current_us
             status_str = "disabled"
         else:
             active_features = [f for f in real_features if f.get("fid") != "0"]
-            if active_features and all(f.get("unusable") != "0" for f in active_features):
+            if not active_features:
+                status_str = "no_license"
+            elif all(f.get("unusable") != "0" for f in active_features):
                 status_str = "expired"
             else:
                 status_str = "active"
