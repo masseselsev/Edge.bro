@@ -6,6 +6,7 @@ import { useTranslation } from '../context/TranslationContext';
 import type { Language } from '../i18n/translations';
 import AdminsTab from './AdminsTab';
 import AuditLogsTab from './AuditLogsTab';
+import { CredentialsModal } from './CredentialsModal';
 
 interface SettingsTabProps {
   onSettingsUpdated?: (settings: any) => void;
@@ -37,6 +38,11 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [hostDataPath, setHostDataPath] = useState<string | null>(null);
   const [maxKioskIsos, setMaxKioskIsos] = useState(5);
   const [serverName, setServerName] = useState('orchestrator');
+  const [bootstrapCredentials, setBootstrapCredentials] = useState<{ id: string, username: string, password: string }[]>([]);
+  const [defaultCredentialsId, setDefaultCredentialsId] = useState('');
+  const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState(false);
+  const [credUsernameInput, setCredUsernameInput] = useState('');
+  const [credPasswordInput, setCredPasswordInput] = useState('');
   
   const [useLocalTime, setUseLocalTime] = useState(true);
   const [timezone, setTimezone] = useState(() => {
@@ -130,6 +136,12 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         if (data.server_name !== undefined) {
           setServerName(data.server_name || 'orchestrator');
         }
+        if (data.bootstrap_credentials !== undefined) {
+          setBootstrapCredentials(data.bootstrap_credentials || []);
+        }
+        if (data.default_credentials_id !== undefined) {
+          setDefaultCredentialsId(data.default_credentials_id || '');
+        }
         
         const dbTz = data.timezone || 'Browser Local';
         let resolvedTz = 'Europe/Moscow';
@@ -183,6 +195,8 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           server_ips: manualIps,
           max_kiosk_isos: maxKioskIsos,
           server_name: serverName,
+          bootstrap_credentials: bootstrapCredentials,
+          default_credentials_id: defaultCredentialsId,
           retention_policy: {
             type: policyType,
             keep_daily: policyKeepDaily,
@@ -199,6 +213,12 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         setSuccess(true);
         setAvailableIps(data.available_ips || []);
         setLanguage(data.language);
+        if (data.bootstrap_credentials !== undefined) {
+          setBootstrapCredentials(data.bootstrap_credentials || []);
+        }
+        if (data.default_credentials_id !== undefined) {
+          setDefaultCredentialsId(data.default_credentials_id || '');
+        }
         if (onSettingsUpdated) {
           onSettingsUpdated(data);
         }
@@ -491,6 +511,44 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                     </button>
                   </div>
                 </div>
+
+                {/* Bootstrap Credentials management sub-card */}
+                <div className="mb-4 space-y-3 border border-zinc-800/80 p-4 rounded-xl bg-zinc-950/40">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-300 uppercase tracking-wider">
+                      {t('bootstrapCredentials')}
+                    </label>
+                    <span className="text-[10px] text-zinc-500 block mt-0.5">
+                      {t('bootstrapCredentialsSub')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2.5 bg-zinc-900/40 border border-zinc-800 rounded-lg">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">{t('defaultCredentialsLabel')}</span>
+                      {defaultCredentialsId ? (
+                        (() => {
+                          const activeCred = bootstrapCredentials.find(c => c.id === defaultCredentialsId);
+                          return activeCred ? (
+                            <span className="text-sm font-bold text-indigo-400 font-mono">{activeCred.username}</span>
+                          ) : (
+                            <span className="text-xs text-zinc-500 font-semibold">{t('manualInputSelect')}</span>
+                          );
+                        })()
+                      ) : (
+                        <span className="text-xs text-zinc-500 font-semibold">{t('manualInputSelect')}</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsCredentialsModalOpen(true)}
+                      className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Gear size={13} />
+                      {t('manageCredentialsBtn')}
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Global Pruning (Retention Policies) */}
@@ -675,6 +733,18 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
             </button>
           </div>
         </form>
+      )}
+
+      {isCredentialsModalOpen && (
+        <CredentialsModal
+          onClose={() => setIsCredentialsModalOpen(false)}
+          credentials={bootstrapCredentials}
+          defaultId={defaultCredentialsId}
+          onChange={(newCreds, newDefaultId) => {
+            setBootstrapCredentials(newCreds);
+            setDefaultCredentialsId(newDefaultId);
+          }}
+        />
       )}
     </div>
   );

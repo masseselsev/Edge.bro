@@ -30,6 +30,38 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
   const [autoDetectHostname, setAutoDetectHostname] = useState(false);
   const [forceOrchestratorProxy, setForceOrchestratorProxy] = useState(false);
 
+  const [credentials, setCredentials] = useState<{ id: string, username: string, password: string }[]>([]);
+  const [selectedCredId, setSelectedCredId] = useState('manual');
+
+  React.useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        const creds = data.bootstrap_credentials || [];
+        setCredentials(creds);
+        const defaultId = data.default_credentials_id;
+        if (defaultId) {
+          const defaultCred = creds.find((c: any) => c.id === defaultId);
+          if (defaultCred) {
+            setSelectedCredId(defaultId);
+            setUsername(defaultCred.username);
+            setPassword(defaultCred.password);
+            return;
+          }
+        }
+        if (creds.length > 0) {
+          setSelectedCredId(creds[0].id);
+          setUsername(creds[0].username);
+          setPassword(creds[0].password);
+        } else {
+          setSelectedCredId('manual');
+          setUsername('user');
+          setPassword('admin');
+        }
+      })
+      .catch(err => console.error(err));
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
@@ -100,6 +132,35 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
             />
           </div>
+
+          {credentials.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1">{t('defaultCredentialsSelect')}</label>
+              <select
+                value={selectedCredId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedCredId(val);
+                  if (val !== 'manual') {
+                    const match = credentials.find(c => c.id === val);
+                    if (match) {
+                      setUsername(match.username);
+                      setPassword(match.password);
+                    }
+                  }
+                }}
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none cursor-pointer"
+              >
+                {credentials.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.username}
+                  </option>
+                ))}
+                <option value="manual">{t('manualInputSelect')}</option>
+              </select>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-zinc-400 mb-1">{t('sshPortLabel')}</label>
@@ -114,9 +175,10 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
               <label className="block text-xs font-medium text-zinc-400 mb-1">{t('bootstrapUser')}</label>
               <input
                 type="text"
+                disabled={selectedCredId !== 'manual'}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
           </div>
@@ -125,9 +187,10 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
             <input
               type="password"
               required
+              disabled={selectedCredId !== 'manual'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -170,6 +233,38 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
   const [password, setPassword] = useState('admin');
   const [forceOrchestratorProxy, setForceOrchestratorProxy] = useState(false);
 
+  const [credentials, setCredentials] = useState<{ id: string, username: string, password: string }[]>([]);
+  const [selectedCredId, setSelectedCredId] = useState('manual');
+
+  React.useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        const creds = data.bootstrap_credentials || [];
+        setCredentials(creds);
+        const defaultId = data.default_credentials_id;
+        if (defaultId) {
+          const defaultCred = creds.find((c: any) => c.id === defaultId);
+          if (defaultCred) {
+            setSelectedCredId(defaultId);
+            setUsername(defaultCred.username);
+            setPassword(defaultCred.password);
+            return;
+          }
+        }
+        if (creds.length > 0) {
+          setSelectedCredId(creds[0].id);
+          setUsername(creds[0].username);
+          setPassword(creds[0].password);
+        } else {
+          setSelectedCredId('manual');
+          setUsername('user');
+          setPassword('admin');
+        }
+      })
+      .catch(err => console.error(err));
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
@@ -200,14 +295,43 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
             </label>
           </div>
 
+          {credentials.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1">{t('defaultCredentialsSelect')}</label>
+              <select
+                value={selectedCredId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedCredId(val);
+                  if (val !== 'manual') {
+                    const match = credentials.find(c => c.id === val);
+                    if (match) {
+                      setUsername(match.username);
+                      setPassword(match.password);
+                    }
+                  }
+                }}
+                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none cursor-pointer"
+              >
+                {credentials.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.username}
+                  </option>
+                ))}
+                <option value="manual">{t('manualInputSelect')}</option>
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-zinc-400 mb-1">{t('bootstrapUser')}</label>
             <input
               type="text"
               required
+              disabled={selectedCredId !== 'manual'}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
           <div>
@@ -215,10 +339,11 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
             <input
               type="password"
               required
+              disabled={selectedCredId !== 'manual'}
               placeholder={t('passwordLabel')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
 

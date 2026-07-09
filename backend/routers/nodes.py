@@ -181,6 +181,18 @@ def add_node(payload: schemas.NodeCreate, request: Request = None, db: Session =
     """
     Registers one or more new nodes and triggers bootstrap.
     """
+    try:
+        settings = db.query(models.Settings).first()
+        if settings and settings.bootstrap_credentials:
+            for cred in settings.bootstrap_credentials:
+                if cred.get("username") == payload.bootstrap_user and cred.get("password") == payload.bootstrap_password:
+                    if settings.default_credentials_id != cred.get("id"):
+                        settings.default_credentials_id = cred.get("id")
+                        db.commit()
+                    break
+    except Exception:
+        pass
+
     ips = parse_ip_input(payload.ip_address)
     if not ips:
         raise HTTPException(
@@ -370,6 +382,18 @@ def trigger_provision(node_id: int, payload: schemas.NodeProvisionRequest, reque
     """
     Triggers bootstrap on an existing node, caching its credentials in Redis.
     """
+    try:
+        settings = db.query(models.Settings).first()
+        if settings and settings.bootstrap_credentials:
+            for cred in settings.bootstrap_credentials:
+                if cred.get("username") == payload.bootstrap_user and cred.get("password") == payload.bootstrap_password:
+                    if settings.default_credentials_id != cred.get("id"):
+                        settings.default_credentials_id = cred.get("id")
+                        db.commit()
+                    break
+    except Exception:
+        pass
+
     node = db.query(models.Node).filter(models.Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")

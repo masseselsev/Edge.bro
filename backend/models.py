@@ -41,6 +41,8 @@ class Settings(Base):
     server_ips = Column(JSON, nullable=True)
     max_kiosk_isos = Column(Integer, default=5, nullable=False)
     server_name = Column(String, default="orchestrator", nullable=False)
+    bootstrap_credentials = Column(JSON, nullable=True, default=lambda: [{"id": "default", "username": "user", "password": "admin"}])
+    default_credentials_id = Column(String, nullable=True, default='default')
 
 
 

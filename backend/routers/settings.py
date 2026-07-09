@@ -140,6 +140,7 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
         ("default_cpu_quota", "CPU Quota"),
         ("server_ips", "Server IPs"),
         ("server_name", "Server Name"),
+        ("default_credentials_id", "Default Credentials ID"),
     ]
     for attr, label in fields:
         old_val = getattr(settings, attr, None)
@@ -152,6 +153,12 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
         else:
             if old_val != new_val:
                 changes.append(f"{label}: '{old_val}' ➔ '{new_val}'")
+
+    # Check if bootstrap_credentials changed
+    old_creds = settings.bootstrap_credentials or []
+    new_creds = [c.model_dump() for c in payload.bootstrap_credentials] if payload.bootstrap_credentials else []
+    if old_creds != new_creds:
+        changes.append("Bootstrap Credentials updated")
 
     old_policy = settings.retention_policy or {}
     new_policy = payload.retention_policy.model_dump() if payload.retention_policy else {}
@@ -185,6 +192,8 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     settings.default_cpu_quota = payload.default_cpu_quota
     settings.server_ips = payload.server_ips
     settings.server_name = payload.server_name
+    settings.bootstrap_credentials = new_creds
+    settings.default_credentials_id = payload.default_credentials_id
     db.commit()
 
     if rebuild_needed:

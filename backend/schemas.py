@@ -17,6 +17,12 @@ class ExclusionSchema(BaseModel):
     comment: str
 
 
+class CredentialSchema(BaseModel):
+    id: str
+    username: str
+    password: str
+
+
 class SettingsBase(BaseModel):
     borg_ssh_port: int = Field(default=12345, ge=1, le=65535)
     borg_repo_path: str = Field(default='/data/borg')
@@ -33,6 +39,8 @@ class SettingsBase(BaseModel):
     server_ips: Optional[List[str]] = Field(default=[])
     max_kiosk_isos: int = Field(default=5, ge=1)
     server_name: str = Field(default='orchestrator')
+    bootstrap_credentials: List[CredentialSchema] = Field(default=[])
+    default_credentials_id: str = Field(default='')
 
     @field_validator('server_name')
     @classmethod
