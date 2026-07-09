@@ -740,9 +740,57 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           onClose={() => setIsCredentialsModalOpen(false)}
           credentials={bootstrapCredentials}
           defaultId={defaultCredentialsId}
-          onChange={(newCreds, newDefaultId) => {
+          onChange={async (newCreds, newDefaultId) => {
             setBootstrapCredentials(newCreds);
             setDefaultCredentialsId(newDefaultId);
+            try {
+              const savedTz = useLocalTime ? 'Browser Local' : timezone;
+              const res = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  borg_ssh_port: sshPort,
+                  borg_repo_path: repoPath,
+                  keep_daily: policyKeepDaily,
+                  keep_weekly: policyKeepWeekly,
+                  keep_monthly: policyKeepMonthly,
+                  global_exclusions: globalExclusions,
+                  orchestrator_ip: orchestratorIp,
+                  timezone: savedTz,
+                  language: language,
+                  default_compression: defaultCompression,
+                  default_cpu_quota: defaultCpuQuota === '' ? null : Number(defaultCpuQuota),
+                  server_ips: manualIps,
+                  max_kiosk_isos: maxKioskIsos,
+                  server_name: serverName,
+                  bootstrap_credentials: newCreds,
+                  default_credentials_id: newDefaultId,
+                  retention_policy: {
+                    type: policyType,
+                    keep_daily: policyKeepDaily,
+                    keep_weekly: policyKeepWeekly,
+                    keep_monthly: policyKeepMonthly,
+                    keep_last: policyKeepLast,
+                    within_value: policyWithinValue,
+                    within_unit: policyWithinUnit
+                  }
+                })
+              });
+              if (res.ok) {
+                const data = await res.json();
+                if (data.bootstrap_credentials !== undefined) {
+                  setBootstrapCredentials(data.bootstrap_credentials || []);
+                }
+                if (data.default_credentials_id !== undefined) {
+                  setDefaultCredentialsId(data.default_credentials_id || '');
+                }
+                if (onSettingsUpdated) {
+                  onSettingsUpdated(data);
+                }
+              }
+            } catch (e) {
+              console.error(e);
+            }
           }}
         />
       )}
