@@ -152,8 +152,8 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
         old_val = getattr(settings, attr, None)
         new_val = getattr(payload, attr, None)
         if attr in ("global_exclusions", "server_ips"):
-            old_str = ",".join(old_val) if isinstance(old_val, list) else str(old_val)
-            new_str = ",".join(new_val) if isinstance(new_val, list) else str(new_val)
+            old_str = ",".join([str(x) for x in old_val]) if isinstance(old_val, list) else str(old_val)
+            new_str = ",".join([str(x) for x in new_val]) if isinstance(new_val, list) else str(new_val)
             if old_str != new_str:
                 changes.append(f"{label}: '{old_str}' ➔ '{new_str}'")
         else:
@@ -189,7 +189,7 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     settings.keep_daily = payload.keep_daily
     settings.keep_weekly = payload.keep_weekly
     settings.keep_monthly = payload.keep_monthly
-    settings.global_exclusions = payload.global_exclusions
+    settings.global_exclusions = [e.model_dump() for e in payload.global_exclusions] if payload.global_exclusions else []
     settings.orchestrator_ip = payload.orchestrator_ip
     settings.timezone = payload.timezone
     settings.language = payload.language
@@ -200,6 +200,9 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     settings.server_name = payload.server_name
     settings.bootstrap_credentials = new_creds
     settings.default_credentials_id = payload.default_credentials_id
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(settings, "bootstrap_credentials")
+    flag_modified(settings, "global_exclusions")
     db.commit()
 
     if rebuild_needed:
