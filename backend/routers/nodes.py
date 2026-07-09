@@ -540,7 +540,10 @@ def apply_saved_license_task(node_id: int):
             
         # Re-fetch new HASP details to update Node status
         from routers.restore import get_node_hasp_status
-        get_node_hasp_status(node_id=node.id, db=db, current_user=None)
+        hasp_res = get_node_hasp_status(node_id=node.id, db=db, current_user=None)
+        if hasp_res.get("status") == "active":
+            node.status = "READY"
+            db.commit()
     except Exception as e:
         print(f"Error applying saved license to node {node_id}: {e}")
 

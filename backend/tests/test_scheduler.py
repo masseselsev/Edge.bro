@@ -47,7 +47,8 @@ def test_scheduler_trigger_normal_window(mock_run_backup_task, mock_redis, test_
         ip_address="192.168.1.10",
         group_id=group.id,
         backup_paused=False,
-        backup_today=False
+        backup_today=False,
+        status="READY"
     )
     test_db.add(node)
     test_db.commit()
@@ -94,7 +95,8 @@ def test_scheduler_paused_node(mock_run_backup_task, mock_redis, test_db):
         ip_address="192.168.1.10",
         group_id=group.id,
         backup_paused=True,
-        backup_today=False
+        backup_today=False,
+        status="READY"
     )
     test_db.add(node)
     test_db.commit()
@@ -135,13 +137,15 @@ def test_scheduler_concurrency_limit(mock_run_backup_task, mock_redis, test_db):
         hostname="node-01",
         ip_address="192.168.1.10",
         group_id=group.id,
-        backup_paused=False
+        backup_paused=False,
+        status="READY"
     )
     node2 = models.Node(
         hostname="node-02",
         ip_address="192.168.1.11",
         group_id=group.id,
-        backup_paused=False
+        backup_paused=False,
+        status="READY"
     )
     test_db.add(node1)
     test_db.add(node2)
@@ -193,7 +197,8 @@ def test_scheduler_backup_today_outside_schedule_but_in_window(mock_run_backup_t
         ip_address="192.168.1.10",
         group_id=group.id,
         backup_paused=False,
-        backup_today=True
+        backup_today=True,
+        status="READY"
     )
     test_db.add(node)
     test_db.commit()
@@ -235,7 +240,8 @@ def test_scheduler_missed_window_marking(mock_run_backup_task, mock_redis, test_
         group_id=group.id,
         backup_paused=False,
         backup_today=True,
-        missed_window=False
+        missed_window=False,
+        status="READY"
     )
     test_db.add(node)
     test_db.commit()
@@ -281,7 +287,8 @@ def test_scheduler_retry_delay(mock_run_backup_task, mock_redis, test_db):
         ip_address="192.168.1.10",
         group_id=group.id,
         backup_paused=False,
-        backup_today=True
+        backup_today=True,
+        status="READY"
     )
     test_db.add(node)
     test_db.commit()
