@@ -41,7 +41,7 @@ class SettingsBase(BaseModel):
     max_kiosk_isos: int = Field(default=5, ge=1)
     server_name: str = Field(default='orchestrator')
     bootstrap_credentials: List[CredentialSchema] = Field(default=[])
-    default_credentials_id: str = Field(default='')
+    default_credentials_id: Optional[str] = Field(default='')
 
     @field_validator('server_name')
     @classmethod
