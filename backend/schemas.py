@@ -1,6 +1,21 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+class UTCModel(BaseModel):
+    """Base model: serializes naive datetime as UTC ('Z' suffix), supports ORM mode."""
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={
+            datetime: lambda v: (
+                v.replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
+                if v.tzinfo is None
+                else v.isoformat().replace('+00:00', 'Z')
+            )
+        }
+    )
+
 
 class RetentionPolicySchema(BaseModel):
     type: str = Field(default='interval')  # 'interval', 'count', 'timeframe'
@@ -218,7 +233,7 @@ class KioskCreate(KioskBase):
     pass
 
 
-class KioskResponse(KioskBase):
+class KioskResponse(UTCModel, KioskBase):
     id: int
     key: str
     status: str
@@ -235,11 +250,6 @@ class KioskResponse(KioskBase):
     last_seen: Optional[datetime] = None
     is_online: Optional[bool] = None
     iso_built_at: Optional[datetime] = None
-
-
-
-    class Config:
-        from_attributes = True
 
 
 class HandshakeRequest(BaseModel):
