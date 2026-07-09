@@ -153,7 +153,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
               >
                 {credentials.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.username}{c.comment ? ` (${c.comment})` : ''}
+                    {c.comment ? c.comment : `${c.username}:${c.password}`}
                   </option>
                 ))}
                 <option value="manual">{t('manualInputSelect')}</option>
@@ -315,7 +315,7 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
               >
                 {credentials.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.username}{c.comment ? ` (${c.comment})` : ''}
+                    {c.comment ? c.comment : `${c.username}:${c.password}`}
                   </option>
                 ))}
                 <option value="manual">{t('manualInputSelect')}</option>
