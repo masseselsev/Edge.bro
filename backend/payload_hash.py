@@ -26,13 +26,12 @@ BINARY_PATHS = [
     "/payload_client/bin/borg",
 ]
 
-# Small /app/ files that are shared into the ISO — hash full content but
-# only from canonical paths that are the same in both backend and worker.
-APP_SHARED_FILES = [
-    "/app/core/disk_ops.py",
-    "/app/routers/network.py",
-    "/app/version.py",
-]
+# NOTE: /app/ files (disk_ops.py, network.py, version.py) are intentionally
+# NOT hashed here. The backend and worker containers may mount different
+# versions of /app/ (backend uses live host mount for hot-reload, worker uses
+# baked image), causing persistent hash mismatches on every restart.
+# Those files only change with a deliberate `docker compose build` + redeploy,
+# at which point a manual ISO rebuild can be triggered if needed.
 
 # Skip these when walking directories (generated files that change on import)
 SKIP_DIRS = {"__pycache__"}
@@ -66,10 +65,10 @@ def _hash_binary_fast(h, path: str) -> None:
 
 def compute_payload_hash() -> str:
     """
-    Compute SHA256 over all payload source files. Deterministic and fast:
+    Compute SHA256 over /payload_client/ source files. Deterministic and fast:
     - Directories: walk sorted, skip __pycache__ and .pyc files
-    - Large binaries: size + first/last 64KB only
-    - Small shared /app/ files: full content
+    - Large binaries (/payload_client/bin/borg): size + first/last 64KB only
+    - /app/ paths intentionally excluded (differ between containers)
     Returns a 64-char hex string.
     """
     h = hashlib.sha256()
@@ -93,10 +92,6 @@ def compute_payload_hash() -> str:
         if os.path.isfile(path):
             _hash_binary_fast(h, path)
 
-    for path in sorted(APP_SHARED_FILES):
-        if os.path.isfile(path):
-            h.update(path.encode())
-            _hash_file(h, path)
 
     return h.hexdigest()
 
