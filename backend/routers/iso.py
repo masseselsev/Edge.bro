@@ -268,7 +268,78 @@ def get_iso_status(auth = Depends(require_admin)):
 
 
 import subprocess
+import logging
+import urllib.request
 from fastapi.responses import StreamingResponse
+
+logger = logging.getLogger(__name__)
+
+def download_kiosk_packages(os_version: str, target_dir: str):
+    """
+    Downloads edge-hasp-eoawt3 and edge-aksusbd deb packages for the target
+    OS version from vitcompany repo.
+    """
+    import urllib.request
+    import re
+    
+    # Map OS version to release name
+    release = "bookworm"
+    if not os_version:
+        release = "bookworm"
+    elif "12" in os_version or "bookworm" in os_version.lower():
+        release = "bookworm"
+    elif "11" in os_version or "bullseye" in os_version.lower():
+        release = "bullseye"
+    elif "10" in os_version or "buster" in os_version.lower():
+        release = "buster"
+        
+    os.makedirs(target_dir, exist_ok=True)
+    
+    # Fetch Packages index
+    base_url = f"http://edge.vitcompany.com/repo/{release}/stable"
+    packages_url = f"{base_url}/dists/{release}/main/binary-amd64/Packages"
+    
+    try:
+        req = urllib.request.Request(packages_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            content = response.read().decode('utf-8', errors='ignore')
+            
+        # Parse Packages to find Filename for edge-hasp-eoawt3 and edge-aksusbd
+        packages = content.split("\n\n")
+        filenames = []
+        for pkg_info in packages:
+            lines = pkg_info.strip().split("\n")
+            pkg_name = None
+            pkg_file = None
+            for line in lines:
+                if line.startswith("Package:"):
+                    pkg_name = line.split(":", 1)[1].strip()
+                elif line.startswith("Filename:"):
+                    pkg_file = line.split(":", 1)[1].strip()
+            if pkg_name in ("edge-hasp-eoawt3", "edge-aksusbd") and pkg_file:
+                filenames.append(pkg_file)
+                
+        if not filenames:
+            # Fallback filenames if Packages file couldn't be parsed
+            filenames = [
+                "pool/main/e/edge-hasp-eoawt3/edge-hasp-eoawt3_3.2.0-2_amd64.deb",
+            ]
+            
+        for filename in set(filenames):
+            deb_url = f"{base_url}/{filename}"
+            deb_name = os.path.basename(filename)
+            dest_path = os.path.join(target_dir, deb_name)
+            
+            # Download file
+            req_deb = urllib.request.Request(deb_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req_deb, timeout=15) as deb_resp:
+                with open(dest_path, "wb") as f:
+                    f.write(deb_resp.read())
+                    
+        logger.info(f"Successfully downloaded offline packages for {release} into {target_dir}")
+    except Exception as e:
+        logger.warning(f"Failed to download offline packages for {release}: {e}")
+
 
 @router.get("/repos/{hostname}/download")
 def download_repo(
@@ -317,6 +388,10 @@ def download_repo(
     temp_parent = f"/data/borg/tmp/download_{temp_uuid}"
     temp_repo_dir = os.path.join(temp_parent, hostname)
     os.makedirs(temp_repo_dir, exist_ok=True)
+
+    # Fetch offline Sentinel package cache into repository folder
+    packages_dir = os.path.join(temp_repo_dir, "packages")
+    download_kiosk_packages(node.os_version, packages_dir)
     
     # Use distinct temporary HOME directory to avoid cache and security history lockups/conflicts
     temp_home = f"/tmp/borg_home_{temp_uuid}"

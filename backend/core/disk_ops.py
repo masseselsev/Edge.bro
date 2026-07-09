@@ -766,79 +766,122 @@ def format_and_restore(
             if dpkg_check.returncode == 0:
                 emit_log("Re-initializing Sentinel LDK Runtime inside target chroot...")
 
-                # Setup temporary DNS inside chroot so apt-get update can resolve repo domains
-                resolv_conf_path = os.path.join(target_mnt, "etc", "resolv.conf")
-                backup_resolv_conf = None
-                if os.path.exists(resolv_conf_path) or os.path.islink(resolv_conf_path):
-                    try:
-                        # Read contents or symlink target to restore it later
-                        if os.path.islink(resolv_conf_path):
-                            backup_resolv_conf = ("symlink", os.readlink(resolv_conf_path))
-                        else:
-                            with open(resolv_conf_path, "rb") as f:
-                                backup_resolv_conf = ("file", f.read())
-                        os.remove(resolv_conf_path)
-                    except Exception as re_err:
-                        emit_log(f"WARNING: Failed to backup target resolv.conf: {re_err}")
+                # 1. Check if we have offline packages cached in the repository
+                local_pkg_src = os.path.join(repo_path, "packages")
+                local_pkg_dst = os.path.join(target_mnt, "tmp", "offline_packages")
+                has_local_pkgs = False
+                deb_files = []
 
-                try:
-                    if os.path.exists("/etc/resolv.conf"):
-                        shutil.copy2("/etc/resolv.conf", resolv_conf_path)
-                except Exception as cp_err:
-                    emit_log(f"WARNING: Failed to copy host resolv.conf to chroot: {cp_err}")
-
-                # Configure APT Proxy
-                apt_proxy_conf = os.path.join(target_mnt, "etc", "apt", "apt.conf.d", "proxy.conf")
-                if orchestrator_ip:
-                    emit_log(f"Configuring target APT proxy to use orchestrator at {orchestrator_ip}:3142...")
-                    try:
-                        os.makedirs(os.path.dirname(apt_proxy_conf), exist_ok=True)
-                        with open(apt_proxy_conf, "w") as f:
-                            f.write(f'Acquire::http::Proxy "http://{orchestrator_ip}:3142/";\n')
-                            f.write(f'Acquire::https::Proxy "http://{orchestrator_ip}:3142/";\n')
-                    except Exception as proxy_err:
-                        emit_log(f"WARNING: Failed to write proxy config: {proxy_err}")
-                else:
-                    # If no orchestrator IP, disable/remove stale proxy so it falls back to direct internet
-                    if os.path.exists(apt_proxy_conf):
+                if os.path.exists(local_pkg_src):
+                    deb_files = [f for f in os.listdir(local_pkg_src) if f.endswith(".deb")]
+                    if deb_files:
+                        emit_log("Found offline Sentinel packages in repository cache. Preparing offline installation...")
                         try:
-                            os.remove(apt_proxy_conf)
-                            emit_log("Removed stale target APT proxy config.")
-                        except Exception:
-                            pass
+                            shutil.rmtree(local_pkg_dst, ignore_errors=True)
+                            shutil.copytree(local_pkg_src, local_pkg_dst)
+                            has_local_pkgs = True
+                        except Exception as copy_err:
+                            emit_log(f"WARNING: Failed to copy offline packages to target: {copy_err}")
 
-                # Run Purge
-                emit_log("Purging old configuration of edge-hasp-eoawt3...")
-                p_purge = subprocess.run(["chroot", target_mnt, "apt-get", "purge", "-y", "edge-hasp-eoawt3"], capture_output=True, text=True)
-                if p_purge.returncode != 0:
-                    emit_log(f"WARNING: apt-get purge failed (exit code {p_purge.returncode}): {p_purge.stderr.strip()}")
-
-                # Run Update
-                emit_log("Updating package cache...")
-                p_update = subprocess.run(["chroot", target_mnt, "apt-get", "update"], capture_output=True, text=True)
-                if p_update.returncode != 0:
-                    emit_log(f"WARNING: apt-get update failed (exit code {p_update.returncode}): {p_update.stderr.strip()}")
-
-                # Run Install
-                emit_log("Reinstalling edge-hasp-eoawt3...")
-                p_install = subprocess.run(["chroot", target_mnt, "apt-get", "install", "-y", "edge-hasp-eoawt3"], capture_output=True, text=True)
-                if p_install.returncode != 0:
-                    emit_log(f"WARNING: apt-get install failed (exit code {p_install.returncode}): {p_install.stderr.strip()}")
-                else:
-                    emit_log("Sentinel LDK Runtime successfully re-initialized.")
-
-                # Restore original resolv.conf
-                try:
-                    if os.path.exists(resolv_conf_path) or os.path.islink(resolv_conf_path):
-                        os.remove(resolv_conf_path)
-                    if backup_resolv_conf:
-                        if backup_resolv_conf[0] == "symlink":
-                            os.symlink(backup_resolv_conf[1], resolv_conf_path)
+                if has_local_pkgs:
+                    # Offline local installation
+                    deb_paths_in_chroot = [f"/tmp/offline_packages/{f}" for f in deb_files]
+                    emit_log(f"Installing offline packages: {', '.join(deb_files)}...")
+                    
+                    # Run Install
+                    p_install = subprocess.run(
+                        ["chroot", target_mnt, "apt-get", "install", "-y"] + deb_paths_in_chroot,
+                        capture_output=True,
+                        text=True
+                    )
+                    if p_install.returncode != 0:
+                        emit_log(f"WARNING: local apt-get install failed (exit code {p_install.returncode}), trying dpkg: {p_install.stderr.strip()}")
+                        p_dpkg = subprocess.run(
+                            ["chroot", target_mnt, "dpkg", "-i"] + deb_paths_in_chroot,
+                            capture_output=True,
+                            text=True
+                        )
+                        if p_dpkg.returncode != 0:
+                            emit_log(f"WARNING: local dpkg install failed: {p_dpkg.stderr.strip()}")
                         else:
-                            with open(resolv_conf_path, "wb") as f:
-                                f.write(backup_resolv_conf[1])
-                except Exception as rest_err:
-                    emit_log(f"WARNING: Failed to restore target resolv.conf: {rest_err}")
+                            emit_log("Sentinel LDK Runtime successfully re-initialized (offline via dpkg).")
+                    else:
+                        emit_log("Sentinel LDK Runtime successfully re-initialized (offline via apt-get).")
+
+                    # Clean up copied files inside target
+                    shutil.rmtree(local_pkg_dst, ignore_errors=True)
+                else:
+                    # Online fallback: Setup temporary DNS inside chroot so apt-get update can resolve repo domains
+                    resolv_conf_path = os.path.join(target_mnt, "etc", "resolv.conf")
+                    backup_resolv_conf = None
+                    if os.path.exists(resolv_conf_path) or os.path.islink(resolv_conf_path):
+                        try:
+                            if os.path.islink(resolv_conf_path):
+                                backup_resolv_conf = ("symlink", os.readlink(resolv_conf_path))
+                            else:
+                                with open(resolv_conf_path, "rb") as f:
+                                    backup_resolv_conf = ("file", f.read())
+                            os.remove(resolv_conf_path)
+                        except Exception as re_err:
+                            emit_log(f"WARNING: Failed to backup target resolv.conf: {re_err}")
+
+                    try:
+                        if os.path.exists("/etc/resolv.conf"):
+                            shutil.copy2("/etc/resolv.conf", resolv_conf_path)
+                    except Exception as cp_err:
+                        emit_log(f"WARNING: Failed to copy host resolv.conf to chroot: {cp_err}")
+
+                    # Configure APT Proxy
+                    apt_proxy_conf = os.path.join(target_mnt, "etc", "apt", "apt.conf.d", "proxy.conf")
+                    if orchestrator_ip:
+                        emit_log(f"Configuring target APT proxy to use orchestrator at {orchestrator_ip}:3142...")
+                        try:
+                            os.makedirs(os.path.dirname(apt_proxy_conf), exist_ok=True)
+                            with open(apt_proxy_conf, "w") as f:
+                                f.write(f'Acquire::http::Proxy "http://{orchestrator_ip}:3142/";\n')
+                                f.write(f'Acquire::https::Proxy "http://{orchestrator_ip}:3142/";\n')
+                        except Exception as proxy_err:
+                            emit_log(f"WARNING: Failed to write proxy config: {proxy_err}")
+                    else:
+                        if os.path.exists(apt_proxy_conf):
+                            try:
+                                os.remove(apt_proxy_conf)
+                                emit_log("Removed stale target APT proxy config.")
+                            except Exception:
+                                pass
+
+                    # Run Purge
+                    emit_log("Purging old configuration of edge-hasp-eoawt3...")
+                    p_purge = subprocess.run(["chroot", target_mnt, "apt-get", "purge", "-y", "edge-hasp-eoawt3"], capture_output=True, text=True)
+                    if p_purge.returncode != 0:
+                        emit_log(f"WARNING: apt-get purge failed (exit code {p_purge.returncode}): {p_purge.stderr.strip()}")
+
+                    # Run Update
+                    emit_log("Updating package cache...")
+                    p_update = subprocess.run(["chroot", target_mnt, "apt-get", "update"], capture_output=True, text=True)
+                    if p_update.returncode != 0:
+                        emit_log(f"WARNING: apt-get update failed (exit code {p_update.returncode}): {p_update.stderr.strip()}")
+
+                    # Run Install
+                    emit_log("Reinstalling edge-hasp-eoawt3...")
+                    p_install = subprocess.run(["chroot", target_mnt, "apt-get", "install", "-y", "edge-hasp-eoawt3"], capture_output=True, text=True)
+                    if p_install.returncode != 0:
+                        emit_log(f"WARNING: apt-get install failed (exit code {p_install.returncode}): {p_install.stderr.strip()}")
+                    else:
+                        emit_log("Sentinel LDK Runtime successfully re-initialized.")
+
+                    # Restore original resolv.conf
+                    try:
+                        if os.path.exists(resolv_conf_path) or os.path.islink(resolv_conf_path):
+                            os.remove(resolv_conf_path)
+                        if backup_resolv_conf:
+                            if backup_resolv_conf[0] == "symlink":
+                                os.symlink(backup_resolv_conf[1], resolv_conf_path)
+                            else:
+                                with open(resolv_conf_path, "wb") as f:
+                                    f.write(backup_resolv_conf[1])
+                    except Exception as rest_err:
+                        emit_log(f"WARNING: Failed to restore target resolv.conf: {rest_err}")
         except Exception as ae:
             emit_log(f"WARNING: Failed to reinstall/re-initialize edge-hasp-eoawt3: {str(ae)}")
 
