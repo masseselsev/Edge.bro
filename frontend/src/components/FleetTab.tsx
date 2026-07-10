@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Settings as Gear, ShieldAlert, CheckCircle, RefreshCw, AlertTriangle, Trash2, Search, Folder, FolderOpen, ChevronRight, ChevronDown, Cpu, Square, CheckSquare } from 'lucide-react';
+import { Plus, Settings as Gear, ShieldAlert, CheckCircle, RefreshCw, AlertTriangle, Trash2, Search, Folder, FolderOpen, ChevronRight, ChevronDown, Cpu, Square, CheckSquare, ArrowUp, ArrowDown } from 'lucide-react';
 import { AddNodeModal, ProvisionNodeModal, BackupCommentModal } from './NodeModals';
 import { NodeRow } from './NodeRow';
 import NodeDetailsModal from './NodeDetailsModal';
@@ -52,6 +52,72 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [grouping, setGrouping] = useState<'flat' | 'prefix' | 'subnet'>('flat');
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
+  // Sorting State
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortOrder('asc');
+    }
+  };
+
+  const getSortedNodes = (nodesList: Node[]) => {
+    if (!sortKey) return nodesList;
+
+    return [...nodesList].sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      if (sortKey === 'hostname') {
+        valA = a.hostname.toLowerCase();
+        valB = b.hostname.toLowerCase();
+      } else if (sortKey === 'ip_address') {
+        const parseIP = (ip: string) => {
+          const parts = ip.split(':')[0].split('.').map(Number);
+          return parts.length === 4 ? parts : [0, 0, 0, 0];
+        };
+        const ipA = parseIP(a.ip_address);
+        const ipB = parseIP(b.ip_address);
+        for (let i = 0; i < 4; i++) {
+          if (ipA[i] !== ipB[i]) {
+            return sortOrder === 'asc' ? ipA[i] - ipB[i] : ipB[i] - ipA[i];
+          }
+        }
+        return 0;
+      } else if (sortKey === 'os_version') {
+        valA = (a.os_version || '').toLowerCase();
+        valB = (b.os_version || '').toLowerCase();
+      } else if (sortKey === 'disk_type') {
+        valA = (a.disk_type || '').toLowerCase();
+        valB = (b.disk_type || '').toLowerCase();
+      } else if (sortKey === 'status') {
+        valA = a.status.toLowerCase();
+        valB = b.status.toLowerCase();
+      } else if (sortKey === 'last_backup') {
+        valA = a.last_backup ? new Date(a.last_backup).getTime() : 0;
+        valB = b.last_backup ? new Date(b.last_backup).getTime() : 0;
+        return sortOrder === 'asc' ? valA - valB : valB - valA;
+      }
+
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
+
+  const renderSortIcon = (key: string) => {
+    if (sortKey !== key) return null;
+    return sortOrder === 'asc' ? (
+      <ArrowUp size={12} className="inline ml-1 text-indigo-400" />
+    ) : (
+      <ArrowDown size={12} className="inline ml-1 text-indigo-400" />
+    );
+  };
 
   // Submitting States
   const [submitting, setSubmitting] = useState(false);
@@ -258,6 +324,8 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     );
   });
 
+  const sortedFilteredNodes = getSortedNodes(filteredNodes);
+
   const renderNodeRow = (node: Node, depth = 0) => {
     const group = groups.find(g => g.id === node.group_id);
     const groupName = group ? group.name : null;
@@ -288,12 +356,12 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
   const renderGroupedContent = () => {
     if (grouping === 'flat') {
-      return filteredNodes.map(node => renderNodeRow(node));
+      return sortedFilteredNodes.map(node => renderNodeRow(node));
     }
 
     if (grouping === 'prefix') {
       const groups: Record<string, Node[]> = {};
-      filteredNodes.forEach(node => {
+      sortedFilteredNodes.forEach(node => {
         const match = node.hostname.match(/^([^0-9.-]+)/);
         const prefix = match ? match[1] : 'Other';
         if (!groups[prefix]) groups[prefix] = [];
@@ -322,7 +390,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
     if (grouping === 'subnet') {
       const rootTree: any = {};
-      filteredNodes.forEach(node => {
+      sortedFilteredNodes.forEach(node => {
         const parts = node.ip_address.split('.');
         if (parts.length !== 4) return;
         const o1 = parts[0] + '.x.x.x';
@@ -492,13 +560,43 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                   />
                 </th>
               )}
-              <th className="px-4 py-2.5">{t('hostnameLabel')}</th>
-              <th className="px-4 py-2.5">{t('ipAddressLabel')}</th>
-              <th className="px-4 py-2.5">{t('osVersion') || 'OS Version'}</th>
-              <th className="px-4 py-2.5">{t('diskInterface') || 'Disk & Interface'}</th>
-              <th className="px-4 py-2.5">{t('statusAction') || 'Status / Action'}</th>
-              <th className="px-4 py-2.5">{t('lastBackup') || 'Last Backup'}</th>
-              <th className="px-4 py-2.5 text-right">{t('actions')}</th>
+              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('hostname')}>
+                <div className="flex items-center gap-1">
+                  {t('hostnameLabel')}
+                  {renderSortIcon('hostname')}
+                </div>
+              </th>
+              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('ip_address')}>
+                <div className="flex items-center gap-1">
+                  {t('ipAddressLabel')}
+                  {renderSortIcon('ip_address')}
+                </div>
+              </th>
+              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('os_version')}>
+                <div className="flex items-center gap-1">
+                  {t('osVersion') || 'OS Version'}
+                  {renderSortIcon('os_version')}
+                </div>
+              </th>
+              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('disk_type')}>
+                <div className="flex items-center gap-1">
+                  {t('diskInterface') || 'Disk & Interface'}
+                  {renderSortIcon('disk_type')}
+                </div>
+              </th>
+              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('status')}>
+                <div className="flex items-center gap-1">
+                  {t('statusAction') || 'Status / Action'}
+                  {renderSortIcon('status')}
+                </div>
+              </th>
+              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('last_backup')}>
+                <div className="flex items-center gap-1">
+                  {t('lastBackup') || 'Last Backup'}
+                  {renderSortIcon('last_backup')}
+                </div>
+              </th>
+              <th className="px-4 py-2.5 text-right select-none">{t('actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
