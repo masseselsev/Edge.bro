@@ -921,6 +921,13 @@ def format_and_restore(
                 checkin_sh_content = (
                     "#!/bin/bash\n"
                     f"SERVER_IPS=({targets_bash})\n\n"
+                    "# Wait for global IP address to be assigned (up to 60 seconds)\n"
+                    "for i in {1..30}; do\n"
+                    "    if ip addr show scope global | grep -q inet; then\n"
+                    "        break\n"
+                    "    fi\n"
+                    "    sleep 2\n"
+                    "done\n\n"
                     "for ip in \"${SERVER_IPS[@]}\"; do\n"
                     "    if ping -c 1 -W 1 \"$ip\" >/dev/null 2>&1; then\n"
                     "        HOSTNAME=$(hostname)\n"
