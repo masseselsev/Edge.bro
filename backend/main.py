@@ -190,9 +190,7 @@ def upgrade_settings(db: Session):
             {"pattern": "/var/spool/edge/*", "comment": "Edge spool directory"},
             {"pattern": "/var/log/journal/*", "comment": "Systemd journal logs"},
             {"pattern": "/var/log/**/*.gz", "comment": "Compressed rotated logs"},
-            {"pattern": "/var/log/**/*.1", "comment": "Rotated log backups"},
-            {"pattern": "/var/hasplm/*", "comment": "Sentinel HASP licensing data"},
-            {"pattern": "/etc/hasplm/*", "comment": "Sentinel HASP licensing config"}
+            {"pattern": "/var/log/**/*.1", "comment": "Rotated log backups"}
         ]
         
         current_exclusions = settings.global_exclusions
@@ -209,6 +207,17 @@ def upgrade_settings(db: Session):
                 else:
                     settings.global_exclusions = [{"pattern": x, "comment": "Custom exclusion"} for x in current_exclusions]
                 db.commit()
+        
+        # Clean up any existing settings exclusions that contain Sentinel HASP paths
+        if isinstance(settings.global_exclusions, list):
+            cleaned_exclusions = [
+                x for x in settings.global_exclusions
+                if isinstance(x, dict) and x.get("pattern") not in ["/var/hasplm/*", "/etc/hasplm/*"]
+            ]
+            if len(cleaned_exclusions) != len(settings.global_exclusions):
+                settings.global_exclusions = cleaned_exclusions
+                db.commit()
+                print("Cleaned active global settings: removed Sentinel HASP exclusions.")
 
 
 # Include routers
