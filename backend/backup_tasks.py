@@ -285,6 +285,35 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
     redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
     redis_client.setex(f"backup_running:{node.id}", 14400, f"{int(time.time())}:{task_id}")
 
+    # Check Sentinel HASP license for READY nodes
+    if node.status == "READY":
+        # Wait if there's an active license lock (e.g. fingerprint download or license update in progress)
+        lock_key = f"license_lock:{node.id}"
+        for _ in range(5):
+            if not redis_client.exists(lock_key):
+                break
+            time.sleep(1)
+            
+        from core.hasp_helper import check_hasp_status_on_node
+        hasp_status = check_hasp_status_on_node(node)
+        if hasp_status in ("no_license", "clone_detected", "disabled", "expired"):
+            node.status = "RESTORED"
+            db.commit()
+            from database import log_user_action
+            log_user_action(db, "System: License Monitor", "Node Status Demoted", f"Ready node '{node.hostname}' detected with inactive/expired license ({hasp_status}) during backup. Status demoted to RESTORED.", None)
+            
+            # Create task log entry and mark it as failed
+            task_log = TaskLog(id=task_id, task_type="BACKUP", status="FAILED", node_id=node_id, log_output="")
+            db.add(task_log)
+            db.commit()
+            log_to_task(task_id, f"Backup aborted: Node HASP license status is inactive ({hasp_status}). Licence update is required.", status="FAILED")
+            db.close()
+            try:
+                redis_client.delete(f"backup_running:{node.id}")
+            except Exception:
+                pass
+            return {"status": "FAILED", "error": f"Inactive license status: {hasp_status}"}
+
     task_log = TaskLog(id=task_id, task_type="BACKUP", status="RUNNING", node_id=node_id, log_output="")
     db.add(task_log)
     db.commit()

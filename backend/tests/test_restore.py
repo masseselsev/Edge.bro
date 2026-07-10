@@ -558,6 +558,88 @@ def test_checkin_restored_endpoint_flow(db_session, monkeypatch):
     assert node.status == "RESTORED"
 
 
+@patch("redis.Redis.from_url")
+@patch("subprocess.run")
+def test_background_license_checks_and_locks(mock_run, mock_redis, db_session, monkeypatch):
+    # Mock Redis client
+    mock_client = MagicMock()
+    mock_client.exists.return_value = False
+    mock_redis.return_value = mock_client
+    
+    # Mock modules SessionLocal and redis_client to use test sqlite DB and mock redis
+    class SessionProxy:
+        def __init__(self, s):
+            self.s = s
+        def __getattr__(self, name):
+            return getattr(self.s, name)
+        def close(self):
+            pass
+            
+    monkeypatch.setattr("tasks.SessionLocal", lambda: SessionProxy(db_session))
+    monkeypatch.setattr("backup_tasks.SessionLocal", lambda: SessionProxy(db_session))
+    monkeypatch.setattr("tasks.redis_client", mock_client)
+
+    # Create node in RESTORED status
+    node_restored = models.Node(
+        hostname="TEST-RESTORED-NODE",
+        ip_address="192.168.222.190",
+        status="RESTORED",
+        hasp_runtime_version="3.2.0-2"
+    )
+    db_session.add(node_restored)
+    db_session.commit()
+    db_session.refresh(node_restored)
+
+    # 1. Test success HASP parse returning "active"
+    class MockCompletedProcessActive:
+        returncode = 0
+        stdout = '{"haspid": "123456", "typ": "local"} ---FEATURES_SEPARATOR--- {"fid": "1", "fn": "Feature 1"}'
+        stderr = ""
+    mock_run.return_value = MockCompletedProcessActive()
+
+    from tasks import scheduler_tick
+    res = scheduler_tick()
+    assert res["status"] == "SUCCESS"
+    db_session.refresh(node_restored)
+    assert node_restored.status == "READY"
+
+    # 2. Test Ready node demotion during backup task
+    # Create node in READY status
+    node_ready = models.Node(
+        hostname="TEST-READY-NODE",
+        ip_address="192.168.222.191",
+        status="READY",
+        hasp_runtime_version="3.2.0-2"
+    )
+    db_session.add(node_ready)
+    db_session.commit()
+    db_session.refresh(node_ready)
+    print(f"\nDEBUG TEST: node_ready.id={node_ready.id} (type: {type(node_ready.id)})")
+
+    # Mock subprocess.run to return "no_license" (empty devices JSON)
+    class MockCompletedProcessNoLicense:
+        returncode = 0
+        stdout = '[] ---FEATURES_SEPARATOR--- []'
+        stderr = ""
+    mock_run.return_value = MockCompletedProcessNoLicense()
+
+    from backup_tasks import run_backup_task
+    from celery.app.task import Task
+    # Mock Task.request property using monkeypatch to return mock request
+    mock_request = MagicMock()
+    mock_request.id = "test-backup-task-id"
+    monkeypatch.setattr(Task, "request", mock_request)
+    
+    with patch("tasks.log_to_task") as mock_log:
+        res_backup = run_backup_task.run(node_ready.id)
+        assert res_backup["status"] == "FAILED"
+        assert "Inactive license status" in res_backup["error"]
+
+    db_session.refresh(node_ready)
+    assert node_ready.status == "RESTORED"
+
+
+
 
 
 

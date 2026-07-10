@@ -203,48 +203,54 @@ def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_us
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
     
+    import redis
+    import os
+    redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+    lock_key = f"license_lock:{node_id}"
+    redis_client.setex(lock_key, 60, "1")
+    
     import subprocess
     import xml.etree.ElementTree as ET
     from fastapi.responses import Response
     
-    # 1. Try to list keys with features using the hasp_update tool
-    ssh_cmd_lf = [
-        "ssh", "-o", "StrictHostKeyChecking=no",
-        "-p", str(node.ssh_port),
-        "-i", "/root/.ssh/id_ed25519",
-        f"root@{node.ip_address}",
-        ". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update lf"
-    ]
-    
-    haspid = None
     try:
-        res_lf = subprocess.run(ssh_cmd_lf, capture_output=True, text=True, timeout=10)
-        if res_lf.returncode == 0 and res_lf.stdout.strip():
-            # Parse XML output to see if there is a connected HASP key
-            root = ET.fromstring(res_lf.stdout.strip())
-            hasp_elem = root.find(".//hasp")
-            if hasp_elem is not None:
-                haspid = hasp_elem.get("id")
-    except Exception:
-        pass  # Fall back to machine fingerprint or other methods if lf failed/parsed incorrectly
+        # 1. Try to list keys with features using the hasp_update tool
+        ssh_cmd_lf = [
+            "ssh", "-o", "StrictHostKeyChecking=no",
+            "-p", str(node.ssh_port),
+            "-i", "/root/.ssh/id_ed25519",
+            f"root@{node.ip_address}",
+            ". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update lf"
+        ]
         
-    # 2. Build the command to run hasp_update
-    if haspid:
-        cmd_str = f". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update i {haspid}"
-        filename = f"{node.hostname}_key_{haspid}.c2v"
-    else:
-        cmd_str = ". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update f"
-        filename = f"{node.hostname}_fingerprint.c2v"
+        haspid = None
+        try:
+            res_lf = subprocess.run(ssh_cmd_lf, capture_output=True, text=True, timeout=10)
+            if res_lf.returncode == 0 and res_lf.stdout.strip():
+                # Parse XML output to see if there is a connected HASP key
+                root = ET.fromstring(res_lf.stdout.strip())
+                hasp_elem = root.find(".//hasp")
+                if hasp_elem is not None:
+                    haspid = hasp_elem.get("id")
+        except Exception:
+            pass  # Fall back to machine fingerprint or other methods if lf failed/parsed incorrectly
+            
+        # 2. Build the command to run hasp_update
+        if haspid:
+            cmd_str = f". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update i {haspid}"
+            filename = f"{node.hostname}_key_{haspid}.c2v"
+        else:
+            cmd_str = ". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update f"
+            filename = f"{node.hostname}_fingerprint.c2v"
+            
+        ssh_cmd_update = [
+            "ssh", "-o", "StrictHostKeyChecking=no",
+            "-p", str(node.ssh_port),
+            "-i", "/root/.ssh/id_ed25519",
+            f"root@{node.ip_address}",
+            cmd_str
+        ]
         
-    ssh_cmd_update = [
-        "ssh", "-o", "StrictHostKeyChecking=no",
-        "-p", str(node.ssh_port),
-        "-i", "/root/.ssh/id_ed25519",
-        f"root@{node.ip_address}",
-        cmd_str
-    ]
-    
-    try:
         res = subprocess.run(ssh_cmd_update, capture_output=True, text=True, timeout=10)
         content = res.stdout.strip()
         if not content or "<?xml" not in content:
@@ -316,6 +322,11 @@ def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_us
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=f"Failed to fetch fingerprint: {str(e)}")
+    finally:
+        try:
+            redis_client.delete(lock_key)
+        except Exception:
+            pass
 
 
 def parse_sentinel_json_blocks(raw_text: str) -> list:
@@ -430,11 +441,17 @@ async def upload_hasp_license(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
         
-    # Check file extension case-insensitively!
-    if not file.filename.lower().endswith(('.v2c', '.v2cp', '.h2r', '.r2h', '.h2h')):
-        raise HTTPException(status_code=400, detail="Invalid file extension. Please upload a valid Sentinel license file (V2C).")
-        
+    import redis
+    import os
+    redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+    lock_key = f"license_lock:{node_id}"
+    redis_client.setex(lock_key, 60, "1")
+    
     try:
+        # Check file extension case-insensitively!
+        if not file.filename.lower().endswith(('.v2c', '.v2cp', '.h2r', '.r2h', '.h2h')):
+            raise HTTPException(status_code=400, detail="Invalid file extension. Please upload a valid Sentinel license file (V2C).")
+            
         content = await file.read()
         b64_content = base64.b64encode(content).decode('utf-8')
         
@@ -500,3 +517,8 @@ async def upload_hasp_license(
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=f"Error applying license file: {str(e)}")
+    finally:
+        try:
+            redis_client.delete(lock_key)
+        except Exception:
+            pass
