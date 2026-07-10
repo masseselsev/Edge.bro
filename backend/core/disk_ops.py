@@ -544,22 +544,30 @@ def format_and_restore(
                 except Exception as e:
                     emit_log(f"WARNING: Failed to list interfaces.d directory: {str(e)}")
             
+            # Pre-scan all files to find static/manual interfaces and parents of virtual aliases
+            static_or_manual = set()
+            alias_parents = set()
+            for path in paths_to_patch:
+                try:
+                    with open(path, "r") as f:
+                        for line in f:
+                            stripped_line = line.strip()
+                            if stripped_line.startswith("iface "):
+                                parts = stripped_line.split()
+                                if len(parts) >= 4:
+                                    iface_name = parts[1]
+                                    method = parts[3]
+                                    if method in ["static", "manual"]:
+                                        static_or_manual.add(iface_name)
+                                    if ":" in iface_name:
+                                        alias_parents.add(iface_name.split(":")[0])
+                except Exception as e:
+                    emit_log(f"WARNING: Failed to pre-scan network file {path}: {str(e)}")
+            
             for path in paths_to_patch:
                 try:
                     with open(path, "r") as f:
                         lines = f.readlines()
-                    
-                    # Pre-scan the file to find interfaces configured as static or manual
-                    static_or_manual = set()
-                    for line in lines:
-                        stripped_line = line.strip()
-                        if stripped_line.startswith("iface "):
-                            parts = stripped_line.split()
-                            if len(parts) >= 4:
-                                iface_name = parts[1]
-                                method = parts[3]
-                                if method in ["static", "manual"]:
-                                    static_or_manual.add(iface_name)
                     
                     modified = False
                     new_lines = []
@@ -579,8 +587,9 @@ def format_and_restore(
                                 auto_ifaces = []
                                 hotplug_ifaces = []
                                 for iface in non_lo_ifaces:
-                                    # Keep aliases (e.g. eno1:1) and static/manual interfaces as 'auto'
-                                    if ":" in iface or iface in static_or_manual:
+                                    # Keep aliases (e.g. eno1:1), parent interfaces of aliases,
+                                    # and static/manual interfaces as 'auto'
+                                    if ":" in iface or iface in alias_parents or iface in static_or_manual:
                                         auto_ifaces.append(iface)
                                     else:
                                         hotplug_ifaces.append(iface)

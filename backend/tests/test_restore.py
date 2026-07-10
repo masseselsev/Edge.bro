@@ -362,8 +362,11 @@ def test_patch_network_configs_preserves_static_and_aliases(
         "auto enp1s0\n"
         "iface enp1s0 inet static\n"
         "    address 192.168.14.1\n"
+        "auto enp2s0\n"
+        "iface enp2s0 inet dhcp\n"
     )
     mock_interfaces.readlines.return_value = original_config.splitlines(keepends=True)
+    mock_interfaces.__iter__.return_value = iter(original_config.splitlines(keepends=True))
     
     # Track written contents
     written_data = {}
@@ -416,12 +419,14 @@ def test_patch_network_configs_preserves_static_and_aliases(
     assert len(written_data) > 0
     written_content = list(written_data.values())[0]
     
-    # eno1 (DHCP) should be allow-hotplug
-    assert "allow-hotplug eno1" in written_content
+    # eno1 (DHCP parent of eno1:1) should remain auto
+    assert "auto eno1" in written_content
     # eno1:1 (static alias) should remain auto
     assert "auto eno1:1" in written_content
     # enp1s0 (static) should remain auto
     assert "auto enp1s0" in written_content
+    # enp2s0 (DHCP without alias) should be allow-hotplug
+    assert "allow-hotplug enp2s0" in written_content
     # lo should remain auto
     assert "auto lo" in written_content
 
