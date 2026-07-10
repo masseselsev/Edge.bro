@@ -325,8 +325,9 @@ def test_format_partition_with_retry_failure(mock_run, mock_sleep):
 @patch("os.makedirs")
 @patch("shutil.rmtree")
 @patch("os.path.realpath")
+@patch("os.chmod")
 def test_patch_network_configs_preserves_static_and_aliases(
-    mock_realpath, mock_rmtree, mock_makedirs, mock_popen, mock_check_output, mock_check_call, mock_call, mock_run, mock_listdir, mock_exists, mock_open
+    mock_chmod, mock_realpath, mock_rmtree, mock_makedirs, mock_popen, mock_check_output, mock_check_call, mock_call, mock_run, mock_listdir, mock_exists, mock_open
 ):
     from core.disk_ops import format_and_restore
 
@@ -389,6 +390,18 @@ def test_patch_network_configs_preserves_static_and_aliases(
                 written_data[path] = data
             write_mock.write.side_effect = write_sub
             return write_mock
+        if "edge-restore-checkin" in path:
+            write_mock = MagicMock()
+            write_mock.__enter__.return_value = write_mock
+            def write_sub(data):
+                written_data[path] = data
+            write_mock.write.side_effect = write_sub
+            return write_mock
+        if "fstab" in path:
+            mock_fstab = MagicMock()
+            mock_fstab.read.return_value = "LABEL=root\n"
+            mock_fstab.__enter__.return_value = mock_fstab
+            return mock_fstab
         default_mock = MagicMock()
         default_mock.__enter__.return_value = default_mock
         return default_mock
@@ -417,7 +430,8 @@ def test_patch_network_configs_preserves_static_and_aliases(
             wipe_mac_bindings=False,
             network_iface="eth0",
             total_files=0,
-            log_callback=MagicMock()
+            log_callback=MagicMock(),
+            orchestrator_ip="192.168.1.100"
         )
     
     # Assert that primary.conf was modified and written correctly
@@ -441,6 +455,15 @@ def test_patch_network_configs_preserves_static_and_aliases(
     assert any("dhclient-exit-hooks.d/edge-banner" in k for k in written_data.keys())
     banner_hook_path = [k for k in written_data.keys() if "edge-banner" in k][0]
     assert "banner" in written_data[banner_hook_path]
+    
+    # Check that the check-in script and service were injected with the new simple service and looping logic
+    assert any("edge-restore-checkin.sh" in k for k in written_data.keys())
+    checkin_sh_path = [k for k in written_data.keys() if "edge-restore-checkin.sh" in k][0]
+    assert "while true;" in written_data[checkin_sh_path]
+    
+    assert any("edge-restore-checkin.service" in k for k in written_data.keys())
+    checkin_svc_path = [k for k in written_data.keys() if "edge-restore-checkin.service" in k][0]
+    assert "Type=simple" in written_data[checkin_svc_path]
 
 
 from routers.restore import get_node_hasp_status

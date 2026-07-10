@@ -950,27 +950,29 @@ def format_and_restore(
                 checkin_sh_content = (
                     "#!/bin/bash\n"
                     f"SERVER_IPS=({targets_bash})\n\n"
-                    "# Wait for global IP address to be assigned (up to 60 seconds)\n"
-                    "for i in {1..30}; do\n"
-                    "    if ip addr show scope global | grep -q inet; then\n"
-                    "        break\n"
-                    "    fi\n"
-                    "    sleep 2\n"
-                    "done\n\n"
-                    "for ip in \"${SERVER_IPS[@]}\"; do\n"
-                    "    if ping -c 1 -W 1 \"$ip\" >/dev/null 2>&1; then\n"
-                    "        HOSTNAME=$(hostname)\n"
-                    "        IP_ADDR=$(ip route get \"$ip\" | awk '{{print $7; exit}}')\n\n"
-                    "        res=$(curl -s -X POST -H \"Content-Type: application/json\" \\\n"
-                    "                   -d \"{\\\"hostname\\\": \\\"$HOSTNAME\\\", \\\"ip_address\\\": \\\"$IP_ADDR\\\"}\" \\\n"
-                    "                   \"http://$ip:8000/api/nodes/checkin-restored\")\n\n"
-                    "        if [[ \"$res\" == *\"success\"* ]]; then\n"
-                    "            systemctl disable edge-restore-checkin.service\n"
-                    "            rm -f /etc/systemd/system/edge-restore-checkin.service\n"
-                    "            rm -f /usr/local/bin/edge-restore-checkin.sh\n"
-                    "            exit 0\n"
+                    "while true; do\n"
+                    "    for ip in \"${SERVER_IPS[@]}\"; do\n"
+                    "        if ping -c 1 -W 2 \"$ip\" >/dev/null 2>&1; then\n"
+                    "            HOSTNAME=$(hostname)\n"
+                    "            IP_ADDR=$(ip route get \"$ip\" 2>/dev/null | awk '{{print $7; exit}}')\n"
+                    "            if [ -z \"$IP_ADDR\" ]; then\n"
+                    "                IP_ADDR=$(ip addr show scope global | grep inet | awk '{{print $2}}' | cut -d/ -f1 | head -n1)\n"
+                    "            fi\n\n"
+                    "            if [ -n \"$IP_ADDR\" ]; then\n"
+                    "                res=$(curl -s --connect-timeout 5 -X POST -H \"Content-Type: application/json\" \\\n"
+                    "                           -d \"{\\\"hostname\\\": \\\"$HOSTNAME\\\", \\\"ip_address\\\": \\\"$IP_ADDR\\\"}\" \\\n"
+                    "                           \"http://$ip:8000/api/nodes/checkin-restored\" 2>/dev/null)\n\n"
+                    "                if [[ \"$res\" == *\"success\"* ]]; then\n"
+                    "                    systemctl disable edge-restore-checkin.service\n"
+                    "                    rm -f /etc/systemd/system/edge-restore-checkin.service\n"
+                    "                    rm -f /usr/local/bin/edge-restore-checkin.sh\n"
+                    "                    systemctl daemon-reload\n"
+                    "                    exit 0\n"
+                    "                fi\n"
+                    "            fi\n"
                     "        fi\n"
-                    "    fi\n"
+                    "    done\n"
+                    "    sleep 30\n"
                     "done\n"
                 )
                 os.makedirs(os.path.dirname(checkin_sh_path), exist_ok=True)
@@ -985,9 +987,10 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=oneshot
+Type=simple
 ExecStart=/usr/local/bin/edge-restore-checkin.sh
-RemainAfterExit=yes
+Restart=on-failure
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
