@@ -332,9 +332,7 @@ def test_patch_network_configs_preserves_static_and_aliases(
 
     # 1. Mock path existence
     def exists_side_effect(path):
-        if "/etc/network/interfaces.d" in path:
-            return True
-        if "/etc/network/interfaces" in path:
+        if "/etc" in path:
             return True
         if "/proc/cmdline" in path:
             return True
@@ -384,6 +382,13 @@ def test_patch_network_configs_preserves_static_and_aliases(
                 return write_mock
             mock_interfaces.__enter__.return_value = mock_interfaces
             return mock_interfaces
+        if "edge-banner" in path:
+            write_mock = MagicMock()
+            write_mock.__enter__.return_value = write_mock
+            def write_sub(data):
+                written_data[path] = data
+            write_mock.write.side_effect = write_sub
+            return write_mock
         default_mock = MagicMock()
         default_mock.__enter__.return_value = default_mock
         return default_mock
@@ -417,7 +422,9 @@ def test_patch_network_configs_preserves_static_and_aliases(
     
     # Assert that primary.conf was modified and written correctly
     assert len(written_data) > 0
-    written_content = list(written_data.values())[0]
+    
+    primary_conf_path = [k for k in written_data.keys() if "primary.conf" in k][0]
+    written_content = written_data[primary_conf_path]
     
     # eno1 (DHCP parent of eno1:1) should remain auto
     assert "auto eno1" in written_content
@@ -429,6 +436,11 @@ def test_patch_network_configs_preserves_static_and_aliases(
     assert "allow-hotplug enp2s0" in written_content
     # lo should remain auto
     assert "auto lo" in written_content
+    
+    # Check that the dhclient exit hook was injected
+    assert any("dhclient-exit-hooks.d/edge-banner" in k for k in written_data.keys())
+    banner_hook_path = [k for k in written_data.keys() if "edge-banner" in k][0]
+    assert "banner" in written_data[banner_hook_path]
 
 
 from routers.restore import get_node_hasp_status

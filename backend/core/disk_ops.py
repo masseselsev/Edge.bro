@@ -611,6 +611,26 @@ def format_and_restore(
                         emit_log(f"Successfully patched auto to allow-hotplug in {os.path.basename(path)}")
                 except Exception as e:
                     emit_log(f"WARNING: Failed to patch network file {path}: {str(e)}")
+            
+            # Inject a dhclient exit hook to dynamically regenerate the banner when DHCP lease is acquired
+            dhcp_hook_dir = f"{target_mnt}/etc/dhcp/dhclient-exit-hooks.d"
+            if os.path.exists(f"{target_mnt}/etc/dhcp") or os.path.exists(f"{target_mnt}/etc"):
+                os.makedirs(dhcp_hook_dir, exist_ok=True)
+                hook_path = os.path.join(dhcp_hook_dir, "edge-banner")
+                try:
+                    with open(hook_path, "w") as f:
+                        f.write(
+                            "#!/bin/sh\n"
+                            "if [ \"$reason\" = \"BOUND\" ] || [ \"$reason\" = \"RENEW\" ] || [ \"$reason\" = \"REBIND\" ] || [ \"$reason\" = \"REBOOT\" ]; then\n"
+                            "    if [ -x /opt/edge/bin/banner ]; then\n"
+                            "        /opt/edge/bin/banner > /etc/issue.d/20-edge.issue\n"
+                            "    fi\n"
+                            "fi\n"
+                        )
+                    os.chmod(hook_path, 0o755)
+                    emit_log("Injected dhclient exit hook for dynamic banner updates.")
+                except Exception as e:
+                    emit_log(f"WARNING: Failed to write dhclient exit hook: {str(e)}")
 
         else:
             emit_log("Executing network configuration injection (DHCP override fallback)...")
