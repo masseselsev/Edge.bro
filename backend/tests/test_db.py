@@ -180,7 +180,9 @@ def test_upgrade_settings(db_session):
         {"pattern": "/var/spool/edge/*", "comment": "Edge spool directory"},
         {"pattern": "/var/log/journal/*", "comment": "Systemd journal logs"},
         {"pattern": "/var/log/**/*.gz", "comment": "Compressed rotated logs"},
-        {"pattern": "/var/log/**/*.1", "comment": "Rotated log backups"}
+        {"pattern": "/var/log/**/*.1", "comment": "Rotated log backups"},
+        {"pattern": "/var/hasplm/*", "comment": "Sentinel HASP licensing data"},
+        {"pattern": "/etc/hasplm/*", "comment": "Sentinel HASP licensing config"}
     ]
     
     # Test case 1: Upgrade from first default
