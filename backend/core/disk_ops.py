@@ -851,9 +851,9 @@ def format_and_restore(
                             except Exception:
                                 pass
 
-                    # Run Purge
-                    emit_log("Purging old configuration of edge-hasp-eoawt3...")
-                    p_purge = subprocess.run(["chroot", target_mnt, "apt-get", "purge", "-y", "edge-hasp-eoawt3"], capture_output=True, text=True)
+                    # Run Purge for both edge-hasp-eoawt3 and edge-aksusbd
+                    emit_log("Purging old configuration of edge-hasp-eoawt3 and edge-aksusbd...")
+                    p_purge = subprocess.run(["chroot", target_mnt, "apt-get", "purge", "-y", "edge-hasp-eoawt3", "edge-aksusbd"], capture_output=True, text=True)
                     if p_purge.returncode != 0:
                         emit_log(f"WARNING: apt-get purge failed (exit code {p_purge.returncode}): {p_purge.stderr.strip()}")
 
@@ -863,9 +863,9 @@ def format_and_restore(
                     if p_update.returncode != 0:
                         emit_log(f"WARNING: apt-get update failed (exit code {p_update.returncode}): {p_update.stderr.strip()}")
 
-                    # Run Install
-                    emit_log("Reinstalling edge-hasp-eoawt3...")
-                    p_install = subprocess.run(["chroot", target_mnt, "apt-get", "install", "-y", "edge-hasp-eoawt3"], capture_output=True, text=True)
+                    # Run Install for both edge-hasp-eoawt3 and edge-aksusbd
+                    emit_log("Reinstalling edge-hasp-eoawt3 and edge-aksusbd...")
+                    p_install = subprocess.run(["chroot", target_mnt, "apt-get", "install", "-y", "edge-hasp-eoawt3", "edge-aksusbd"], capture_output=True, text=True)
                     if p_install.returncode != 0:
                         emit_log(f"WARNING: apt-get install failed (exit code {p_install.returncode}): {p_install.stderr.strip()}")
                     else:
