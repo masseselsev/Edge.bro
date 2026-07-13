@@ -22,6 +22,7 @@ interface Kiosk {
   target_ip: string | null;
   rebuild_required: boolean;
   iso_built_at?: string | null;
+  is_rebuilding?: boolean;
 }
 
 interface KioskManagementSectionProps {
@@ -453,7 +454,14 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                       {kiosk.approved_at ? new Date(kiosk.approved_at).toLocaleString() : <span className="text-zinc-650">—</span>}
                     </td>
                     <td className="py-3.5 px-4">
-                      {kiosk.iso_built_at ? (
+                      {kiosk.is_rebuilding ? (
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/25 animate-pulse uppercase">
+                            <RefreshCw size={8} className="animate-spin" />
+                            {t('rebuildingLabel') || 'Rebuilding'}
+                          </span>
+                        </div>
+                      ) : kiosk.iso_built_at ? (
                         <div className="space-y-1">
                           <div className="font-mono text-zinc-350">
                             {new Date(kiosk.iso_built_at).toLocaleString()}
@@ -524,18 +532,29 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                         )}
 
                         {/* Re-create ISO */}
-                        <button
-                          onClick={() => handleRecreateIso(kiosk.id)}
-                          className={`w-[85px] py-1 rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center justify-center gap-1 ${
-                            kiosk.rebuild_required
-                              ? 'bg-amber-600 hover:bg-amber-500 text-white animate-pulse shadow-amber-500/20 shadow-md'
-                              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
-                          }`}
-                          title="Recreate ISO image"
-                        >
-                          <RefreshCw size={10} className={kiosk.rebuild_required ? 'animate-spin-slow' : ''} />
-                          {t('kioskActionRecreate') || 'Recreate'}
-                        </button>
+                        {kiosk.is_rebuilding ? (
+                          <button
+                            disabled
+                            className="w-[85px] py-1 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 cursor-not-allowed text-center whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center justify-center gap-1"
+                            title="Rebuilding ISO image..."
+                          >
+                            <RefreshCw size={10} className="animate-spin" />
+                            {t('rebuildingLabel') || 'Rebuilding'}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleRecreateIso(kiosk.id)}
+                            className={`w-[85px] py-1 rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center justify-center gap-1 ${
+                              kiosk.rebuild_required
+                                ? 'bg-amber-600 hover:bg-amber-500 text-white animate-pulse shadow-amber-500/20 shadow-md'
+                                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                            }`}
+                            title="Recreate ISO image"
+                          >
+                            <RefreshCw size={10} className={kiosk.rebuild_required ? 'animate-spin-slow' : ''} />
+                            {t('kioskActionRecreate') || 'Recreate'}
+                          </button>
+                        )}
 
                         {/* Edit Kiosk */}
                         <button

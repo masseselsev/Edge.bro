@@ -252,6 +252,7 @@ class KioskResponse(UTCModel, KioskBase):
     last_seen: Optional[datetime] = None
     is_online: Optional[bool] = None
     iso_built_at: Optional[datetime] = None
+    is_rebuilding: bool = False
 
 
 class HandshakeRequest(BaseModel):

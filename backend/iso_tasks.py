@@ -601,7 +601,7 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
     task_id = self.request.id
 
     db = SessionLocal()
-    task_log = TaskLog(id=task_id, task_type="ISO_GEN", status="RUNNING", log_output="")
+    task_log = TaskLog(id=task_id, task_type=f"KIOSK_ISO_GEN_{kiosk_id}", status="RUNNING", log_output="")
     db.add(task_log)
     db.commit()
 

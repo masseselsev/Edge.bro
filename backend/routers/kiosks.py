@@ -79,6 +79,12 @@ def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_ad
         else:
             k.is_online = False
 
+        active_task = db.query(models.TaskLog).filter(
+            models.TaskLog.task_type == f"KIOSK_ISO_GEN_{k.id}",
+            models.TaskLog.status == "RUNNING"
+        ).first()
+        k.is_rebuilding = bool(active_task)
+
         if k.auth_token:
             iso_name = None
             iso_path = None
