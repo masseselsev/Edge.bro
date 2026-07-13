@@ -107,6 +107,15 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
             setNode(found);
             setNotes(found.notes || '');
             setGroupId(found.group_id || 0);
+            if (found.status === 'RESTORED') {
+              setSentinelExpanded(true);
+              setTimeout(() => {
+                const el = document.getElementById('sentinel-licensing-section');
+                if (el) {
+                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }, 150);
+            }
           }
         }
       }
@@ -491,7 +500,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           </div>
 
           {(node.status === 'RESTORED' || (node.hasp_runtime_version && node.hasp_runtime_version !== 'None')) && (
-            <div className="bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-500/25 rounded-2xl p-5 space-y-3.5 shadow-lg shadow-indigo-950/10 animate-fade-in">
+            <div id="sentinel-licensing-section" className="bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-500/25 rounded-2xl p-5 space-y-3.5 shadow-lg shadow-indigo-950/10 animate-fade-in">
               <div 
                 className="flex items-center justify-between border-b border-indigo-500/15 pb-3 cursor-pointer select-none hover:opacity-90 transition"
                 onClick={() => setSentinelExpanded(!sentinelExpanded)}

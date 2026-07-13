@@ -458,6 +458,45 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     }
   };
 
+  const handleInstantProvision = async (node: Node) => {
+    try {
+      const sRes = await fetch('/api/settings');
+      if (!sRes.ok) throw new Error('Failed to fetch settings');
+      const data = await sRes.json();
+      const creds = data.bootstrap_credentials || [];
+      const defaultId = data.default_credentials_id;
+      let defaultCred = defaultId ? creds.find((c: any) => c.id === defaultId) : null;
+      if (!defaultCred && creds.length > 0) {
+        defaultCred = creds[0];
+      }
+      if (defaultCred) {
+        setProvSubmitting(true);
+        setProvError('');
+        const res = await fetch(`/api/nodes/${node.id}/provision`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bootstrap_user: defaultCred.username,
+            bootstrap_password: defaultCred.password,
+            force_orchestrator_proxy: false
+          })
+        });
+        const respData = await res.json();
+        if (!res.ok) throw new Error(respData.detail || 'Failed to trigger provision');
+        fetchNodes();
+        if (respData.task_id) {
+          onViewLogs(respData.task_id, `Provisioning ${node.hostname}`);
+        }
+      } else {
+        setShowProvisionModal(node);
+      }
+    } catch (e: any) {
+      alert(e.message || 'Failed to trigger provisioning');
+    } finally {
+      setProvSubmitting(false);
+    }
+  };
+
   const runPrepare = async (nodeId: number, name: string) => {
     try {
       const res = await fetch(`/api/nodes/${nodeId}/prepare`, { method: 'POST' });
@@ -581,6 +620,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
         onSelectNode={handleSelectNode}
         onRunPrepare={runPrepare}
         onShowProvision={setShowProvisionModal}
+        onInstantProvision={handleInstantProvision}
         onShowBackup={(node) => {
           if (node.is_backup_running && node.backup_task_id) {
             onViewLogs(node.backup_task_id, `Backing up ${node.hostname}`);

@@ -34,6 +34,7 @@ interface NodeRowProps {
   onSelectNode: (nodeId: number, checked: boolean) => void;
   onRunPrepare: (nodeId: number, hostname: string) => void;
   onShowProvision: (node: Node) => void;
+  onInstantProvision: (node: Node) => void;
   onShowBackup: (node: Node) => void;
   onDeleteNode: (nodeId: number, hostname: string) => void;
   onShowDetails: () => void;
@@ -49,6 +50,7 @@ export function NodeRow({
   onSelectNode,
   onRunPrepare,
   onShowProvision,
+  onInstantProvision,
   onShowBackup,
   onDeleteNode,
   onShowDetails,
@@ -114,18 +116,18 @@ export function NodeRow({
     const statusMap: Record<string, { bg: string, text: string, border: string, label: string, icon: React.ReactNode, title: string, onClick: () => void }> = {
       READY: {
         bg: "bg-emerald-500/10 hover:bg-emerald-500/20", text: "text-emerald-400", border: "border-emerald-500/20",
-        label: t('readyOk'), icon: <CheckCircle size={14} />, title: t('reRunPrepareDisk'),
-        onClick: () => onRunPrepare(node.id, node.hostname)
+        label: t('readyOk'), icon: <CheckCircle size={14} />, title: t('pressToProvision') || "Press to provision",
+        onClick: () => onInstantProvision(node)
       },
       RESTORED: {
         bg: "bg-indigo-500/10 hover:bg-indigo-500/20", text: "text-indigo-400", border: "border-indigo-500/30",
-        label: "RESTORED", icon: <CheckCircle size={14} />, title: "Licence update needed",
-        onClick: () => onShowProvision(node)
+        label: "RESTORED", icon: <CheckCircle size={14} />, title: t('needsLicenseUpdate') || "Needs License Update",
+        onClick: () => onShowDetails()
       },
       NEEDS_FIX: {
         bg: "bg-amber-500/10 hover:bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/20",
-        label: t('needsFixPrepare'), icon: <AlertTriangle size={14} />, title: t('runPrepareDisk'),
-        onClick: () => onRunPrepare(node.id, node.hostname)
+        label: t('needsFixPrepare'), icon: <AlertTriangle size={14} />, title: t('pressToProvision') || "Press to provision",
+        onClick: () => onInstantProvision(node)
       },
       NEEDS_BOOTSTRAP: {
         bg: "bg-zinc-500/10 hover:bg-zinc-500/20", text: "text-zinc-400", border: "border-zinc-500/20",
