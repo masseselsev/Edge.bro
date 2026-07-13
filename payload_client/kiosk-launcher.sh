@@ -24,6 +24,19 @@ if command -v xfconf-query &>/dev/null; then
   xfconf-query -c xfce4-screensaver -p /lock/enabled -s false --create -t bool || true
 fi
 
+# Maximize screen brightness for all backlight devices
+if [ -d /sys/class/backlight ]; then
+  for dev in /sys/class/backlight/*; do
+    if [ -d "$dev" ]; then
+      if [ -f "$dev/max_brightness" ] && [ -f "$dev/brightness" ]; then
+        max_bright=$(cat "$dev/max_brightness")
+        logger -t offline-kiosk "Setting brightness for $(basename "$dev") to maximum: $max_bright"
+        echo "$max_bright" | sudo tee "$dev/brightness" &>/dev/null || true
+      fi
+    fi
+  done
+fi
+
 # Wait for backend to be ready
 logger -t offline-kiosk "Waiting for offline backend on port 8000..."
 for i in {1..30}; do
