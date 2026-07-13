@@ -115,7 +115,7 @@ export default function AdminsTab({ currentUser }: AdminsTabProps) {
         // Create requires username and password
         payload.username = username.trim();
         if (!password) {
-          setFormError('Password is required for new administrator accounts');
+          setFormError('Password is required for new user accounts');
           setSubmitting(false);
           return;
         }
@@ -130,7 +130,7 @@ export default function AdminsTab({ currentUser }: AdminsTabProps) {
 
       if (!res.ok) {
         const errData = await res.json();
-        throw new Error(errData.detail || 'Failed to save administrator');
+        throw new Error(errData.detail || 'Failed to save user');
       }
 
       await fetchUsers();
@@ -143,7 +143,7 @@ export default function AdminsTab({ currentUser }: AdminsTabProps) {
   };
 
   const handleDelete = async (user: User) => {
-    if (!window.confirm(t('deleteAdminConfirm') || `Are you sure you want to delete admin ${user.username}?`)) {
+    if (!window.confirm(t('deleteAdminConfirm') || `Are you sure you want to delete user ${user.username}?`)) {
       return;
     }
 
@@ -153,7 +153,7 @@ export default function AdminsTab({ currentUser }: AdminsTabProps) {
         await fetchUsers();
       } else {
         const errData = await res.json();
-        alert(errData.detail || 'Failed to delete administrator');
+        alert(errData.detail || 'Failed to delete user');
       }
     } catch (err) {
       console.error(err);
@@ -178,7 +178,7 @@ export default function AdminsTab({ currentUser }: AdminsTabProps) {
             <Shield size={22} className="text-indigo-400" />
             {t('tabAdmins')}
           </h2>
-          <p className="text-xs text-zinc-400 mt-1">Manage platform administrators, privileges, and comments.</p>
+          <p className="text-xs text-zinc-400 mt-1">Manage platform users, roles, and comments.</p>
         </div>
         <button
           onClick={openCreateModal}
@@ -207,14 +207,17 @@ export default function AdminsTab({ currentUser }: AdminsTabProps) {
                 <tr key={user.id} className="hover:bg-zinc-850/30 text-zinc-300 transition-colors">
                   <td className="p-4 font-mono font-bold text-zinc-100 flex items-center gap-1.5">
                     {user.username}
-                    {user.is_superadmin && (
+                    {user.is_superadmin ? (
                       <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                        SUPER
+                        SuperAdmin
                       </span>
-                    )}
-                    {user.is_admin_plus && (
+                    ) : user.is_admin_plus ? (
                       <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-fade-in">
-                        ADMIN+
+                        Admin
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 animate-fade-in">
+                        User
                       </span>
                     )}
                   </td>
@@ -381,7 +384,7 @@ export default function AdminsTab({ currentUser }: AdminsTabProps) {
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 focus:border-indigo-500 rounded-lg text-zinc-100 text-sm focus:outline-none transition-all duration-200"
-                  placeholder="Notes about this administrator account..."
+                  placeholder="Notes about this user account..."
                 />
               </div>
 
