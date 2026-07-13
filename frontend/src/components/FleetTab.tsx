@@ -57,14 +57,28 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
   // Sorting State
   const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'ip_online_asc' | 'ip_online_desc' | 'ip_offline_asc' | 'ip_offline_desc'>('asc');
 
   const handleSort = (key: string) => {
-    if (sortKey === key) {
-      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    if (key === 'ip_address') {
+      if (sortKey !== 'ip_address') {
+        setSortKey('ip_address');
+        setSortOrder('ip_online_asc');
+      } else {
+        setSortOrder(prev => {
+          if (prev === 'ip_online_asc') return 'ip_online_desc';
+          if (prev === 'ip_online_desc') return 'ip_offline_asc';
+          if (prev === 'ip_offline_asc') return 'ip_offline_desc';
+          return 'ip_online_asc';
+        });
+      }
     } else {
-      setSortKey(key);
-      setSortOrder('asc');
+      if (sortKey === key) {
+        setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+      } else {
+        setSortKey(key);
+        setSortOrder('asc');
+      }
     }
   };
 
@@ -83,14 +97,40 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
           const parts = ip.split(':')[0].split('.').map(Number);
           return parts.length === 4 ? parts : [0, 0, 0, 0];
         };
-        const ipA = parseIP(a.ip_address);
-        const ipB = parseIP(b.ip_address);
-        for (let i = 0; i < 4; i++) {
-          if (ipA[i] !== ipB[i]) {
-            return sortOrder === 'asc' ? ipA[i] - ipB[i] : ipB[i] - ipA[i];
+        const compareIP = (ipAStr: string, ipBStr: string, dir: 'asc' | 'desc') => {
+          const ipA = parseIP(ipAStr);
+          const ipB = parseIP(ipBStr);
+          for (let i = 0; i < 4; i++) {
+            if (ipA[i] !== ipB[i]) {
+              return dir === 'asc' ? ipA[i] - ipB[i] : ipB[i] - ipA[i];
+            }
           }
+          return 0;
+        };
+
+        const onlineA = a.last_ping_status === true;
+        const onlineB = b.last_ping_status === true;
+
+        if (sortOrder === 'ip_online_asc') {
+          if (onlineA && !onlineB) return -1;
+          if (!onlineA && onlineB) return 1;
+          return compareIP(a.ip_address, b.ip_address, 'asc');
+        } else if (sortOrder === 'ip_online_desc') {
+          if (onlineA && !onlineB) return -1;
+          if (!onlineA && onlineB) return 1;
+          return compareIP(a.ip_address, b.ip_address, 'desc');
+        } else if (sortOrder === 'ip_offline_asc') {
+          if (!onlineA && onlineB) return -1;
+          if (onlineA && !onlineB) return 1;
+          return compareIP(a.ip_address, b.ip_address, 'asc');
+        } else if (sortOrder === 'ip_offline_desc') {
+          if (!onlineA && onlineB) return -1;
+          if (onlineA && !onlineB) return 1;
+          return compareIP(a.ip_address, b.ip_address, 'desc');
         }
-        return 0;
+
+        const direction = sortOrder === 'desc' ? 'desc' : 'asc';
+        return compareIP(a.ip_address, b.ip_address, direction);
       } else if (sortKey === 'os_version') {
         valA = (a.os_version || '').toLowerCase();
         valB = (b.os_version || '').toLowerCase();
@@ -114,6 +154,36 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
   const renderSortIcon = (key: string) => {
     if (sortKey !== key) return null;
+    if (key === 'ip_address') {
+      if (sortOrder === 'ip_online_asc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
+            ON <ArrowUp size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+      if (sortOrder === 'ip_online_desc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
+            ON <ArrowDown size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+      if (sortOrder === 'ip_offline_asc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
+            OFF <ArrowUp size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+      if (sortOrder === 'ip_offline_desc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
+            OFF <ArrowDown size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+    }
     return sortOrder === 'asc' ? (
       <ArrowUp size={12} className="inline ml-1 text-indigo-400" />
     ) : (

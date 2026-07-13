@@ -168,11 +168,9 @@ export function NodeRow({
         <Cpu size={14} className="text-zinc-500" />
         <div className="flex flex-col">
           <span className="break-all" title={node.hostname}>{node.hostname}</span>
-          {groupName && (
-            <span className="text-[10px] text-indigo-400 font-semibold leading-none mt-1">
-              Group: {groupName}
-            </span>
-          )}
+          <span className="text-[10px] text-indigo-400/80 font-semibold leading-none mt-1">
+            {t('groupLabel') || 'Group'}: {groupName || '—'}
+          </span>
           {(node.backup_paused || node.missed_window) && (
             <div className="flex gap-1 mt-1">
               {node.backup_paused && (
