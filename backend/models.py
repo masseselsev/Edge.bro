@@ -106,6 +106,10 @@ class Node(Base):
     hasp_runtime_version = Column(String, nullable=True)
     hasp_license_v2c = Column(Text, nullable=True)
 
+    # availability fields
+    last_ping_status = Column(Boolean, nullable=True)
+    last_available_at = Column(DateTime, nullable=True)
+
 
 class BackupHistory(Base):
     """
