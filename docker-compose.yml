@@ -42,6 +42,7 @@ services:
       - iso-cache:/opt/data/iso_cache
       - /proc:/host/proc:ro
       - ./payload_client:/payload_client
+      - frontend-build:/opt/frontend_build
     ports:
       - "8000:8000"
     depends_on:

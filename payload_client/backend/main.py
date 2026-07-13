@@ -1295,18 +1295,14 @@ def auto_register_with_orchestrator():
                         save_config(cfg_data)
             elif status_returned == "DISABLED":
                 kiosk_status = "DISABLED"
-                restore_mode = "offline"
             elif status_returned == "PENDING":
                 kiosk_status = "PENDING"
-                restore_mode = "offline"
             elif status_returned == "REVOKED":
                 kiosk_status = "REVOKED"
-                restore_mode = "offline"
         except urllib.error.HTTPError as he:
             if he.code in [401, 403]:
                 logging.warning(f"Auto check-in unauthorized/forbidden ({he.code}): transitioning kiosk to DISABLED")
                 kiosk_status = "DISABLED"
-                restore_mode = "offline"
             else:
                 logging.warning(f"Auto check-in failed with HTTP error {he.code}: {he}")
         except Exception as e:

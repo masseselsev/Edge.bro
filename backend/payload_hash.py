@@ -19,6 +19,7 @@ SOURCE_PATHS = [
     "/payload_client/kiosk-launcher.sh",
     "/payload_client/kiosk-storage-setup.sh",
     "/payload_client/init-bottom-copy-payload.sh",
+    "/opt/frontend_build",
 ]
 
 # Large binaries: hash by size + first/last 64KB only (fast, still reliable).
