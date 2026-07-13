@@ -11,6 +11,8 @@ interface Node {
   is_backup_running?: boolean;
   backup_progress?: number;
   backup_task_id?: string | null;
+  last_ping_status?: boolean | null;
+  last_available_at?: string | null;
 }
 
 interface AddNodeModalProps {
