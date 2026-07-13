@@ -289,7 +289,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
   return createPortal(
     <div className="fixed inset-0 bg-zinc-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden animate-modal-in">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90%] shadow-2xl flex flex-col overflow-hidden animate-modal-in">
         {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-zinc-800">
           <div>

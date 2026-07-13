@@ -200,7 +200,6 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                   setSelectedArchives({});
                   setSelectedNodeForSync(null);
                   fetchStats();
-                  alert(t('copiesStarted') || 'Copy task completed successfully!');
                 } else if (statusData.status === 'FAILED') {
                   clearInterval(poll);
                   setSyncing(false);

@@ -250,7 +250,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
 
   return createPortal(
     <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden animate-modal-in">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden animate-modal-in max-h-[85%] flex flex-col">
         <div className="flex justify-between items-center p-5 border-b border-zinc-800">
           <h3 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
             <Calendar className="h-5 w-5 text-indigo-400" />
@@ -261,7 +261,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col max-h-[85vh]">
+        <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
           <div className="p-5 space-y-4 overflow-y-auto flex-1">
             {error && (
               <div className="bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm p-3 rounded-lg">

@@ -550,7 +550,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
       {/* Kiosk ISO History / Created ISOs Modal */}
       {showHistoryModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-2xl p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4 animate-modal-in flex flex-col max-h-[85vh]">
+          <div className="w-full max-w-2xl p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl space-y-4 animate-modal-in flex flex-col max-h-[85%]">
             <div className="flex justify-between items-start pb-2 border-b border-zinc-800">
               <div>
                 <h3 className="text-base font-bold text-zinc-50">{t('historyKiosksTitle') || 'Created Kiosk ISOs'}</h3>
