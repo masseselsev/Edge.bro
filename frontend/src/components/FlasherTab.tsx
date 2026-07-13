@@ -146,7 +146,9 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          setSnapshots(data.filter((h: any) => h.status === 'SUCCESS'));
+          const filtered = data.filter((h: any) => h.status === 'SUCCESS');
+          filtered.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setSnapshots(filtered);
         } else {
           setSnapshots([]);
         }
@@ -261,10 +263,28 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     } else {
       sizeDetails = `${getFormatSize(s.original_size)} ${t('sizeOnDisk') || 'on disk'} / ${getFormatSize(s.deduplicated_size)} ${t('archiveSize') || 'archive'}`;
     }
+
+    let label = s.archive_name;
+    if (selectedNode && label.startsWith(selectedNode.hostname + "-")) {
+      label = label.substring(selectedNode.hostname.length + 1);
+    }
+
+    const sublabel = (
+      <span>
+        {formatDate(s.timestamp, timezone)} ({sizeDetails})
+        {s.comment && (
+          <>
+            {" — "}
+            <strong className="text-zinc-200 font-bold">{s.comment}</strong>
+          </>
+        )}
+      </span>
+    );
+
     return {
       value: s.archive_name,
-      label: s.archive_name,
-      sublabel: `${formatDate(s.timestamp, timezone)} (${sizeDetails})${s.comment ? ` — ${s.comment}` : ''}`,
+      label,
+      sublabel,
       disabled: false
     };
   });

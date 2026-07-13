@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from '../context/TranslationContext';
 
 export interface Option {
   value: string | number;
   label: string;
-  sublabel?: string;
+  sublabel?: ReactNode | string;
   disabled?: boolean;
 }
 
@@ -44,7 +45,7 @@ export function SearchableSelect({ options, value, onChange, placeholder, disabl
 
   const filteredOptions = options.filter(opt =>
     opt.label.toLowerCase().includes(search.toLowerCase()) ||
-    (opt.sublabel && opt.sublabel.toLowerCase().includes(search.toLowerCase()))
+    (opt.sublabel && typeof opt.sublabel === 'string' && opt.sublabel.toLowerCase().includes(search.toLowerCase()))
   );
 
   const selectedOption = options.find(opt => opt.value === value);
