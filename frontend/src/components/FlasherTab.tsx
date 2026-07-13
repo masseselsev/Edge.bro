@@ -164,12 +164,18 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   };
 
   useEffect(() => {
+    setSelectedNodeId('');
+    setSelectedSnapshot('');
+    setSnapshots([]);
+  }, [restoreMode]);
+
+  useEffect(() => {
     fetchDevices();
     fetchNodes();
     if (isKiosk) {
       fetchStorageInfo();
     }
-  }, [isKiosk]);
+  }, [isKiosk, restoreMode]);
 
   useEffect(() => {
     if (selectedNodeId) {
@@ -178,7 +184,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     } else {
       setSnapshots([]);
     }
-  }, [selectedNodeId]);
+  }, [selectedNodeId, restoreMode]);
 
   useEffect(() => {
     if (selectedNodeId && selectedDevice) {

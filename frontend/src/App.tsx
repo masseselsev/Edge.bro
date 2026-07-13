@@ -1063,23 +1063,31 @@ function AppContent() {
             <div className="flex-1 flex flex-wrap items-center justify-center md:justify-end gap-3">
               {isKiosk && (
                 <>
-                  <button
-                    onClick={handleToggleMode}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer"
-                    title="Toggle restoration mode"
-                  >
-                    {restoreMode === 'online' ? (
-                      <>
-                        <Globe2 size={13} className="text-indigo-400" />
-                        <span>{t('modeOnline')}</span>
-                      </>
-                    ) : (
-                      <>
-                        <HardDrive size={13} className="text-amber-400" />
-                        <span>{t('modeOffline')}</span>
-                      </>
-                    )}
-                  </button>
+                  <div className="flex items-center bg-zinc-950 p-1 rounded-xl border border-zinc-800/80 shadow-inner">
+                    <button
+                      onClick={() => restoreMode !== 'online' && handleToggleMode()}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 cursor-pointer ${
+                        restoreMode === 'online'
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-950/50 scale-105'
+                          : 'text-zinc-500 hover:text-zinc-400'
+                      }`}
+                    >
+                      <Globe2 size={13} className={restoreMode === 'online' ? 'animate-pulse' : ''} />
+                      <span>{t('modeOnline')}</span>
+                    </button>
+                    <button
+                      onClick={() => restoreMode !== 'offline' && handleToggleMode()}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 cursor-pointer ${
+                        restoreMode === 'offline'
+                          ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md shadow-amber-950/50 scale-105'
+                          : 'text-zinc-500 hover:text-zinc-400'
+                      }`}
+                    >
+                      <HardDrive size={13} />
+                      <span>{t('modeOffline')}</span>
+                    </button>
+                  </div>
+
                   {restoreMode === 'online' && (
                     <button
                       onClick={() => {
