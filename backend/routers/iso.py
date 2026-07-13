@@ -388,16 +388,12 @@ def download_repo(
     temp_parent = f"/data/borg/tmp/download_{temp_uuid}"
     temp_repo_dir = os.path.join(temp_parent, hostname)
     os.makedirs(temp_repo_dir, exist_ok=True)
-
-    # Fetch offline Sentinel package cache into repository folder
-    packages_dir = os.path.join(temp_repo_dir, "packages")
-    download_kiosk_packages(node.os_version, packages_dir)
     
     # Use distinct temporary HOME directory to avoid cache and security history lockups/conflicts
     temp_home = f"/tmp/borg_home_{temp_uuid}"
     env["HOME"] = temp_home
 
-    # Initialize the temporary repository
+    # Initialize the temporary repository first while the directory is empty
     try:
         subprocess.run(
             ["borg", "init", "--encryption=repokey", temp_repo_dir],
@@ -409,6 +405,10 @@ def download_repo(
         shutil.rmtree(temp_parent, ignore_errors=True)
         shutil.rmtree(temp_home, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Failed to initialize temporary repository: {e.stderr.decode()}")
+
+    # Fetch offline Sentinel package cache into repository folder after initialization
+    packages_dir = os.path.join(temp_repo_dir, "packages")
+    download_kiosk_packages(node.os_version, packages_dir)
 
     # Transfer only the node's archives from shared repository to temporary repository
     try:
