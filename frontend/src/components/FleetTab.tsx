@@ -57,7 +57,22 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
   // Sorting State
   const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'ip_online_asc' | 'ip_online_desc' | 'ip_offline_asc' | 'ip_offline_desc'>('asc');
+  const [sortOrder, setSortOrder] = useState<
+    | 'asc'
+    | 'desc'
+    | 'ip_online_asc'
+    | 'ip_online_desc'
+    | 'ip_offline_asc'
+    | 'ip_offline_desc'
+    | 'hostname_online_asc'
+    | 'hostname_online_desc'
+    | 'hostname_offline_asc'
+    | 'hostname_offline_desc'
+    | 'group_online_asc'
+    | 'group_online_desc'
+    | 'group_offline_asc'
+    | 'group_offline_desc'
+  >('asc');
 
   const handleSort = (key: string) => {
     if (key === 'ip_address') {
@@ -70,6 +85,30 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
           if (prev === 'ip_online_desc') return 'ip_offline_asc';
           if (prev === 'ip_offline_asc') return 'ip_offline_desc';
           return 'ip_online_asc';
+        });
+      }
+    } else if (key === 'hostname') {
+      if (sortKey !== 'hostname') {
+        setSortKey('hostname');
+        setSortOrder('hostname_online_asc');
+      } else {
+        setSortOrder(prev => {
+          if (prev === 'hostname_online_asc') return 'hostname_online_desc';
+          if (prev === 'hostname_online_desc') return 'hostname_offline_asc';
+          if (prev === 'hostname_offline_asc') return 'hostname_offline_desc';
+          return 'hostname_online_asc';
+        });
+      }
+    } else if (key === 'group') {
+      if (sortKey !== 'group') {
+        setSortKey('group');
+        setSortOrder('group_online_asc');
+      } else {
+        setSortOrder(prev => {
+          if (prev === 'group_online_asc') return 'group_online_desc';
+          if (prev === 'group_online_desc') return 'group_offline_asc';
+          if (prev === 'group_offline_asc') return 'group_offline_desc';
+          return 'group_online_asc';
         });
       }
     } else {
@@ -90,8 +129,76 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
       let valB: any = '';
 
       if (sortKey === 'hostname') {
-        valA = a.hostname.toLowerCase();
-        valB = b.hostname.toLowerCase();
+        const compareHostname = (aHost: string, bHost: string, dir: 'asc' | 'desc') => {
+          const valA = aHost.toLowerCase();
+          const valB = bHost.toLowerCase();
+          if (valA < valB) return dir === 'asc' ? -1 : 1;
+          if (valA > valB) return dir === 'asc' ? 1 : -1;
+          return 0;
+        };
+
+        const onlineA = a.last_ping_status === true;
+        const onlineB = b.last_ping_status === true;
+
+        if (sortOrder === 'hostname_online_asc') {
+          if (onlineA && !onlineB) return -1;
+          if (!onlineA && onlineB) return 1;
+          return compareHostname(a.hostname, b.hostname, 'asc');
+        } else if (sortOrder === 'hostname_online_desc') {
+          if (onlineA && !onlineB) return -1;
+          if (!onlineA && onlineB) return 1;
+          return compareHostname(a.hostname, b.hostname, 'desc');
+        } else if (sortOrder === 'hostname_offline_asc') {
+          if (!onlineA && onlineB) return -1;
+          if (onlineA && !onlineB) return 1;
+          return compareHostname(a.hostname, b.hostname, 'asc');
+        } else if (sortOrder === 'hostname_offline_desc') {
+          if (!onlineA && onlineB) return -1;
+          if (onlineA && !onlineB) return 1;
+          return compareHostname(a.hostname, b.hostname, 'desc');
+        }
+
+        const direction = sortOrder === 'desc' ? 'desc' : 'asc';
+        return compareHostname(a.hostname, b.hostname, direction);
+      } else if (sortKey === 'group') {
+        const getGroupName = (node: Node) => {
+          const group = groups.find(g => g.id === node.group_id);
+          return (group ? group.name : '').toLowerCase();
+        };
+
+        const compareGroup = (aNode: Node, bNode: Node, dir: 'asc' | 'desc') => {
+          const valA = getGroupName(aNode);
+          const valB = getGroupName(bNode);
+          if (valA === '' && valB !== '') return 1;
+          if (valA !== '' && valB === '') return -1;
+          if (valA < valB) return dir === 'asc' ? -1 : 1;
+          if (valA > valB) return dir === 'asc' ? 1 : -1;
+          return 0;
+        };
+
+        const onlineA = a.last_ping_status === true;
+        const onlineB = b.last_ping_status === true;
+
+        if (sortOrder === 'group_online_asc') {
+          if (onlineA && !onlineB) return -1;
+          if (!onlineA && onlineB) return 1;
+          return compareGroup(a, b, 'asc');
+        } else if (sortOrder === 'group_online_desc') {
+          if (onlineA && !onlineB) return -1;
+          if (!onlineA && onlineB) return 1;
+          return compareGroup(a, b, 'desc');
+        } else if (sortOrder === 'group_offline_asc') {
+          if (!onlineA && onlineB) return -1;
+          if (onlineA && !onlineB) return 1;
+          return compareGroup(a, b, 'asc');
+        } else if (sortOrder === 'group_offline_desc') {
+          if (!onlineA && onlineB) return -1;
+          if (onlineA && !onlineB) return 1;
+          return compareGroup(a, b, 'desc');
+        }
+
+        const direction = sortOrder === 'desc' ? 'desc' : 'asc';
+        return compareGroup(a, b, direction);
       } else if (sortKey === 'ip_address') {
         const parseIP = (ip: string) => {
           const parts = ip.split(':')[0].split('.').map(Number);
@@ -184,6 +291,69 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
         );
       }
     }
+
+    if (key === 'hostname') {
+      if (sortOrder === 'hostname_online_asc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
+            ON <ArrowUp size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+      if (sortOrder === 'hostname_online_desc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
+            ON <ArrowDown size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+      if (sortOrder === 'hostname_offline_asc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
+            OFF <ArrowUp size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+      if (sortOrder === 'hostname_offline_desc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
+            OFF <ArrowDown size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+    }
+
+    if (key === 'group') {
+      if (sortOrder === 'group_online_asc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
+            ON <ArrowUp size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+      if (sortOrder === 'group_online_desc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
+            ON <ArrowDown size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+      if (sortOrder === 'group_offline_asc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
+            OFF <ArrowUp size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+      if (sortOrder === 'group_offline_desc') {
+        return (
+          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
+            OFF <ArrowDown size={10} className="ml-0.5" />
+          </span>
+        );
+      }
+    }
+
     return sortOrder === 'asc' ? (
       <ArrowUp size={12} className="inline ml-1 text-indigo-400" />
     ) : (
@@ -632,10 +802,23 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                   />
                 </th>
               )}
-              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('hostname')}>
-                <div className="flex items-center gap-1">
-                  {t('hostnameLabel')}
-                  {renderSortIcon('hostname')}
+              <th className="px-4 py-2.5 select-none">
+                <div className="flex items-center gap-2 text-zinc-400">
+                  <span 
+                    className={`cursor-pointer transition-colors hover:text-white ${sortKey === 'hostname' ? 'text-white font-bold' : ''}`}
+                    onClick={() => handleSort('hostname')}
+                  >
+                    {t('hostnameLabel') || 'Hostname'}
+                    {renderSortIcon('hostname')}
+                  </span>
+                  <span>/</span>
+                  <span 
+                    className={`cursor-pointer transition-colors hover:text-white ${sortKey === 'group' ? 'text-white font-bold' : ''}`}
+                    onClick={() => handleSort('group')}
+                  >
+                    {t('groupLabel') || 'Group'}
+                    {renderSortIcon('group')}
+                  </span>
                 </div>
               </th>
               <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('ip_address')}>
