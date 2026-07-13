@@ -61,6 +61,10 @@ celery_app.conf.beat_schedule = {
         'task': 'tasks.scheduler_tick',
         'schedule': 60.0, # Run every minute
     },
+    'ping-nodes-task': {
+        'task': 'tasks.ping_all_nodes_task',
+        'schedule': 30.0, # Run every 30 seconds
+    },
 }
 celery_app.conf.timezone = 'UTC'
 
@@ -405,6 +409,44 @@ def scheduler_tick() -> Dict[str, Any]:
         return {"status": "SUCCESS"}
     except Exception as e:
         logger.error(f"Error in scheduler_tick: {str(e)}")
+        return {"status": "FAILED", "error": str(e)}
+    finally:
+        db.close()
+
+
+from concurrent.futures import ThreadPoolExecutor
+
+def ping_ip(ip: str) -> bool:
+    try:
+        # Run ping: -c 1 (1 packet), -W 2 (2s timeout)
+        res = subprocess.run(["ping", "-c", "1", "-W", "2", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+@celery_app.task
+def ping_all_nodes_task() -> Dict[str, Any]:
+    """
+    Periodic task running every 30 seconds to ping all nodes
+    and update their availability status.
+    """
+    db: Session = SessionLocal()
+    try:
+        nodes = db.query(Node).all()
+        if not nodes:
+            return {"status": "SUCCESS"}
+            
+        with ThreadPoolExecutor(max_workers=min(len(nodes), 20)) as executor:
+            results = list(executor.map(ping_ip, [n.ip_address for n in nodes]))
+            
+        for node, is_online in zip(nodes, results):
+            node.last_ping_status = is_online
+            if is_online:
+                node.last_available_at = datetime.utcnow()
+        db.commit()
+        return {"status": "SUCCESS"}
+    except Exception as e:
+        logger.error(f"Error in ping_all_nodes_task: {str(e)}")
         return {"status": "FAILED", "error": str(e)}
     finally:
         db.close()
