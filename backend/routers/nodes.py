@@ -155,7 +155,9 @@ def get_nodes(db: Session = Depends(get_db), current_user = Depends(require_kios
             "notes": node.notes,
             "is_backup_running": is_running,
             "backup_progress": progress,
-            "backup_task_id": running_task_id
+            "backup_task_id": running_task_id,
+            "last_ping_status": node.last_ping_status,
+            "last_available_at": node.last_available_at
         }
         if node.status == "OFFLINE":
             try:

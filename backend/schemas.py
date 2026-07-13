@@ -143,6 +143,8 @@ class NodeResponse(BaseModel):
     is_backup_running: Optional[bool] = False
     backup_progress: Optional[int] = 0
     backup_task_id: Optional[str] = None
+    last_ping_status: Optional[bool] = None
+    last_available_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
