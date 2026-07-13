@@ -88,6 +88,27 @@ export function NodeRow({
     const s = seconds % 60;
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
+
+  const getIpColorClass = () => {
+    if (node.last_ping_status === true) {
+      return "text-emerald-400 font-medium";
+    }
+    if (node.last_available_at) {
+      return "text-rose-400 font-medium";
+    }
+    return "text-amber-500 font-medium"; // Never online / orange
+  };
+
+  const getIpTooltip = () => {
+    if (node.last_ping_status === true) {
+      return t('nodeOnline') || 'Online';
+    }
+    if (node.last_available_at) {
+      const formattedTime = formatDate(node.last_available_at, timezone);
+      return (t('nodeOfflineLastSeen') || 'Offline (Last seen: {time})').replace('{time}', formattedTime);
+    }
+    return t('nodeNeverOnline') || 'Never online';
+  };
   
   const renderStatusButton = () => {
     const statusMap: Record<string, { bg: string, text: string, border: string, label: string, icon: React.ReactNode, title: string, onClick: () => void }> = {
@@ -168,7 +189,12 @@ export function NodeRow({
           )}
         </div>
       </td>
-      <td className="px-4 py-2.5 text-zinc-400">{node.ip_address}:{node.ssh_port}</td>
+      <td className="px-4 py-2.5 text-zinc-400">
+        <span className={getIpColorClass()} title={getIpTooltip()}>
+          {node.ip_address}
+        </span>
+        :{node.ssh_port}
+      </td>
       <td className="px-4 py-2.5 text-zinc-300 font-medium text-xs">{node.os_version || t('unknown')}</td>
       <td className="px-4 py-2.5">
         <div className="flex flex-col">
