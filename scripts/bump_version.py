@@ -14,7 +14,8 @@ def main():
     clean_ver = new_ver.lstrip('v')
     v_ver = f"v{clean_ver}"
 
-    root_dir = os.path.dirname(os.path.abspath(__file__))
+    # scripts/bump_version.py is 1 level down, so go up 1 level to root
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     # 1. Update backend/version.py
     version_py_path = os.path.join(root_dir, "backend", "version.py")
