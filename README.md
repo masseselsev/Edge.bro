@@ -52,7 +52,7 @@ Seven containers in `docker-compose.yml`:
 
 | Service | Role |
 |---------|------|
-| **frontend** | React SPA behind Nginx. Dark-themed dashboard with Fleet, Flasher, Archive, Schedule, Logs, and Settings tabs. Multi-language (EN/RU/UK). Real-time terminal console overlay. |
+| **frontend** | React SPA behind Nginx. Dashboard with customizable dark/light theme supporting Fleet, Flasher, Archive, Schedule, Logs, and Settings tabs. Multi-language (EN/RU/UK). Real-time terminal console overlay. |
 | **backend** | FastAPI on Uvicorn. REST API, IP parser (CIDR / ranges / lists), job tracking. Resolves host physical and VPN IPs by reading `/host/proc/1/net/` (skips docker bridges). |
 | **worker** | Celery worker in privileged host-device mode. Runs Ansible playbooks and disk partitioning commands. Needs `/dev` access for bare-metal flashing. |
 | **beat** | Celery Beat scheduler. Fires daily `borg prune` at 03:00, enforces retention policies. |
