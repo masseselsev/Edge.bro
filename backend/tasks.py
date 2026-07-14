@@ -65,6 +65,14 @@ celery_app.conf.beat_schedule = {
         'task': 'tasks.ping_all_nodes_task',
         'schedule': 30.0, # Run every 30 seconds
     },
+    'docker-system-cleanup-task': {
+        'task': 'tasks.docker_system_cleanup_task',
+        'schedule': crontab(hour=4, minute=0, day_of_week=0), # Run at 4:00 AM on Sunday
+    },
+    'db-task-log-prune-task': {
+        'task': 'tasks.db_task_log_prune_task',
+        'schedule': crontab(hour=3, minute=30), # Run at 3:30 AM daily
+    },
 }
 celery_app.conf.timezone = 'UTC'
 
@@ -447,6 +455,64 @@ def ping_all_nodes_task() -> Dict[str, Any]:
         return {"status": "SUCCESS"}
     except Exception as e:
         logger.error(f"Error in ping_all_nodes_task: {str(e)}")
+        return {"status": "FAILED", "error": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task
+def docker_system_cleanup_task() -> Dict[str, Any]:
+    """
+    Weekly cleanup task to prune unused Docker build cache and images.
+    Requires mounting /var/run/docker.sock into the container.
+    """
+    socket_path = "/var/run/docker.sock"
+    if not os.path.exists(socket_path):
+        return {"status": "SKIPPED", "reason": "Docker socket not mounted"}
+        
+    try:
+        # Prune builder cache
+        res_build = subprocess.run([
+            "curl", "--unix-socket", socket_path, "-X", "POST",
+            "http://localhost/v1.41/build/prune?all=true"
+        ], capture_output=True, text=True)
+        
+        # Prune images
+        res_img = subprocess.run([
+            "curl", "--unix-socket", socket_path, "-X", "POST",
+            "http://localhost/v1.41/images/prune"
+        ], capture_output=True, text=True)
+        
+        return {
+            "status": "SUCCESS",
+            "build_prune_status": res_build.returncode,
+            "image_prune_status": res_img.returncode,
+            "build_prune_output": res_build.stdout,
+            "image_prune_output": res_img.stdout
+        }
+    except Exception as e:
+        logger.error(f"Error in docker_system_cleanup_task: {str(e)}")
+        return {"status": "FAILED", "error": str(e)}
+
+
+@celery_app.task
+def db_task_log_prune_task() -> Dict[str, Any]:
+    """
+    Daily database log pruning task. Clears completed TaskLog records older than 30 days.
+    """
+    db: Session = SessionLocal()
+    try:
+        from datetime import datetime, timedelta
+        limit_date = datetime.utcnow() - timedelta(days=30)
+        deleted = db.query(TaskLog).filter(
+            TaskLog.status.in_(["SUCCESS", "FAILED"]),
+            TaskLog.created_at < limit_date
+        ).delete(synchronize_session=False)
+        db.commit()
+        logger.info(f"Database TaskLog prune completed. Deleted {deleted} records older than 30 days.")
+        return {"status": "SUCCESS", "deleted_count": deleted}
+    except Exception as e:
+        logger.error(f"Error in db_task_log_prune_task: {str(e)}")
         return {"status": "FAILED", "error": str(e)}
     finally:
         db.close()
