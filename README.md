@@ -123,7 +123,8 @@ Seven containers in `docker-compose.yml`:
 
 ### Live-CD Kiosk Client
 - Compiles a bootable Debian Live ISO on the fly with baked-in orchestrator IP and auth token.
-- Boot from USB on any edge node → restore over the network without extracting the disk.
+- **Main Deployment Pattern**: Booted on a technician's PC/laptop (e.g., in the office). The client can flash target drives over the network (pulling backup snapshots from the cloud/server), or run in fully offline mode by pre-synchronizing backup snapshots directly to the free space on the bootable USB flash drive itself beforehand.
+- **Secondary Pattern**: Running the Live-USB directly on the target edge node itself is also supported.
 - **Single snapshot sync**: generates a temporary mini-repo via `borg export-tar` | `borg import-tar` pipeline — no need to download full history.
 - Real-time download speed, progress bar, and ETA display.
 - **Kiosk management**: register, approve, block, re-pair kiosks from the dashboard. Dynamic pairing keys.
@@ -152,19 +153,19 @@ Seven containers in `docker-compose.yml`:
 | System disk | 20 GB free | — |
 | Backup volume | Sized per fleet — see below | Dedicated drive |
 
-**Backup volume sizing** (quarterly backups, keep last 5 = ~1.25 years):
+**Backup volume sizing** (quarterly backups, keep last 5 = ~1.25 years). For fleets with highly uniform/identical hardware, Borg's cross-device deduplication is significantly more efficient:
 
-| Fleet size | Estimate |
-|------------|----------|
-| 50 devices | ~60 GB |
-| 300 devices | ~300 GB |
-| 1000 devices | ~1 TB |
+| Fleet size | Estimate (Mixed/Custom Fleet) | Estimate (Highly Uniform Fleet) |
+|------------|-------------------------------|---------------------------------|
+| 50 devices | ~60 GB | ~40 GB |
+| 300 devices | ~300 GB | ~150–200 GB |
+| 1000 devices | ~1 TB | ~500–600 GB |
 
 ### Edge Node (Kiosk PC)
 - 64-bit x86 CPU, 2 GB RAM (4 GB recommended), Ethernet or Wi-Fi.
 
 ### Flasher USB Drive
-- 8 GB minimum (16–32 GB recommended), USB 3.0+.
+- Minimum 32 GB (preferably larger), write speed ≥ 15-20 MB/s. Recommended: Netac US5 level or higher.
 
 ---
 

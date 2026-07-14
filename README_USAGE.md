@@ -254,9 +254,15 @@ Use a **USB-to-SATA** or **USB-to-NVMe** adapter.
 
 ---
 
-## 6. Live-CD Kiosk (Network Restore Without Disk Extraction)
+## 6. Live-CD Kiosk (Office Technician Client & Network Restore)
 
-Instead of physically removing the disk, you can boot a target node from a generated Live-CD USB and restore over the network.
+The primary operating pattern of the system is a centralized backup server (in a server room or cloud) with technician PCs/laptops booting the Live-CD Kiosk. 
+
+From this kiosk, you can connect to the server and flash target drives in two ways:
+1. **Network Restore**: Connect over the LAN/VPN and write backups directly to target drives by pulling them from the server.
+2. **Offline Local Restore**: Pre-synchronize required backup snapshots to the free space on the bootable USB flash drive itself beforehand, then boot the client in a fully offline environment with no network connection needed.
+
+Additionally, booting the Live-USB directly on the target edge node itself is supported as a secondary, alternative pattern.
 
 ### 6.1 Generate the ISO
 
@@ -277,7 +283,7 @@ Use one of these tools (in **DD mode**, not ISO mode):
 
 > ⚠️ **Why DD mode?** The ISO contains a hybrid bootable image with custom partitioning. Writing it as a regular ISO (e.g., via Rufus in ISO mode) will break the boot layout. Rufus will ask you — always pick DD.
 
-**USB drive requirements**: 8 GB minimum (16–32 GB recommended), USB 3.0+ for reasonable write speeds.
+**USB drive requirements**: Minimum 32 GB (preferably larger), write speed ≥ 15-20 MB/s. Recommended: Netac US5 level or higher.
 
 ### 6.3 Single Snapshot Sync
 
