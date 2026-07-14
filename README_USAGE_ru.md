@@ -13,10 +13,16 @@
 1. Установите базовую ОС (Ubuntu 22.04/24.04/26.04 или Debian 12/13).
 2. Установите Docker:
    ```bash
-   sudo apt update
-   sudo apt install -y docker.io docker-compose-v2
-   sudo systemctl enable --now docker
-   sudo usermod -aG docker $USER
+    # Вариант А: Установка официального Docker CE (Рекомендуется)
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+
+    # Вариант Б: Либо используйте стандартные пакеты дистрибутива
+    # sudo apt update && sudo apt install -y docker.io docker-compose-v2
+
+    # Запуск службы и настройка прав пользователя
+    sudo systemctl enable --now docker
+    sudo usermod -aG docker $USER
    ```
    После добавления в группу `docker` перелогиньтесь.
 

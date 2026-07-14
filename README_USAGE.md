@@ -13,10 +13,16 @@ Any x86_64 Linux machine with Docker works. An Intel NUC, a mini-PC, or a full s
 1. Install a base OS (Ubuntu 22.04/24.04/26.04 or Debian 12/13).
 2. Install Docker:
    ```bash
-   sudo apt update
-   sudo apt install -y docker.io docker-compose-v2
-   sudo systemctl enable --now docker
-   sudo usermod -aG docker $USER
+    # Option A: Install official Docker CE (Recommended)
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+
+    # Option B: Alternatively, install distro-packaged Docker
+    # sudo apt update && sudo apt install -y docker.io docker-compose-v2
+
+    # Enable service and configure user permissions
+    sudo systemctl enable --now docker
+    sudo usermod -aG docker $USER
    ```
    Re-login after adding yourself to the `docker` group.
 
