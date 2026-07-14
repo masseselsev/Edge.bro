@@ -1326,17 +1326,17 @@ function AppContent() {
       )}
 
       {/* Main Body */}
-      <main className={`flex-1 max-w-7xl w-full mx-auto px-6 py-8 ${isKiosk ? (restoreMode === 'online' && kioskStatus !== 'APPROVED' ? 'pb-28' : 'pb-20') : ''}`}>
+      <main className={`flex-1 max-w-7xl w-full mx-auto px-6 py-8 ${isKiosk ? (restoreMode === 'online' && kioskStatus !== 'APPROVED' ? 'pb-28' : 'pb-20') : 'pb-20'}`}>
         <div key={activeTab} className="animate-fade-in">
           {renderTabContent()}
         </div>
       </main>
 
       {!isKiosk && (
-        <footer className="w-full py-4 px-6 border-t border-zinc-900/60 bg-zinc-950/40 text-center text-xs text-zinc-500 flex flex-wrap items-center justify-center gap-4 animate-fade-in">
+        <footer className="fixed bottom-0 left-0 right-0 z-40 py-4 px-6 border-t border-zinc-900/60 bg-zinc-950/95 backdrop-blur-md text-center text-xs text-zinc-500 flex flex-wrap items-center justify-center gap-4 animate-fade-in">
           <span>Edge B.R.O. Orchestrator</span>
           <span className="h-4 w-px bg-zinc-900" />
-          <span>v2.1.0</span>
+          <span>v{appVersion || '2.1.0'}</span>
           {healthWarnings.length > 0 && (
             <>
               <span className="h-4 w-px bg-zinc-900" />
