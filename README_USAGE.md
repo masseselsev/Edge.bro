@@ -117,7 +117,7 @@ Click **Add Nodes**. Enter IP addresses in any format:
 - Range: `192.168.1.50-60`
 - CIDR: `10.0.0.0/24`
 
-Fill in SSH credentials (login, password, port). The form pre-fills defaults (`user` / `admin` / port `2222`) — adjust as needed.
+Fill in SSH credentials (login, password, port). The form pre-fills defaults (`user` / `admin` / port `2222`) — adjust as needed. Alternatively, you can predefine multiple bootstrap credentials in the **Settings** tab. In the node creation dialog, these pre-saved variants will be displayed by their comment or their username/password pair.
 
 ### 3.2 What happens during Bootstrap
 
@@ -127,7 +127,7 @@ The orchestrator connects to each node in parallel (up to 24 at a time) and:
 2. **Installs packages** — `python3`, `borgbackup`, `parted`, `e2fsprogs`, `dosfstools`.
 3. **Injects SSH key** — appends the orchestrator's Ed25519 public key to `/root/.ssh/authorized_keys`. Sets `PermitRootLogin prohibit-password`.
 4. **Creates `borg` user** — system user with its own SSH keypair for pushing backup data.
-5. **Gathers hardware info** — disk type, EFI UUID, hostname, OS version, partition layout, network interface.
+5. **Gathers hardware/software info** — disk type, EFI UUID, hostname, OS version, partition layout, network interfaces, RAM size, CPU model/cores, Edge software version, and Sentinel LDK runtime version.
 
 From this point on, all communication is key-based — no passwords stored.
 
@@ -159,7 +159,7 @@ Go to the **Schedule** tab → **Create Group**.
 
 A backup group defines:
 - **Which nodes** belong to it (drag from the list)
-- **Interval** — 10min, 30min, weekly, monthly, quarterly, yearly
+- **Interval** — 10min, 30min (both for testing purposes), weekly, monthly, quarterly, yearly
 - **Execution window** — start time / end time
 - **Concurrency limit** — how many nodes back up simultaneously
 
@@ -175,7 +175,7 @@ A backup group defines:
 #### Smart queue behavior
 
 - **Dynamic concurrency**: if the window is running short, the scheduler automatically increases parallelism to finish on time.
-- **Bandwidth capping**: with low upload limits, concurrency is auto-reduced (minimum 2 MiB/s per stream).
+- **Bandwidth capping**: with low upload limits, concurrency is auto-reduced to ensure stability (recommending/allocating ~2 MiB/s per stream, though it can scale lower depending on network capacity).
 - **FIFO queue**: nodes are launched sequentially by stagger offset. When one finishes, the next starts immediately.
 - **Running protection**: backups already in progress are allowed to finish past the window close.
 
@@ -243,7 +243,7 @@ Use a **USB-to-SATA** or **USB-to-NVMe** adapter.
 ### 5.2 Flash the disk
 
 1. Go to the **Flasher** tab.
-2. **Right side** — select the connected USB disk. The system shows model, size, and bus type. The server's own system disk is filtered out and protected.
+2. **Right side** — select the target disk. **Warning**: Since the orchestrator allows flashing drives directly from the server, all drives other than the server's own system (OS) partition will be visible in the dropdown list. Choose the target disk **EXTREMELY CAREFULLY**! Drives connected via USB will have a special badge/label indicating they are USB.
 3. **Left side** — select the source node and the backup snapshot (archive) to restore.
 4. Click **Start Flashing**. The log console shows every step:
    - Disk wiped (`wipefs`) and repartitioned as GPT
@@ -252,6 +252,7 @@ Use a **USB-to-SATA** or **USB-to-NVMe** adapter.
    - `borg extract` unpacks the archive onto the mounted disk
    - Chroot: `mount --bind` of `/dev`, `/proc`, `/sys` → GRUB reinstalled → `update-initramfs`
    - Network reset: persistent-net rules wiped, generic DHCP injected for `eth*`/`en*`
+   - Sentinel LDK (HASP) reinstallation: By design, Sentinel licensing does not survive raw cloning of machine hardware/fingerprints. Therefore, the Sentinel HASP runtime is completely reinstalled/reactivated during the restore process.
    - Fallback EFI loader written to `EFI/BOOT/BOOTX64.EFI`
 5. Wait for `Restore completed successfully!` — the disk is safely unmounted.
 6. Disconnect the adapter, install the disk into the target node, power on. It boots with all data from the backup timestamp.
@@ -270,12 +271,16 @@ From this kiosk, you can connect to the server and flash target drives in two wa
 
 Additionally, booting the Live-USB directly on the target edge node itself is supported as a secondary, alternative pattern.
 
-### 6.1 Generate the ISO
+### 6.1 Kiosk ISO Preparation & Issuance
 
-1. Go to the **Live-CD & Kiosks** tab → **ISO Generator** section.
-2. The orchestrator's IP and an auth token are baked into the ISO.
-3. Click **Generate Live-USB**. The system downloads a base Debian image, injects your config, and compiles a custom bootable ISO.
-4. Download the ISO when ready.
+The base template caching and client ISO compilation is fully automated. You do not need to compile or repack files manually:
+
+1. Go to the **Live-CD & Kiosks** tab.
+2. Under the **Kiosk Control Panel** section on the right, click **Issue Live Kiosk**.
+3. Enter the Friendly Name, contact details, and comment.
+4. The system automatically creates a new kiosk registration and generates a custom ISO with a unique pairing token.
+5. Click **Download** on the kiosk row to download the compiled ISO.
+6. If the cache is pruned or configuration changes require a rebuild, click **Re-create** next to the kiosk row to repack the ISO.
 
 ### 6.2 Write the ISO to USB
 
@@ -302,23 +307,25 @@ Instead of downloading the entire node's backup history (potentially hundreds of
 
 ### 6.4 Boot and restore
 
-1. Insert the USB into the broken edge node and boot from it.
-2. If the node needs VPN to reach the orchestrator:
-   - Open **Network Settings** in the kiosk UI.
-   - Scan a WireGuard QR code with the webcam, or paste the config text manually.
-   - The VPN profile persists on the USB drive (`/media/usb-data`) and auto-loads on next boot.
-3. The kiosk connects to the orchestrator and shows the Flasher interface.
-4. Select the node's internal disk and the desired snapshot → start the restore.
+1. **Main Operating Pattern**: Insert the written USB drive into a technician's PC/laptop (e.g., in the office) and boot it.
+2. **Alternative Pattern**: Alternatively, insert the USB into the target edge node itself and boot it.
+3. If the client needs a VPN connection to reach the central orchestrator:
+   - Place your WireGuard `.conf` configuration file directly at the root of the USB's persistence partition (mounts as `/media/usb-data/wg0.conf`), or configure it in the kiosk UI using the webcam QR scanner or textbox.
+   - Any NetworkManager profile connections (`.nmconnection`) should be placed in the `/system-connections/` folder on the USB persistence partition (i.e. `/media/usb-data/system-connections/`).
+   - The VPN profile persists on the USB and auto-connects on next boot.
+4. The kiosk automatically connects to the central orchestrator and displays the Flasher interface.
+5. **Under the Main Pattern**: Connect the target disk via a USB-to-SATA/NVMe adapter to the laptop. Select the adapter's drive as the target and choose the desired node and snapshot to write.
+6. **Under the Alternative Pattern**: Select the node's internal disk as the target and choose the desired snapshot to write.
 
 ### 6.5 Kiosk Management
 
-From the **Live-CD & Kiosks** tab → **Kiosk Control** section, you can:
+From the **Live-CD & Kiosks** tab → **Kiosk Control Panel** section, you can:
 
-- **Register** new kiosks with dynamic pairing keys
-- **Approve / Block / Re-activate** kiosk access
-- **Edit** kiosk metadata (name, contact, comments)
-- **Issue personalized ISOs** — click **Issue Live Kiosk**, fill in recipient details, and the system compiles a custom ISO with a unique pairing token
-- **Re-create / Download** previously generated ISOs from the history list
+- **Issue personalized ISOs** — Click **Issue Live Kiosk**, fill in recipient details, and the system compiles a custom ISO with a unique pairing token.
+- **Approve / Block / Re-activate / Delete** kiosk access.
+- **Edit Kiosk Metadata** — Name, contact, and comments.
+- **Re-create / Download** previously generated ISOs from the history list.
+- **Cache Size Limit (`max_kiosk_isos`)**: Configured in Settings, this sets the maximum number of custom kiosk ISOs kept on the server's disk (default is 5). When a new kiosk ISO is generated that exceeds this limit, the oldest ISO file is automatically deleted from disk to save space. The kiosk record remains in the database, and its status in the dashboard changes to pruned (you can re-generate it at any time by clicking **Re-create**).
 
 ---
 

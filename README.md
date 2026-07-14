@@ -66,8 +66,8 @@ Seven containers in `docker-compose.yml`:
 
 ### Fleet Provisioning
 - Register nodes by IP lists, ranges (`192.168.1.50-60`), or CIDR blocks (`10.0.0.0/24`).
-- Parallel Celery bootstrap — up to 24 concurrent node setups.
-- Installs packages, injects SSH keys, gathers hardware info — all via Ansible.
+- Parallel Celery bootstrap — up to 24 concurrent node setups. Multiple credentials can be managed and pre-saved via Settings (identified by comment or username/password pair).
+- Installs packages, injects SSH keys, gathers detailed hardware/software info (disk type, EFI UUID, hostname, OS version, partition layout, network interfaces, RAM size, CPU model, Edge version, Sentinel LDK version) — all via Ansible.
 
 ### Disk Preparation (Auto-Prepare)
 - Assigns persistent filesystem labels: `edgeroot`, `edgeboot`, `edgelog`, `edgestor`, `EFI`.
@@ -88,7 +88,7 @@ Seven containers in `docker-compose.yml`:
   - Incremental runs: ~100–200 MB of unique data
 - **Smart queue scheduler**:
   - Dynamic concurrency scaling when window time runs short
-  - Bandwidth-aware concurrency caps (≥ 2 MiB/s per stream)
+  - Bandwidth-aware concurrency caps (can scale below 2 MiB/s per stream if needed)
   - FIFO queue with stagger offsets; slots release instantly on completion
   - Running backups protected past window close
 - **Retention**: interval-based, count-based, or timeframe-based. Global or per-group override. Pruning runs daily at 03:00 via Celery Beat, followed by automatic `borg compact`.
@@ -114,20 +114,19 @@ Seven containers in `docker-compose.yml`:
 
 ### Bare-Metal Restore (Flasher)
 - Connect target drive via USB-SATA/NVMe adapter → select node + snapshot → flash.
-- Host's own system drive is filtered out and protected.
-- **Cross-drive migration**: NVMe ↔ SATA restores work seamlessly (label-based fstab).
+- **Local Flashing Warning**: Since the orchestrator supports flashing drives directly from the server, all drives other than the server's own system (OS) partition will be visible in the Flasher dropdown. Operators must choose the target disk **EXTREMELY CAREFULLY**. Drives connected via USB will have a special badge/label in the UI.
+- **Sentinel LDK (HASP) Reinstallation**: By design, Sentinel licensing does not survive raw cloning of machine hardware/fingerprints. Therefore, the Sentinel HASP runtime is completely reinstalled/reactivated during the restore process.
 - GPT partitioning, EFI UUID preservation, `borg extract`, chroot GRUB reinstall, initramfs rebuild.
 - Network reset: wipes persistent-net rules, injects generic DHCP for `eth*`/`en*`.
-- Sentinel HASP packages reinstalled from local cache if offline.
 - Post-restore check-in service pings orchestrator and updates status to `RESTORED`.
 
 ### Live-CD Kiosk Client
-- Compiles a bootable Debian Live ISO on the fly with baked-in orchestrator IP and auth token.
-- **Main Deployment Pattern**: Booted on a technician's PC/laptop (e.g., in the office). The client can flash target drives over the network (pulling backup snapshots from the cloud/server), or run in fully offline mode by pre-synchronizing backup snapshots directly to the free space on the bootable USB flash drive itself beforehand.
-- **Secondary Pattern**: Running the Live-USB directly on the target edge node itself is also supported.
+- **Automated Compilation**: Seamless pipeline for base cached Debian template preparation and client ISO compilation/generation — no manual ISO packing commands required. Issue customized client ISOs directly from the dashboard.
+- **Main Operating Pattern**: Booted on a technician's PC/laptop (e.g., in the office). The client can flash target drives over the network (pulling backup snapshots from the cloud/server), or run in fully offline mode by pre-synchronizing backup snapshots directly to the free space on the bootable USB flash drive itself beforehand.
+- **Secondary Pattern**: Booting the Live-USB directly on the target edge node itself is also supported as an alternative.
 - **Single snapshot sync**: generates a temporary mini-repo via `borg export-tar` | `borg import-tar` pipeline — no need to download full history.
 - Real-time download speed, progress bar, and ETA display.
-- **Kiosk management**: register, approve, block, re-pair kiosks from the dashboard. Dynamic pairing keys.
+- **Kiosk management**: register, approve, block, re-pair kiosks from the dashboard. Dynamic pairing keys. Configurable cache limit (`max_kiosk_isos`) for the maximum number of custom kiosks to keep in memory (oldest ISOs are automatically pruned from disk, but their records remain in the database and can be re-created with one click).
 
 ### WireGuard VPN Integration
 - Browser webcam QR scanner (`jsQR`) for WireGuard configs, with manual paste fallback.
