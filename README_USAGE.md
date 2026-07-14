@@ -403,3 +403,28 @@ docker compose exec -T db psql -U postgres -d borg_orchestrator < recovery.sql
 ```
 
 Restart the backend container after recovery to pick up the restored data.
+
+---
+
+## 10. Troubleshooting & Log Collection
+
+When diagnosing orchestrator issues, you can download logs directly via the REST API or retrieve container logs from the server.
+
+### 10.1 Diagnostic Endpoints (API)
+These endpoints are secured and require the appropriate authentication session headers:
+
+- **System Daemon Logs**: `/api/tasks/debug-logs` (requires Admin)
+  - Returns the latest 500 system logs (FastAPI, Celery workers, and scheduler execution logs).
+- **Administrative Audit Logs**: `/api/users/audit-logs` (requires Superadmin or Admin+)
+  - Returns the latest 1000 user activity logs (logins, settings changes, user actions).
+- **Task Console Logs**: `/api/tasks/{task_id}` (requires Kiosk or Admin)
+  - Returns the full execution console/Ansible playbook output of a specific background task.
+
+### 10.2 Server Container Logs
+For low-level Docker issues or standard output logs of all services (Nginx, FastAPI, Borg SSH Server, Postgres, Redis, Workers, Beat), run the following command on the orchestrator server:
+
+```bash
+docker compose logs --tail=2000 > edge_bro_logs.txt
+```
+Attach `edge_bro_logs.txt` to the support ticket.
+
