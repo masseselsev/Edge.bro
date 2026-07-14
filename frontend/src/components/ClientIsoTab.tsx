@@ -238,7 +238,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
         {/* Left Column (30% / 3 cols) */}
         <div className="lg:col-span-3 space-y-6">
           {/* Base Template ISO Widget */}
-          <div className="p-5 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4">
+          <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-3">
             <div>
               <h3 className="text-sm font-bold text-zinc-50">{t('baseTemplateIso') || 'Base Template ISO'}</h3>
               <p className="text-[10px] text-zinc-400 mt-1 leading-relaxed">
@@ -247,7 +247,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
             </div>
 
             {/* Status card */}
-            <div className="p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl space-y-3">
+            <div className="p-2.5 bg-zinc-950 border border-zinc-800/80 rounded-xl space-y-2.5">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs font-bold text-zinc-50">{t('baseIsoCache') || 'Base Debian ISO Cache'}</div>
@@ -388,8 +388,8 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
             {error && <div className="text-[11px] text-rose-400 bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg leading-relaxed">{error}</div>}
             {successMsg && <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-lg leading-relaxed">{successMsg}</div>}
 
-            <div className="space-y-3 pt-2 border-t border-zinc-800/80">
-              <div className="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl">
+            <div className="space-y-2 pt-2 border-t border-zinc-800/80">
+              <div className="flex items-center justify-between p-2.5 bg-zinc-950 border border-zinc-800/80 rounded-xl">
                 <div>
                   <div className="text-xs font-bold text-zinc-50">{t('compiledOfflineClient') || 'Compiled Template ISO'}</div>
                   <div className="text-[10px] text-zinc-500 font-mono">technician_client_v1.iso</div>
@@ -430,7 +430,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
               )}
 
               {status?.client_iso_ready && (
-                <div className="space-y-2 pt-1">
+                <div className="space-y-1.5 pt-1">
                   <button
                     type="button"
                     onClick={() => {
@@ -438,7 +438,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                       setSuccessMsg('');
                       setShowIssueModal(true);
                     }}
-                    className="w-full flex items-center justify-center gap-2 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs tracking-wide shadow-lg transition-all cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+                    className="w-full flex items-center justify-center gap-2 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs tracking-wide shadow-lg transition-all cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
                   >
                     <Cpu size={14} />
                     {t('issueKioskBtn') || 'Issue Kiosk'}
@@ -452,7 +452,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                       fetchKiosks();
                       setShowHistoryModal(true);
                     }}
-                    className="w-full flex items-center justify-center gap-2 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 rounded-lg font-bold text-xs tracking-wide transition-all cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
+                    className="w-full flex items-center justify-center gap-2 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 rounded-lg font-bold text-xs tracking-wide transition-all cursor-pointer hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]"
                   >
                     <History size={14} />
                     {t('showIssuedIsosBtn') || 'Show Created ISOs'}
@@ -463,9 +463,9 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
           </div>
 
           {/* Offline Capabilities Card */}
-          <div className="p-4 rounded-xl flex items-start gap-3 offline-capabilities-card border">
-            <ShieldAlert className="shrink-0 mt-0.5 card-icon" size={18} />
-            <div className="text-xs leading-relaxed card-text">
+          <div className="p-3.5 rounded-xl flex items-start gap-2.5 offline-capabilities-card border">
+            <ShieldAlert className="shrink-0 mt-0.5 card-icon" size={16} />
+            <div className="text-[11px] leading-relaxed card-text">
               <strong>{t('offlineCapabilities') || 'Offline Capabilities:'}</strong> {t('offlineCapabilitiesText') || 'The Live-USB bundles the identical Flasher module used by this orchestrator. When booted, it will automatically launch a secure kiosk interface to allow untethered, high-speed disk restoration from local USB storage.'}
             </div>
           </div>

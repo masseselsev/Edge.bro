@@ -326,25 +326,25 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
             <table className="w-full border-collapse text-left text-xs">
               <thead>
                 <tr className="border-b border-zinc-800 text-zinc-400 font-semibold bg-zinc-950/40">
-                  <th className="py-3 px-4">{t('kioskNameLabel') || 'Name'}</th>
-                  <th className="py-3 px-4">{t('kioskUuidLabel') || 'UUID'}</th>
-                  <th className="py-3 px-4">{t('statusLabel') || 'Status'}</th>
-                  <th className="py-3 px-4">{t('kioskApprovedAtLabel') || 'Approval Date'}</th>
-                  <th className="py-3 px-4">{t('kioskIsoBuiltAtLabel') || 'ISO Built'}</th>
-                  <th className="py-3 px-4">{t('ipAddressLabel') || 'IP Address'}</th>
-                  <th className="py-3 px-4 text-right">{t('actionsLabel') || 'Actions'}</th>
+                  <th className="py-1.5 px-2.5">{t('kioskNameLabel') || 'Name'}</th>
+                  <th className="py-1.5 px-2.5">{t('kioskUuidLabel') || 'UUID'}</th>
+                  <th className="py-1.5 px-2.5">{t('statusLabel') || 'Status'}</th>
+                  <th className="py-1.5 px-2.5">{t('kioskApprovedAtLabel') || 'Approval Date'}</th>
+                  <th className="py-1.5 px-2.5">{t('kioskIsoBuiltAtLabel') || 'ISO Built'}</th>
+                  <th className="py-1.5 px-2.5">{t('ipAddressLabel') || 'IP Address'}</th>
+                  <th className="py-1.5 px-2.5 text-right">{t('actionsLabel') || 'Actions'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
                 {filteredKiosks.map((kiosk) => (
                   <tr key={kiosk.id} className="hover:bg-zinc-950/20 transition-colors">
-                    <td className="py-3.5 px-4">
+                    <td className="py-2 px-2.5">
                       <div className="font-bold text-zinc-200">
                         {kiosk.name || <span className="text-zinc-500 italic">{t('unnamedKiosk') || 'Unnamed Kiosk'}</span>}
                       </div>
                       
                       {/* Target IP & Rebuild badge */}
-                      <div className="text-[10px] mt-1.5 flex flex-wrap items-center gap-2">
+                      <div className="text-[10px] mt-1 flex flex-wrap items-center gap-1.5">
                         {kiosk.target_ip && (
                           <span className="inline-flex items-center gap-1 text-zinc-400 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800/80">
                             <Server size={10} className="text-zinc-500" />
@@ -359,9 +359,9 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                           </span>
                         )}
                       </div>
-
+                      
                       {(kiosk.contact || kiosk.comment) && (
-                        <div className="text-[10px] text-zinc-400 mt-1.5 space-y-0.5">
+                        <div className="text-[10px] text-zinc-400 mt-1 space-y-0.5">
                           {kiosk.contact && (
                             <div className="flex items-center gap-1">
                               <span className="text-zinc-500 font-semibold">{t('kioskContact') || 'Contact'}:</span>
@@ -376,7 +376,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                         </div>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 font-mono text-zinc-400 select-all">
+                    <td className="py-2 px-2.5 font-mono text-zinc-400 select-all">
                       <div className="relative group cursor-help inline-block">
                         <span>
                           {kiosk.kiosk_id.startsWith('PENDING-') 
@@ -393,8 +393,8 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                         </div>
                       </div>
                     </td>
-                    <td className="py-3.5 px-4 font-semibold">
-                      <div className="space-y-1">
+                    <td className="py-2 px-2.5 font-semibold">
+                      <div className="space-y-0.5">
                         <div>
                           {kiosk.status === 'APPROVED' ? (
                             kiosk.is_online ? (
@@ -431,18 +431,18 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                             </span>
                           )}
                         </div>
-                        <div className="text-[10px] text-zinc-500 font-mono">
-                          <span className="text-zinc-600 font-sans mr-0.5">{t('kioskCreatedAtLabel') || 'Created'}:</span>{' '}
+                        <div className="text-[9px] text-zinc-500 font-mono">
+                          <span className="text-zinc-650 font-sans mr-0.5">{t('kioskCreatedAtLabel') || 'Created'}:</span>{' '}
                           {kiosk.created_at ? new Date(kiosk.created_at).toLocaleString() : '—'}
                         </div>
                       </div>
                     </td>
-                    <td className="py-3.5 px-4 text-zinc-350 font-mono">
-                      {kiosk.approved_at ? new Date(kiosk.approved_at).toLocaleString() : <span className="text-zinc-650">—</span>}
+                    <td className="py-2 px-2.5 text-zinc-350 font-mono">
+                      {kiosk.approved_at ? new Date(kiosk.approved_at).toLocaleString() : <span className="text-zinc-655">—</span>}
                     </td>
-                    <td className="py-3.5 px-4">
+                    <td className="py-2 px-2.5">
                       {kiosk.iso_built_at ? (
-                        <div className="space-y-1">
+                        <div className="space-y-0.5">
                           <div className="font-mono text-zinc-350">
                             {new Date(kiosk.iso_built_at).toLocaleString()}
                           </div>
@@ -482,22 +482,22 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                           </span>
                         </div>
                       ) : (
-                        <span className="text-zinc-650">—</span>
+                        <span className="text-zinc-655">—</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 text-zinc-300 font-mono">
-                      {kiosk.ip_address || <span className="text-zinc-600">—</span>}
+                    <td className="py-2 px-2.5 text-zinc-300 font-mono">
+                      {kiosk.ip_address || <span className="text-zinc-655">—</span>}
                     </td>
-                    <td className="py-3.5 px-4">
-                      <div className="flex flex-wrap gap-1.5 justify-end max-w-[190px] ml-auto">
+                    <td className="py-2 px-2.5 text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1.5 justify-end">
                         {/* Toggle Active state (Block/Unblock) */}
                         {(kiosk.status === 'APPROVED' || kiosk.status === 'DISABLED' || (kiosk.status === 'PENDING' && !kiosk.kiosk_id.startsWith('PENDING-'))) && (
                           <button
                             onClick={() => handleToggleActive(kiosk.id)}
-                            className={`w-[85px] py-1 border rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis ${
+                            className={`px-2.5 py-1 border rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap ${
                               kiosk.status === 'APPROVED'
-                                ? 'bg-amber-950/20 border-amber-900/30 hover:border-amber-900/60 hover:bg-amber-950/40 text-amber-400'
-                                : 'bg-emerald-950/20 border-emerald-900/30 hover:border-emerald-900/60 hover:bg-emerald-950/40 text-emerald-400'
+                                ? 'bg-amber-955/20 border-amber-900/30 hover:border-amber-900/60 hover:bg-amber-955/40 text-amber-400'
+                                : 'bg-emerald-955/20 border-emerald-900/30 hover:border-emerald-900/60 hover:bg-emerald-955/40 text-emerald-400'
                             }`}
                           >
                             {kiosk.status === 'APPROVED' ? t('kioskActionDisable') : t('kioskActionEnable')}
@@ -508,12 +508,12 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                         {kiosk.iso_exists ? (
                           <a
                             href={`/api/iso/kiosks/${kiosk.id}/download`}
-                            className="inline-block w-[85px] py-1 bg-indigo-950/20 border border-indigo-900/30 hover:border-indigo-900/60 hover:bg-indigo-950/40 text-indigo-400 rounded text-[10px] font-bold transition-all text-center whitespace-nowrap overflow-hidden text-ellipsis"
+                            className="inline-block px-2.5 py-1 bg-indigo-955/20 border border-indigo-900/30 hover:border-indigo-900/60 hover:bg-indigo-955/40 text-indigo-400 rounded text-[10px] font-bold transition-all text-center whitespace-nowrap"
                           >
                             {t('kioskActionDownload')}
                           </a>
                         ) : (
-                          <span className="w-[85px] py-1 bg-zinc-950/40 border border-zinc-800 text-zinc-550 italic text-[10px] rounded text-center whitespace-nowrap overflow-hidden text-ellipsis inline-block" title={t('issueKioskPrunedMsg')}>
+                          <span className="px-2 py-1 bg-zinc-950/40 border border-zinc-800 text-zinc-550 italic text-[10px] rounded text-center whitespace-nowrap inline-block cursor-not-allowed select-none" title={t('issueKioskPrunedMsg')}>
                             {t('kioskStatusPruned') || 'Pruned'}
                           </span>
                         )}
@@ -522,7 +522,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                         {kiosk.is_rebuilding ? (
                           <button
                             disabled
-                            className="w-[85px] py-1 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 cursor-not-allowed text-center whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center justify-center gap-1"
+                            className="px-2 py-1 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 cursor-not-allowed text-center whitespace-nowrap inline-flex items-center justify-center gap-1"
                             title="Rebuilding ISO image..."
                           >
                             <RefreshCw size={10} className="animate-spin" />
@@ -531,7 +531,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                         ) : (
                           <button
                             onClick={() => handleRecreateIso(kiosk.id)}
-                            className="w-[85px] py-1 rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center justify-center gap-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
+                            className="px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap inline-flex items-center justify-center gap-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
                             title="Recreate ISO image"
                           >
                             <RefreshCw size={10} />
@@ -542,18 +542,19 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                         {/* Edit Kiosk */}
                         <button
                           onClick={() => handleEditClick(kiosk)}
-                          className="w-[85px] py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-350 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-650 rounded text-[10px] font-bold transition-all cursor-pointer inline-flex items-center justify-center gap-1 whitespace-nowrap overflow-hidden text-ellipsis"
+                          className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 hover:border-zinc-600 rounded transition-all cursor-pointer inline-flex items-center justify-center"
                           title={t('editLabel') || 'Edit'}
                         >
-                          <Edit2 size={10} /> {t('editLabel') || 'Edit'}
+                          <Edit2 size={12} />
                         </button>
 
                         {/* Delete Kiosk */}
                         <button
                           onClick={() => handleDelete(kiosk.id)}
-                          className="w-[85px] py-1 bg-zinc-800 hover:bg-rose-900/30 hover:text-rose-400 text-zinc-400 rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis"
+                          className="p-1.5 bg-zinc-800 hover:bg-rose-950/20 hover:bg-rose-900/30 hover:text-rose-400 text-zinc-400 border border-zinc-700 hover:border-rose-900/50 rounded transition-all cursor-pointer inline-flex items-center justify-center"
+                          title={t('deleteLabel') || 'Delete'}
                         >
-                          {t('deleteLabel') || 'Delete'}
+                          <Trash2 size={12} />
                         </button>
                       </div>
                     </td>
@@ -564,8 +565,6 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
           </div>
         )}
       </div>
-
-
 
       {/* Edit Modal */}
       {showEditModal && editingKiosk && (
