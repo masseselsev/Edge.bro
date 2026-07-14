@@ -4,7 +4,7 @@ import ipaddress
 import redis
 import json
 import datetime
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from database import get_db
@@ -64,12 +64,52 @@ def parse_ip_input(ip_input: str) -> List[str]:
     return list(dict.fromkeys(ips))
 
 
-@router.get("", response_model=List[schemas.NodeResponse])
-def get_nodes(db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
+@router.get("", response_model=schemas.PaginatedNodesResponse)
+def get_nodes(
+    page: int = 1,
+    limit: int = 50,
+    q: Optional[str] = None,
+    group_id: Optional[int] = None,
+    status: Optional[str] = None,
+    sort_by: str = "hostname",
+    sort_order: str = "asc",
+    db: Session = Depends(get_db),
+    current_user = Depends(require_kiosk_or_admin)
+):
     """
-    Retrieves lists of all nodes.
+    Retrieves lists of nodes with support for server-side search, filtering, sorting, and pagination.
     """
-    nodes = db.query(models.Node).all()
+    query = db.query(models.Node)
+    
+    # 1. Apply search filter
+    if q:
+        query = query.filter(
+            (models.Node.hostname.ilike(f"%{q}%")) |
+            (models.Node.ip_address.ilike(f"%{q}%"))
+        )
+    
+    # 2. Apply group and status filters
+    if group_id is not None:
+        query = query.filter(models.Node.group_id == group_id)
+    if status:
+        query = query.filter(models.Node.status == status)
+        
+    # 3. Apply sorting
+    if sort_by in models.Node.__table__.columns:
+        col = getattr(models.Node, sort_by)
+    else:
+        col = models.Node.hostname
+        
+    if sort_order == "desc":
+        query = query.order_by(col.desc())
+    else:
+        query = query.order_by(col.asc())
+        
+    # 4. Count and Paginate
+    total = query.count()
+    offset = (page - 1) * limit
+    nodes = query.offset(offset).limit(limit).all()
+
     # Calculate shared repository size once
     shared_repo_size = 0
     repo_dir = "/data/borg/fleet"
@@ -137,7 +177,7 @@ def get_nodes(db: Session = Depends(get_db), current_user = Depends(require_kios
             "ssh_port": node.ssh_port,
             "status": node.status,
             "last_backup": node.last_backup,
-            "disk_type": node.disk_type,
+            "disk_type": node.disk_type or "Unknown",
             "network_iface": node.network_iface,
             "efi_uuid": node.efi_uuid,
             "partition_layout": node.partition_layout,
@@ -163,11 +203,19 @@ def get_nodes(db: Session = Depends(get_db), current_user = Depends(require_kios
             try:
                 next_retry = redis_client.get(f"node_next_retry:{node.id}")
                 if next_retry:
+                    import datetime
                     node_dict["next_retry_at"] = datetime.datetime.fromtimestamp(int(next_retry), tz=datetime.timezone.utc)
             except Exception:
                 pass
         results.append(node_dict)
-    return results
+
+    return {
+        "nodes": results,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": (total + limit - 1) // limit
+    }
 
 
 @router.get("/history", response_model=List[schemas.BackupHistoryResponse])

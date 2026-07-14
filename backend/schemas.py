@@ -149,6 +149,13 @@ class NodeResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class PaginatedNodesResponse(BaseModel):
+    nodes: List[NodeResponse]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
 class BackupHistoryResponse(BaseModel):
     id: int
     node_id: int
