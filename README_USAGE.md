@@ -10,7 +10,7 @@ Step-by-step instructions: from a bare server to managing a fleet of edge device
 
 Any x86_64 Linux machine with Docker works. An Intel NUC, a mini-PC, or a full server — whatever you have.
 
-1. Install a base OS (Ubuntu 22.04/24.04 or Debian 12).
+1. Install a base OS (Ubuntu 22.04/24.04/26.04 or Debian 12/13).
 2. Install Docker:
    ```bash
    sudo apt update
