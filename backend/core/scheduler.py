@@ -204,7 +204,10 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
                     is_scheduled_today = (local_week_of_month == group.target_week and day_index == local_day_of_week)
                 elif group.interval == "quarterly":
                     current_quarter_start = ((local_month - 1) // 3) * 3 + 1
-                    is_scheduled_today = (local_month == current_quarter_start and local_week_of_month == group.target_week and day_index == local_day_of_week)
+                    target_month = current_quarter_start + (node_hash % 3)
+                    target_week = ((node_hash // 3) % 4) + 1
+                    target_day = (node_hash // 12) % 7 if group.randomize_days else day_index
+                    is_scheduled_today = (local_month == target_month and local_week_of_month == target_week and local_day_of_week == target_day)
                 elif group.interval == "yearly":
                     is_scheduled_today = (local_month == 1 and local_week_of_month == group.target_week and day_index == local_day_of_week)
 
@@ -257,7 +260,10 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
                     is_scheduled_today = (local_week_of_month == group.target_week and day_index == local_day_of_week)
                 elif group.interval == "quarterly":
                     current_quarter_start = ((local_month - 1) // 3) * 3 + 1
-                    is_scheduled_today = (local_month == current_quarter_start and local_week_of_month == group.target_week and day_index == local_day_of_week)
+                    target_month = current_quarter_start + (node_hash % 3)
+                    target_week = ((node_hash // 3) % 4) + 1
+                    target_day = (node_hash // 12) % 7 if group.randomize_days else day_index
+                    is_scheduled_today = (local_month == target_month and local_week_of_month == target_week and local_day_of_week == target_day)
                 elif group.interval == "yearly":
                     is_scheduled_today = (local_month == 1 and local_week_of_month == group.target_week and day_index == local_day_of_week)
 

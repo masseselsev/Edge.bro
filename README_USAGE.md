@@ -259,3 +259,45 @@ Throughout its lifecycle, the orchestrator performs a strictly defined set of no
 1. Scans the node's filesystem.
 2. Automatically **excludes** virtual, temporary, and configured edge directories based on the orchestrator's global settings (default exclusions: `/dev/*`, `/proc/*`, `/sys/*`, `/run/*`, `/mnt/*`, `/media/*`, `/lost+found`, `/var/log/edge/*`, `/var/opt/edge/*`).
 3. Hashes the data and securely transmits only new, deduplicated blocks over SSH to the orchestrator's central `borg-server`.
+
+---
+
+## 🗄️ Database Backup & Disaster Recovery
+
+The Orchestrator database contains host configuration details, security keys, backup history, groups, and global configurations. Setting up automatic database backups is highly recommended.
+
+### 1. Automated PostgreSQL Dump (Cron Recipe)
+DevOps engineers should schedule a daily cron job on the host machine hosting the docker-compose stack to create compressed SQL dumps.
+
+#### Backup Script (`/opt/backup_db.sh`):
+```bash
+#!/bin/bash
+BACKUP_DIR="/var/backups/edge_bro_db"
+mkdir -p "$BACKUP_DIR"
+
+# File name with date
+FILENAME="${BACKUP_DIR}/db_backup_$(date +%Y%m%d_%H%M%S).sql.gz"
+
+# Run pg_dump inside the db container
+docker compose -f /home/masse/projects/Backup-edge-Restore/docker-compose.yml exec -T db pg_dump -U postgres borg_orchestrator | gzip > "$FILENAME"
+
+# Keep only the last 30 days of database backups
+find "$BACKUP_DIR" -type f -name "db_backup_*.sql.gz" -mtime +30 -delete
+```
+
+#### Crontab Entry (Daily at 3:15 AM):
+```cron
+15 3 * * * /bin/bash /opt/backup_db.sh > /dev/null 2>&1
+```
+
+### 2. Database Recovery Procedure
+To restore the orchestrator state from a compressed SQL backup file:
+```bash
+# 1. Decompress the backup file
+gunzip -c db_backup_YYYYMMDD_HHMMSS.sql.gz > recovery.sql
+
+# 2. Re-create the database structure and load values
+docker compose exec -T db psql -U postgres -d postgres -c "DROP DATABASE borg_orchestrator;"
+docker compose exec -T db psql -U postgres -d postgres -c "CREATE DATABASE borg_orchestrator;"
+docker compose exec -T db psql -U postgres -d borg_orchestrator < recovery.sql
+```

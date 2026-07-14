@@ -259,3 +259,45 @@
 1. Выполняет чтение файловой системы узла.
 2. Автоматически **исключает** виртуальные, временные и настроенные директории комплексов на основе глобальных настроек оркестратора (список исключений по умолчанию: `/dev/*`, `/proc/*`, `/sys/*`, `/run/*`, `/mnt/*`, `/media/*`, `/lost+found`, `/var/log/edge/*`, `/var/opt/edge/*`).
 3. Хеширует данные и передает только новые, дедуплицированные блоки по SSH на центральный `borg-server` оркестратора.
+
+---
+
+## 🗄️ Резервное копирование и восстановление базы данных
+
+База данных оркестратора хранит конфигурации узлов, ключи авторизации, историю резервного копирования, настройки групп и глобальные настройки. Настоятельно рекомендуется настроить автоматическое резервное копирование БД.
+
+### 1. Автоматический экспорт PostgreSQL (Скрипт по Cron)
+DevOps-инженерам следует настроить планировщик cron на хост-машине оркестратора для ежедневного создания сжатых дампов базы данных.
+
+#### Скрипт бэкапа (`/opt/backup_db.sh`):
+```bash
+#!/bin/bash
+BACKUP_DIR="/var/backups/edge_bro_db"
+mkdir -p "$BACKUP_DIR"
+
+# Имя файла с текущей датой
+FILENAME="${BACKUP_DIR}/db_backup_$(date +%Y%m%d_%H%M%S).sql.gz"
+
+# Запуск pg_dump внутри контейнера базы данных
+docker compose -f /home/masse/projects/Backup-edge-Restore/docker-compose.yml exec -T db pg_dump -U postgres borg_orchestrator | gzip > "$FILENAME"
+
+# Удаление старых бэкапов старше 30 дней
+find "$BACKUP_DIR" -type f -name "db_backup_*.sql.gz" -mtime +30 -delete
+```
+
+#### Запись в планировщике Crontab (Ежедневно в 3:15 ночи):
+```cron
+15 3 * * * /bin/bash /opt/backup_db.sh > /dev/null 2>&1
+```
+
+### 2. Процедура восстановления БД из бэкапа
+Для восстановления состояния оркестратора из сжатого SQL-файла:
+```bash
+# 1. Распакуйте архив бэкапа
+gunzip -c db_backup_YYYYMMDD_HHMMSS.sql.gz > recovery.sql
+
+# 2. Пересоздайте структуру БД и импортируйте данные
+docker compose exec -T db psql -U postgres -d postgres -c "DROP DATABASE borg_orchestrator;"
+docker compose exec -T db psql -U postgres -d postgres -c "CREATE DATABASE borg_orchestrator;"
+docker compose exec -T db psql -U postgres -d borg_orchestrator < recovery.sql
+```

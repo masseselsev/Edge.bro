@@ -128,6 +128,34 @@ The system is fully containerized and uses a decoupled architecture to manage co
 
 ---
 
+## 🖥️ System Requirements
+
+### 1. Central Orchestrator Server
+* **CPU**: 2–4 Cores (recommended x86_64, mostly utilized for parallel Ansible bootstrapping and Borg encryption/compression overhead).
+* **RAM**: 4 GB Minimum (8 GB Recommended) to run FastAPI, PostgreSQL, Redis, Celery, and concurrent Borg repository operations comfortably.
+* **Network**: 1 Gbps Ethernet connection recommended for fast backup intake.
+* **Storage Capacity**:
+  * The system drive requires at least **20 GB** of free space for OS and docker layers.
+  * **Dedicated Backup volume**: Sized dynamically according to your fleet requirements. Backups are assumed to run quarterly, staggered uniformly over the quarterly window, retaining the last 5 snapshots (equivalent to 1.25 years of history):
+    * **50 Devices**: ~60 GB recommended space.
+      * *Calculation*: `2.5 GB (base) + (49 * 200 MB) (dedup) + (50 * 5 * 150 MB) (snapshots) + 10 GB (database/logs buffer) = ~60 GB`.
+    * **300 Devices**: ~300 GB recommended space.
+      * *Calculation*: `2.5 GB (base) + (299 * 200 MB) (dedup) + (300 * 5 * 150 MB) (snapshots) + 15 GB (database/logs buffer) = ~300 GB`.
+    * **1000 Devices**: ~1 TB recommended space.
+      * *Calculation*: `2.5 GB (base) + (999 * 200 MB) (dedup) + (1000 * 5 * 150 MB) (snapshots) + 30 GB (database/logs buffer) = ~1 TB`.
+
+### 2. Edge Node Kiosk PC / Laptop
+* **CPU**: 64-bit x86 compatible processor (Intel/AMD).
+* **RAM**: 2 GB Minimum (4 GB Recommended). Since the live technician client boots in volatile RAM using overlayfs, the RAM must accommodate both the operating system environment and the staging payload logs.
+* **Network**: Active Ethernet / Wi-Fi card compatible with standard Debian Linux kernels.
+
+### 3. Flasher USB Storage Drive
+* **Capacity**: 8 GB Minimum (16 GB - 32 GB Recommended) to hold the compiled offline client ISO image.
+* **Speed / Class**: USB 3.0 / USB 3.1 interface is highly recommended (write speed >= 40 MB/s, read speed >= 100 MB/s, e.g., Samsung Bar Plus, SanDisk Ultra Fit) to prevent write timeouts during bare-metal flashing.
+* **MicroSD/SD Cards (if boot device)**: Class 10, UHS-I or UHS-II (read speeds >= 100MB/s).
+
+---
+
 ## 🚀 Installation & Usage
 
 For full deployment instructions, including server preparation, environment configuration, database migrations, and a comprehensive usage guide, please refer to the:
