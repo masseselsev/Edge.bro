@@ -469,7 +469,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                                 title={t('isoOldTooltip') || 'Built on an outdated base ISO — re-create recommended'}
                               >
                                 <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                                {t('isoOldLabel') || 'Old'}
+                                {t('isoOldLabel') || 'Outdated'}
                               </span>
                             );
                           })()}

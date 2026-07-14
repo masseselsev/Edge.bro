@@ -472,7 +472,7 @@ export const translations: Record<Language, Record<string, string>> = {
     kioskCreatedAtLabel: 'Creation Date',
     kioskIsoBuiltAtLabel: 'ISO Built',
     isoFreshLabel: 'Fresh',
-    isoOldLabel: 'Old',
+    isoOldLabel: 'Outdated',
     isoFreshTooltip: 'Built on current base ISO',
     isoOldTooltip: 'Built on an outdated base ISO — re-create recommended',
     kioskApprovedAtLabel: 'Approval Date',
