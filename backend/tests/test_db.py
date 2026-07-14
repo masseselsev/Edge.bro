@@ -285,8 +285,9 @@ def test_get_all_history(db_session):
     db_session.add(h2)
     db_session.commit()
 
-    records = get_all_history(db=db_session)
-    assert len(records) >= 2
+    res = get_all_history(db=db_session)
+    records = res["history"]
+    assert res["total"] >= 2
     # Ensure sorted by timestamp descending (h2 should be first, then h1)
     test_records = [r for r in records if r.node_id == node.id]
     assert len(test_records) == 2

@@ -170,6 +170,13 @@ class BackupHistoryResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class PaginatedBackupHistoryResponse(BaseModel):
+    history: List[BackupHistoryResponse]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
 class BackupTriggerRequest(BaseModel):
     comment: Optional[str] = None
 

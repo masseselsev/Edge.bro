@@ -55,6 +55,14 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
 
+  // Pagination & Sorting states
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+  const [totalHistory, setTotalHistory] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [sortKey, setSortKey] = useState<string>('timestamp');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
   // Kiosk specific states
   const [viewMode, setViewMode] = useState<'local' | 'remote'>(isKiosk ? 'local' : 'remote');
   const [localHistory, setLocalHistory] = useState<BackupHistory[]>([]);
@@ -269,12 +277,27 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
         if (isKiosk && viewMode === 'remote') {
           setRemoteLoading(true);
         }
-        const histRes = await fetch('/api/nodes/history');
+        
+        const qParams = new URLSearchParams({
+          page: String(page),
+          limit: String(limit),
+          sort_by: sortKey,
+          sort_order: sortOrder
+        });
+        if (searchQuery) {
+          qParams.append('q', searchQuery);
+        }
+        
+        const histRes = await fetch(`/api/nodes/history?${qParams.toString()}`);
         if (histRes.ok) {
           const histData = await histRes.json();
-          setHistory(Array.isArray(histData) ? histData : []);
+          setHistory(histData.history || []);
+          setTotalHistory(histData.total || 0);
+          setTotalPages(histData.pages || 1);
         } else {
           setHistory([]);
+          setTotalHistory(0);
+          setTotalPages(1);
         }
 
         if (isKiosk) {
@@ -295,7 +318,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
       setLoading(false);
       setRemoteLoading(false);
     }
-  }, [isKiosk, viewMode, hasCheckedInitialLocal]);
+  }, [isKiosk, viewMode, hasCheckedInitialLocal, page, limit, sortKey, sortOrder, searchQuery]);
 
   useEffect(() => {
     fetchStats();
@@ -368,20 +391,86 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
     return map;
   }, [nodes]);
 
-  // Filtering history
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortOrder('asc');
+    }
+    setPage(1);
+  };
+
+  const renderSortIndicator = (key: string) => {
+    if (sortKey !== key) return null;
+    return sortOrder === 'asc' ? (
+      <span className="ml-1 text-indigo-400 font-bold">▲</span>
+    ) : (
+      <span className="ml-1 text-indigo-400 font-bold">▼</span>
+    );
+  };
+
+  // Keep local mode pagination & totals updated
+  useEffect(() => {
+    if (isKiosk && viewMode === 'local') {
+      const q = searchQuery.toLowerCase();
+      const filtered = history.filter(h => {
+        const node = nodesMap[h.node_id];
+        const hostname = node ? node.hostname.toLowerCase() : '';
+        return (
+          hostname.includes(q) ||
+          h.archive_name.toLowerCase().includes(q) ||
+          h.status.toLowerCase().includes(q) ||
+          (h.comment && h.comment.toLowerCase().includes(q))
+        );
+      });
+      setTotalHistory(filtered.length);
+      setTotalPages(Math.max(1, Math.ceil(filtered.length / limit)));
+    }
+  }, [history, searchQuery, nodesMap, isKiosk, viewMode, limit]);
+
+  // Filtering, sorting and paging history
   const filteredHistory = React.useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    return history.filter(h => {
-      const node = nodesMap[h.node_id];
-      const hostname = node ? node.hostname.toLowerCase() : '';
-      return (
-        hostname.includes(q) ||
-        h.archive_name.toLowerCase().includes(q) ||
-        h.status.toLowerCase().includes(q) ||
-        (h.comment && h.comment.toLowerCase().includes(q))
-      );
-    });
-  }, [history, searchQuery, nodesMap]);
+    if (isKiosk && viewMode === 'local') {
+      const q = searchQuery.toLowerCase();
+      const list = history.filter(h => {
+        const node = nodesMap[h.node_id];
+        const hostname = node ? node.hostname.toLowerCase() : '';
+        return (
+          hostname.includes(q) ||
+          h.archive_name.toLowerCase().includes(q) ||
+          h.status.toLowerCase().includes(q) ||
+          (h.comment && h.comment.toLowerCase().includes(q))
+        );
+      });
+
+      // Client-side sort
+      list.sort((a, b) => {
+        let valA: any = a[sortKey as keyof BackupHistory];
+        let valB: any = b[sortKey as keyof BackupHistory];
+        if (sortKey === 'hostname') {
+          valA = nodesMap[a.node_id]?.hostname || '';
+          valB = nodesMap[b.node_id]?.hostname || '';
+        }
+        
+        if (valA === undefined || valA === null) return 1;
+        if (valB === undefined || valB === null) return -1;
+
+        if (typeof valA === 'string') {
+          return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        } else {
+          return sortOrder === 'asc' ? valA - valB : valB - valA;
+        }
+      });
+
+      // Client-side pagination
+      const offset = (page - 1) * limit;
+      return list.slice(offset, offset + limit);
+    }
+
+    // In remote mode, the history is already filtered, sorted and paginated on the server
+    return history;
+  }, [history, searchQuery, nodesMap, isKiosk, viewMode, sortKey, sortOrder, page, limit]);
 
   // Group history by node ID
   const groupedByNode = React.useMemo(() => {
@@ -399,14 +488,64 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
         <thead className="bg-zinc-900/50 text-zinc-500 uppercase tracking-wider font-semibold">
           <tr>
             {isKiosk && viewMode === 'remote' && <th className="px-4 py-3 w-12 text-center"></th>}
-            {showNodeInfo && <th className="px-6 py-3">{t('hostnameLabel')}</th>}
-            {showNodeInfo && <th className="px-6 py-3">{t('ipAddressLabel')}</th>}
-            <th className="px-6 py-3">{t('snapshotColumn')}</th>
-            <th className="px-6 py-3">{t('timestampColumn')}</th>
-            <th className="px-6 py-3">{t('originalSizeColumn')}</th>
-            <th className="px-6 py-3">{t('dedupSizeColumn')}</th>
-            <th className="px-6 py-3">{t('estDownloadSizeColumn') || 'Est. Download Size'}</th>
-            <th className="px-6 py-3">{t('statusColumn')}</th>
+            {showNodeInfo && (
+              <th className="px-6 py-3">
+                <button
+                  onClick={() => handleSort('hostname')}
+                  className={`flex items-center gap-1 cursor-pointer transition-colors hover:text-white ${sortKey === 'hostname' ? 'text-white font-bold' : ''}`}
+                >
+                  {t('hostnameLabel')}
+                  {renderSortIndicator('hostname')}
+                </button>
+              </th>
+            )}
+            {showNodeInfo && <th className="px-6 py-3 text-zinc-500 font-semibold">{t('ipAddressLabel')}</th>}
+            <th className="px-6 py-3">
+              <button
+                onClick={() => handleSort('archive_name')}
+                className={`flex items-center gap-1 cursor-pointer transition-colors hover:text-white ${sortKey === 'archive_name' ? 'text-white font-bold' : ''}`}
+              >
+                {t('snapshotColumn')}
+                {renderSortIndicator('archive_name')}
+              </button>
+            </th>
+            <th className="px-6 py-3">
+              <button
+                onClick={() => handleSort('timestamp')}
+                className={`flex items-center gap-1 cursor-pointer transition-colors hover:text-white ${sortKey === 'timestamp' ? 'text-white font-bold' : ''}`}
+              >
+                {t('timestampColumn')}
+                {renderSortIndicator('timestamp')}
+              </button>
+            </th>
+            <th className="px-6 py-3">
+              <button
+                onClick={() => handleSort('original_size')}
+                className={`flex items-center gap-1 cursor-pointer transition-colors hover:text-white ${sortKey === 'original_size' ? 'text-white font-bold' : ''}`}
+              >
+                {t('originalSizeColumn')}
+                {renderSortIndicator('original_size')}
+              </button>
+            </th>
+            <th className="px-6 py-3">
+              <button
+                onClick={() => handleSort('deduplicated_size')}
+                className={`flex items-center gap-1 cursor-pointer transition-colors hover:text-white ${sortKey === 'deduplicated_size' ? 'text-white font-bold' : ''}`}
+              >
+                {t('dedupSizeColumn')}
+                {renderSortIndicator('deduplicated_size')}
+              </button>
+            </th>
+            <th className="px-6 py-3 text-zinc-500 font-semibold">{t('estDownloadSizeColumn') || 'Est. Download Size'}</th>
+            <th className="px-6 py-3">
+              <button
+                onClick={() => handleSort('status')}
+                className={`flex items-center gap-1 cursor-pointer transition-colors hover:text-white ${sortKey === 'status' ? 'text-white font-bold' : ''}`}
+              >
+                {t('statusColumn')}
+                {renderSortIndicator('status')}
+              </button>
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-800/50">
@@ -934,14 +1073,69 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
         ) : filteredHistory.length === 0 ? (
           <div className="text-center py-8 text-zinc-500 text-sm">{t('noHistoryFound')}</div>
         ) : (
-          <div className="space-y-2">
-            {grouping === 'flat' ? (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-                {renderGroupedContent()}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              {grouping === 'flat' ? (
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+                  {renderGroupedContent()}
+                </div>
+              ) : (
+                renderGroupedContent()
+              )}
+            </div>
+
+            {/* Pagination Controls */}
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 px-6 py-4 border border-zinc-800 bg-zinc-950/20 rounded-xl text-xs font-semibold text-zinc-400">
+              <div>
+                {t('showingLabel') || 'Showing'}{' '}
+                <span className="text-zinc-200">{totalHistory === 0 ? 0 : (page - 1) * limit + 1}</span>{' '}
+                {t('toLabel') || 'to'}{' '}
+                <span className="text-zinc-200">{Math.min(page * limit, totalHistory)}</span>{' '}
+                {t('ofLabel') || 'of'}{' '}
+                <span className="text-zinc-200">{totalHistory}</span>{' '}
+                {t('archivesLabel') || 'archives'}
               </div>
-            ) : (
-              renderGroupedContent()
-            )}
+              
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span>{t('rowsPerPage') || 'Rows per page'}:</span>
+                  <select
+                    value={limit}
+                    onChange={(e) => {
+                      setLimit(Number(e.target.value));
+                      setPage(1);
+                    }}
+                    className="bg-zinc-950 border border-zinc-800 rounded px-1.5 py-1 text-zinc-200 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    {[10, 25, 50, 100].map(val => (
+                      <option key={val} value={val}>{val}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                    disabled={page === 1}
+                    className="px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded hover:border-zinc-700 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                  >
+                    {t('prev') || 'Previous'}
+                  </button>
+                  <span className="px-3 text-zinc-300">
+                    {t('pageLabel') || 'Page'} {page} {t('ofLabel') || 'of'} {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={page === totalPages}
+                    className="px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded hover:border-zinc-700 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                  >
+                    {t('next') || 'Next'}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

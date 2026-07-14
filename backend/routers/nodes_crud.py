@@ -218,12 +218,53 @@ def get_nodes(
     }
 
 
-@router.get("/history", response_model=List[schemas.BackupHistoryResponse])
-def get_all_history(db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
+@router.get("/history", response_model=schemas.PaginatedBackupHistoryResponse)
+def get_all_history(
+    page: int = 1,
+    limit: int = 50,
+    q: Optional[str] = None,
+    sort_by: str = "timestamp",
+    sort_order: str = "desc",
+    db: Session = Depends(get_db),
+    current_user = Depends(require_kiosk_or_admin)
+):
     """
     Retrieves backup snapshot history records for all nodes.
     """
-    return db.query(models.BackupHistory).order_by(models.BackupHistory.timestamp.desc()).all()
+    query = db.query(models.BackupHistory).outerjoin(models.Node, models.BackupHistory.node_id == models.Node.id)
+    
+    if q:
+        query = query.filter(
+            (models.Node.hostname.ilike(f"%{q}%")) |
+            (models.BackupHistory.archive_name.ilike(f"%{q}%")) |
+            (models.BackupHistory.status.ilike(f"%{q}%")) |
+            (models.BackupHistory.comment.ilike(f"%{q}%"))
+        )
+        
+    # Apply sorting
+    if sort_by == "hostname":
+        col = models.Node.hostname
+    elif sort_by in models.BackupHistory.__table__.columns:
+        col = getattr(models.BackupHistory, sort_by)
+    else:
+        col = models.BackupHistory.timestamp
+        
+    if sort_order == "desc":
+        query = query.order_by(col.desc())
+    else:
+        query = query.order_by(col.asc())
+        
+    total = query.count()
+    offset = (page - 1) * limit
+    history_records = query.offset(offset).limit(limit).all()
+    
+    return {
+        "history": history_records,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": (total + limit - 1) // limit
+    }
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
