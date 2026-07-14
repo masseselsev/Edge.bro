@@ -1,6 +1,7 @@
 import os
 import subprocess
 import json
+import asyncio
 import logging
 from typing import Dict, Any, List, Optional, Union, Callable
 from datetime import datetime
@@ -422,15 +423,21 @@ def scheduler_tick() -> Dict[str, Any]:
         db.close()
 
 
-from concurrent.futures import ThreadPoolExecutor
-
-def ping_ip(ip: str) -> bool:
+async def async_ping_ip(ip: str) -> bool:
     try:
-        # Run ping: -c 1 (1 packet), -W 2 (2s timeout)
-        res = subprocess.run(["ping", "-c", "1", "-W", "2", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return res.returncode == 0
+        proc = await asyncio.create_subprocess_exec(
+            "ping", "-c", "1", "-W", "2", ip,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+        await proc.wait()
+        return proc.returncode == 0
     except Exception:
         return False
+
+async def ping_all_async(ips: list[str]) -> list[bool]:
+    tasks = [async_ping_ip(ip) for ip in ips]
+    return await asyncio.gather(*tasks)
 
 @celery_app.task
 def ping_all_nodes_task() -> Dict[str, Any]:
@@ -444,8 +451,8 @@ def ping_all_nodes_task() -> Dict[str, Any]:
         if not nodes:
             return {"status": "SUCCESS"}
             
-        with ThreadPoolExecutor(max_workers=min(len(nodes), 20)) as executor:
-            results = list(executor.map(ping_ip, [n.ip_address for n in nodes]))
+        ips = [n.ip_address for n in nodes]
+        results = asyncio.run(ping_all_async(ips))
             
         for node, is_online in zip(nodes, results):
             node.last_ping_status = is_online

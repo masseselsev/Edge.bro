@@ -44,6 +44,12 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
   const [groups, setGroups] = useState<BackupGroup[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Pagination States
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalNodes, setTotalNodes] = useState(0);
+  
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
   const [showProvisionModal, setShowProvisionModal] = useState<Node | null>(null);
@@ -57,303 +63,28 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
   // Sorting State
   const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<
-    | 'asc'
-    | 'desc'
-    | 'ip_online_asc'
-    | 'ip_online_desc'
-    | 'ip_offline_asc'
-    | 'ip_offline_desc'
-    | 'hostname_online_asc'
-    | 'hostname_online_desc'
-    | 'hostname_offline_asc'
-    | 'hostname_offline_desc'
-    | 'group_online_asc'
-    | 'group_online_desc'
-    | 'group_offline_asc'
-    | 'group_offline_desc'
-  >('asc');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const handleSort = (key: string) => {
-    if (key === 'ip_address') {
-      if (sortKey !== 'ip_address') {
-        setSortKey('ip_address');
-        setSortOrder('ip_online_asc');
-      } else {
-        setSortOrder(prev => {
-          if (prev === 'ip_online_asc') return 'ip_online_desc';
-          if (prev === 'ip_online_desc') return 'ip_offline_asc';
-          if (prev === 'ip_offline_asc') return 'ip_offline_desc';
-          return 'ip_online_asc';
-        });
-      }
-    } else if (key === 'hostname') {
-      if (sortKey !== 'hostname') {
-        setSortKey('hostname');
-        setSortOrder('hostname_online_asc');
-      } else {
-        setSortOrder(prev => {
-          if (prev === 'hostname_online_asc') return 'hostname_online_desc';
-          if (prev === 'hostname_online_desc') return 'hostname_offline_asc';
-          if (prev === 'hostname_offline_asc') return 'hostname_offline_desc';
-          return 'hostname_online_asc';
-        });
-      }
-    } else if (key === 'group') {
-      if (sortKey !== 'group') {
-        setSortKey('group');
-        setSortOrder('group_online_asc');
-      } else {
-        setSortOrder(prev => {
-          if (prev === 'group_online_asc') return 'group_online_desc';
-          if (prev === 'group_online_desc') return 'group_offline_asc';
-          if (prev === 'group_offline_asc') return 'group_offline_desc';
-          return 'group_online_asc';
-        });
-      }
-    } else {
-      if (sortKey === key) {
-        setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
-      } else {
-        setSortKey(key);
-        setSortOrder('asc');
-      }
+    setPage(1);
+    let apiSortKey = key;
+    if (key === 'group') {
+      apiSortKey = 'group_id';
     }
-  };
-
-  const getSortedNodes = (nodesList: Node[]) => {
-    if (!sortKey) return nodesList;
-
-    return [...nodesList].sort((a, b) => {
-      let valA: any = '';
-      let valB: any = '';
-
-      if (sortKey === 'hostname') {
-        const compareHostname = (aHost: string, bHost: string, dir: 'asc' | 'desc') => {
-          const valA = aHost.toLowerCase();
-          const valB = bHost.toLowerCase();
-          if (valA < valB) return dir === 'asc' ? -1 : 1;
-          if (valA > valB) return dir === 'asc' ? 1 : -1;
-          return 0;
-        };
-
-        const onlineA = a.last_ping_status === true;
-        const onlineB = b.last_ping_status === true;
-
-        if (sortOrder === 'hostname_online_asc') {
-          if (onlineA && !onlineB) return -1;
-          if (!onlineA && onlineB) return 1;
-          return compareHostname(a.hostname, b.hostname, 'asc');
-        } else if (sortOrder === 'hostname_online_desc') {
-          if (onlineA && !onlineB) return -1;
-          if (!onlineA && onlineB) return 1;
-          return compareHostname(a.hostname, b.hostname, 'desc');
-        } else if (sortOrder === 'hostname_offline_asc') {
-          if (!onlineA && onlineB) return -1;
-          if (onlineA && !onlineB) return 1;
-          return compareHostname(a.hostname, b.hostname, 'asc');
-        } else if (sortOrder === 'hostname_offline_desc') {
-          if (!onlineA && onlineB) return -1;
-          if (onlineA && !onlineB) return 1;
-          return compareHostname(a.hostname, b.hostname, 'desc');
-        }
-
-        const direction = sortOrder === 'desc' ? 'desc' : 'asc';
-        return compareHostname(a.hostname, b.hostname, direction);
-      } else if (sortKey === 'group') {
-        const getGroupName = (node: Node) => {
-          const group = groups.find(g => g.id === node.group_id);
-          return (group ? group.name : '').toLowerCase();
-        };
-
-        const compareGroup = (aNode: Node, bNode: Node, dir: 'asc' | 'desc') => {
-          const valA = getGroupName(aNode);
-          const valB = getGroupName(bNode);
-          if (valA === '' && valB !== '') return 1;
-          if (valA !== '' && valB === '') return -1;
-          if (valA < valB) return dir === 'asc' ? -1 : 1;
-          if (valA > valB) return dir === 'asc' ? 1 : -1;
-          return 0;
-        };
-
-        const onlineA = a.last_ping_status === true;
-        const onlineB = b.last_ping_status === true;
-
-        if (sortOrder === 'group_online_asc') {
-          if (onlineA && !onlineB) return -1;
-          if (!onlineA && onlineB) return 1;
-          return compareGroup(a, b, 'asc');
-        } else if (sortOrder === 'group_online_desc') {
-          if (onlineA && !onlineB) return -1;
-          if (!onlineA && onlineB) return 1;
-          return compareGroup(a, b, 'desc');
-        } else if (sortOrder === 'group_offline_asc') {
-          if (!onlineA && onlineB) return -1;
-          if (onlineA && !onlineB) return 1;
-          return compareGroup(a, b, 'asc');
-        } else if (sortOrder === 'group_offline_desc') {
-          if (!onlineA && onlineB) return -1;
-          if (onlineA && !onlineB) return 1;
-          return compareGroup(a, b, 'desc');
-        }
-
-        const direction = sortOrder === 'desc' ? 'desc' : 'asc';
-        return compareGroup(a, b, direction);
-      } else if (sortKey === 'ip_address') {
-        const parseIP = (ip: string) => {
-          const parts = ip.split(':')[0].split('.').map(Number);
-          return parts.length === 4 ? parts : [0, 0, 0, 0];
-        };
-        const compareIP = (ipAStr: string, ipBStr: string, dir: 'asc' | 'desc') => {
-          const ipA = parseIP(ipAStr);
-          const ipB = parseIP(ipBStr);
-          for (let i = 0; i < 4; i++) {
-            if (ipA[i] !== ipB[i]) {
-              return dir === 'asc' ? ipA[i] - ipB[i] : ipB[i] - ipA[i];
-            }
-          }
-          return 0;
-        };
-
-        const onlineA = a.last_ping_status === true;
-        const onlineB = b.last_ping_status === true;
-
-        if (sortOrder === 'ip_online_asc') {
-          if (onlineA && !onlineB) return -1;
-          if (!onlineA && onlineB) return 1;
-          return compareIP(a.ip_address, b.ip_address, 'asc');
-        } else if (sortOrder === 'ip_online_desc') {
-          if (onlineA && !onlineB) return -1;
-          if (!onlineA && onlineB) return 1;
-          return compareIP(a.ip_address, b.ip_address, 'desc');
-        } else if (sortOrder === 'ip_offline_asc') {
-          if (!onlineA && onlineB) return -1;
-          if (onlineA && !onlineB) return 1;
-          return compareIP(a.ip_address, b.ip_address, 'asc');
-        } else if (sortOrder === 'ip_offline_desc') {
-          if (!onlineA && onlineB) return -1;
-          if (onlineA && !onlineB) return 1;
-          return compareIP(a.ip_address, b.ip_address, 'desc');
-        }
-
-        const direction = sortOrder === 'desc' ? 'desc' : 'asc';
-        return compareIP(a.ip_address, b.ip_address, direction);
-      } else if (sortKey === 'os_version') {
-        valA = (a.os_version || '').toLowerCase();
-        valB = (b.os_version || '').toLowerCase();
-      } else if (sortKey === 'disk_type') {
-        valA = (a.disk_type || '').toLowerCase();
-        valB = (b.disk_type || '').toLowerCase();
-      } else if (sortKey === 'status') {
-        valA = a.status.toLowerCase();
-        valB = b.status.toLowerCase();
-      } else if (sortKey === 'last_backup') {
-        valA = a.last_backup ? new Date(a.last_backup).getTime() : 0;
-        valB = b.last_backup ? new Date(b.last_backup).getTime() : 0;
-        return sortOrder === 'asc' ? valA - valB : valB - valA;
-      }
-
-      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
+    if (sortKey === apiSortKey) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(apiSortKey);
+      setSortOrder('asc');
+    }
   };
 
   const renderSortIcon = (key: string) => {
-    if (sortKey !== key) return null;
-    if (key === 'ip_address') {
-      if (sortOrder === 'ip_online_asc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
-            ON <ArrowUp size={10} className="ml-0.5" />
-          </span>
-        );
-      }
-      if (sortOrder === 'ip_online_desc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
-            ON <ArrowDown size={10} className="ml-0.5" />
-          </span>
-        );
-      }
-      if (sortOrder === 'ip_offline_asc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
-            OFF <ArrowUp size={10} className="ml-0.5" />
-          </span>
-        );
-      }
-      if (sortOrder === 'ip_offline_desc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
-            OFF <ArrowDown size={10} className="ml-0.5" />
-          </span>
-        );
-      }
-    }
-
-    if (key === 'hostname') {
-      if (sortOrder === 'hostname_online_asc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
-            ON <ArrowUp size={10} className="ml-0.5" />
-          </span>
-        );
-      }
-      if (sortOrder === 'hostname_online_desc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
-            ON <ArrowDown size={10} className="ml-0.5" />
-          </span>
-        );
-      }
-      if (sortOrder === 'hostname_offline_asc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
-            OFF <ArrowUp size={10} className="ml-0.5" />
-          </span>
-        );
-      }
-      if (sortOrder === 'hostname_offline_desc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
-            OFF <ArrowDown size={10} className="ml-0.5" />
-          </span>
-        );
-      }
-    }
-
+    let apiSortKey = key;
     if (key === 'group') {
-      if (sortOrder === 'group_online_asc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
-            ON <ArrowUp size={10} className="ml-0.5" />
-          </span>
-        );
-      }
-      if (sortOrder === 'group_online_desc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-emerald-400 font-bold ml-1 bg-emerald-500/10 px-1 py-0.5 rounded leading-none border border-emerald-500/20">
-            ON <ArrowDown size={10} className="ml-0.5" />
-          </span>
-        );
-      }
-      if (sortOrder === 'group_offline_asc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
-            OFF <ArrowUp size={10} className="ml-0.5" />
-          </span>
-        );
-      }
-      if (sortOrder === 'group_offline_desc') {
-        return (
-          <span className="inline-flex items-center text-[9px] text-rose-400 font-bold ml-1 bg-rose-500/10 px-1 py-0.5 rounded leading-none border border-rose-500/20">
-            OFF <ArrowDown size={10} className="ml-0.5" />
-          </span>
-        );
-      }
+      apiSortKey = 'group_id';
     }
-
+    if (sortKey !== apiSortKey) return null;
     return sortOrder === 'asc' ? (
       <ArrowUp size={12} className="inline ml-1 text-indigo-400" />
     ) : (
@@ -373,13 +104,25 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
   const fetchNodes = async () => {
     try {
+      const qParams = new URLSearchParams({
+        page: String(page),
+        limit: String(limit),
+        sort_by: sortKey || 'hostname',
+        sort_order: sortOrder
+      });
+      if (searchQuery) {
+        qParams.append('q', searchQuery);
+      }
+      
       const [nRes, gRes] = await Promise.all([
-        fetch('/api/nodes'),
+        fetch(`/api/nodes?${qParams.toString()}`),
         fetch('/api/groups')
       ]);
       if (nRes.ok) {
         const data = await nRes.json();
-        setNodes(data);
+        setNodes(data.nodes || []);
+        setTotalNodes(data.total || 0);
+        setTotalPages(data.pages || 1);
       }
       if (gRes.ok) {
         const gData = await gRes.json();
@@ -396,7 +139,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     fetchNodes();
     const interval = setInterval(fetchNodes, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [page, limit, searchQuery, sortKey, sortOrder]);
 
   const handleResponse = async (res: Response) => {
     const contentType = res.headers.get("content-type");
@@ -595,17 +338,9 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
   };
 
-  const filteredNodes = nodes.filter(node => {
-    const q = searchQuery.toLowerCase();
-    return (
-      node.hostname.toLowerCase().includes(q) ||
-      node.ip_address.toLowerCase().includes(q) ||
-      (node.disk_type && node.disk_type.toLowerCase().includes(q)) ||
-      (node.os_version && node.os_version.toLowerCase().includes(q))
-    );
-  });
+  const filteredNodes = nodes;
 
-  const sortedFilteredNodes = getSortedNodes(filteredNodes);
+  const sortedFilteredNodes = nodes;
 
   const renderNodeRow = (node: Node, depth = 0) => {
     const group = groups.find(g => g.id === node.group_id);
@@ -801,7 +536,10 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
             type="text"
             placeholder={t('searchPlaceholder')}
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1);
+            }}
             className="w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
           />
         </div>
@@ -908,6 +646,54 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
             )}
           </tbody>
         </table>
+        {/* Pagination Footer */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 px-6 py-4 border-t border-zinc-800 bg-zinc-900/20 text-xs font-semibold text-zinc-400">
+          <div>
+            Showing <span className="text-zinc-200">{totalNodes === 0 ? 0 : (page - 1) * limit + 1}</span> to{" "}
+            <span className="text-zinc-200">{Math.min(page * limit, totalNodes)}</span> of{" "}
+            <span className="text-zinc-200">{totalNodes}</span> nodes
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span>Rows per page:</span>
+              <select
+                value={limit}
+                onChange={(e) => {
+                  setLimit(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="bg-zinc-950 border border-zinc-800 rounded px-1.5 py-1 text-zinc-200 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+              >
+                {[10, 25, 50, 100].map(val => (
+                  <option key={val} value={val}>{val}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                disabled={page === 1}
+                className="px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded hover:border-zinc-700 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+              >
+                Previous
+              </button>
+              <span className="px-3 text-zinc-300">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={page === totalPages}
+                className="px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded hover:border-zinc-700 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {showAddModal && <AddNodeModal onClose={() => setShowAddModal(false)} onSubmit={handleAddNode} submitting={submitting} error={error} />}

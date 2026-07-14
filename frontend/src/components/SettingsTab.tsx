@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Settings as Gear, CheckCircle, Trash2 } from 'lucide-react';
+import { Save, Settings as Gear, CheckCircle, Trash2, AlertTriangle } from 'lucide-react';
 import { SearchableSelect, DropdownTextInput } from './SearchableSelect';
 import type { Option } from './SearchableSelect';
 import { useTranslation } from '../context/TranslationContext';
@@ -56,6 +56,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [warnings, setWarnings] = useState<{ code: string; message: string }[]>([]);
 
   // Generate options
   const timezoneOptions: Option[] = React.useMemo(() => {
@@ -156,7 +157,18 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           setUseLocalTime(false);
           setTimezone(dbTz);
         }
-        setLoading(false);
+        
+        fetch('/api/health')
+          .then(res => res.json())
+          .then(hdata => {
+            if (hdata.warnings) {
+              setWarnings(hdata.warnings);
+            }
+            setLoading(false);
+          })
+          .catch(() => {
+            setLoading(false);
+          });
       })
       .catch(e => {
         console.error(e);
@@ -304,6 +316,23 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         <AuditLogsTab timezone={timezone} type="kiosk" />
       ) : (
         <form onSubmit={handleSave} className="space-y-6">
+          {warnings.length > 0 && (
+            <div className="p-4 bg-red-950/40 border border-red-900/60 rounded-xl space-y-2 animate-fade-in">
+              <div className="flex items-center gap-2 text-red-400 font-bold text-sm">
+                <AlertTriangle size={18} />
+                <span>{t('warningsCount')} ({warnings.length})</span>
+              </div>
+              <ul className="list-disc pl-5 text-xs text-red-300 space-y-1">
+                {warnings.map((w, idx) => (
+                  <li key={idx}>
+                    {w.code === 'BORG_ON_ROOT' || w.code === 'ISO_CACHE_ON_ROOT'
+                      ? t('storageRootWarning')
+                      : w.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
             {/* Left Column: General & Connection + Global Pruning */}
             <div className="space-y-6">

@@ -378,6 +378,7 @@ function AppContent() {
   const [restoreMode, setRestoreMode] = useState<'offline' | 'online'>('offline');
   const [kioskOrchestratorIp, setKioskOrchestratorIp] = useState('');
   const [connectionKeyphrase, setConnectionKeyphrase] = useState('');
+  const [healthWarnings, setHealthWarnings] = useState<{ code: string; message: string }[]>([]);
 
   // Watchdog states
   const [watchdogStatus, setWatchdogStatus] = useState<{
@@ -744,6 +745,25 @@ function AppContent() {
   };
 
   useEffect(() => {
+    const fetchHealth = async () => {
+      try {
+        const res = await fetch('/api/health');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.warnings) {
+            setHealthWarnings(data.warnings);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch health warnings:', err);
+      }
+    };
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     let retryCount = 0;
     
     const loadSettingsAndNodes = () => {
@@ -760,7 +780,8 @@ function AppContent() {
           fetch('/api/nodes')
             .then(res => res.json())
             .then(nodes => {
-              if (nodes.length === 0) {
+              const nodesList = Array.isArray(nodes) ? nodes : (nodes.nodes || []);
+              if (nodesList.length === 0) {
                 setShowIpPromptModal(true);
               }
             })
@@ -882,7 +903,8 @@ function AppContent() {
         fetch('/api/nodes')
           .then(res => res.json())
           .then(nodes => {
-            if (nodes.length === 0) {
+            const nodesList = Array.isArray(nodes) ? nodes : (nodes.nodes || []);
+            if (nodesList.length === 0) {
               setShowIpPromptModal(true);
             }
           })
@@ -1310,6 +1332,26 @@ function AppContent() {
         </div>
       </main>
 
+      {!isKiosk && (
+        <footer className="w-full py-4 px-6 border-t border-zinc-900/60 bg-zinc-950/40 text-center text-xs text-zinc-500 flex flex-wrap items-center justify-center gap-4 animate-fade-in">
+          <span>Edge B.R.O. Orchestrator</span>
+          <span className="h-4 w-px bg-zinc-900" />
+          <span>v2.1.0</span>
+          {healthWarnings.length > 0 && (
+            <>
+              <span className="h-4 w-px bg-zinc-900" />
+              <button
+                onClick={() => setActiveTab('settings')}
+                className="flex items-center gap-1 text-amber-500 font-bold hover:text-amber-400 cursor-pointer animate-pulse transition-all"
+              >
+                <AlertTriangle size={13} />
+                <span>{t('warningsCount')} ({healthWarnings.length})</span>
+              </button>
+            </>
+          )}
+        </footer>
+      )}
+
       {/* Kiosk Mode Footer */}
       {isKiosk && (
         <footer className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-900 flex flex-col animate-fade-in">
@@ -1410,6 +1452,19 @@ function AppContent() {
             </>
           )}
           </div>
+          {healthWarnings.length > 0 && (
+            <div className="px-6 py-1.5 bg-red-950/20 border-t border-zinc-900/60 flex items-center justify-center gap-2 text-[10px] text-red-400 font-bold animate-pulse">
+              <AlertTriangle size={12} className="shrink-0" />
+              <span>
+                {t('warningsCount')} ({healthWarnings.length}):{' '}
+                {healthWarnings.map(w =>
+                  w.code === 'BORG_ON_ROOT' || w.code === 'ISO_CACHE_ON_ROOT'
+                    ? t('storageRootWarning')
+                    : w.message
+                ).join(' | ')}
+              </span>
+            </div>
+          )}
         </footer>
       )}
 

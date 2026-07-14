@@ -664,7 +664,9 @@ export const translations: Record<Language, Record<string, string>> = {
     applyingLicense: 'Applying...',
     applyV2cButton: 'Apply V2C License',
     activeLicenseFeatures: 'Active License Features',
-    warningLabel: 'Warning'
+    warningLabel: 'Warning',
+    storageRootWarning: 'Borg Backup Repository or Client ISO Cache resides on the system root partition. Please mount dedicated external storage volumes to prevent host drive space exhaustion.',
+    warningsCount: 'System Health Warnings'
   },
   ru: {
     // Navigation / Tabs
@@ -1328,7 +1330,9 @@ export const translations: Record<Language, Record<string, string>> = {
     applyingLicense: 'Применение...',
     applyV2cButton: 'Применить V2C лицензию',
     activeLicenseFeatures: 'Активные фичи лицензии',
-    warningLabel: 'Внимание'
+    warningLabel: 'Внимание',
+    storageRootWarning: 'Репозиторий бэкапов Borg или кэш образов ISO находится на системном разделе. Пожалуйста, подключите внешние тома хранения для предотвращения переполнения диска.',
+    warningsCount: 'Предупреждения системы'
   },
   uk: {
     // Navigation / Tabs
@@ -1988,7 +1992,9 @@ export const translations: Record<Language, Record<string, string>> = {
     noFileSelected: 'Файл не вибрано',
     applyingLicense: 'Застосування...',
     applyV2cButton: 'Застосувати V2C ліцензію',
-    activeLicenseFeatures: 'Активні фічі ліцензії',
-    warningLabel: 'Увага'
+    activeLicenseFeatures: 'Активні фічі ліцензии',
+    warningLabel: 'Увага',
+    storageRootWarning: 'Репозиторій бекапів Borg або кеш образів ISO знаходиться на системному розділі. Будь ласка, підключіть зовнішні томи зберігання для запобігання переповнення диска.',
+    warningsCount: 'Попередження системи'
   }
 };
