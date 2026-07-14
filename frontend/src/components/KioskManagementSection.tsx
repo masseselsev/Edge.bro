@@ -358,19 +358,6 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                             </button>
                           </span>
                         )}
-                        {kiosk.rebuild_required && (
-                          <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-                            {t('rebuildRequired') || 'Rebuild Required'}
-                            <button
-                              onClick={() => handleRecreateIso(kiosk.id)}
-                              className="ml-1 text-amber-400 hover:text-white transition-colors cursor-pointer"
-                              title={t('rebuildNow') || 'Rebuild ISO Now'}
-                            >
-                              <RefreshCw size={10} className="hover:rotate-180 duration-500 transition-transform" />
-                            </button>
-                          </span>
-                        )}
                       </div>
 
                       {(kiosk.contact || kiosk.comment) && (
@@ -544,14 +531,10 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                         ) : (
                           <button
                             onClick={() => handleRecreateIso(kiosk.id)}
-                            className={`w-[85px] py-1 rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center justify-center gap-1 ${
-                              kiosk.rebuild_required
-                                ? 'bg-amber-600 hover:bg-amber-500 text-white animate-pulse shadow-amber-500/20 shadow-md'
-                                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
-                            }`}
+                            className="w-[85px] py-1 rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap overflow-hidden text-ellipsis inline-flex items-center justify-center gap-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
                             title="Recreate ISO image"
                           >
-                            <RefreshCw size={10} className={kiosk.rebuild_required ? 'animate-spin-slow' : ''} />
+                            <RefreshCw size={10} />
                             {t('kioskActionRecreate') || 'Recreate'}
                           </button>
                         )}
