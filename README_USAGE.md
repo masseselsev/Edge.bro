@@ -422,7 +422,7 @@ These endpoints are secured and require the appropriate authentication session h
 
 - **System Daemon Logs**: `/api/tasks/debug-logs` (requires Admin)
   - Returns the latest 500 system logs (FastAPI, Celery workers, and scheduler execution logs).
-- **Administrative Audit Logs**: `/api/users/audit-logs` (requires Superadmin or Admin+)
+- **Administrative Audit Logs**: `/api/users/audit-logs` (requires Superadmin or Admin)
   - Returns the latest 1000 user activity logs (logins, settings changes, user actions).
 - **Task Console Logs**: `/api/tasks/{task_id}` (requires Kiosk or Admin)
   - Returns the full execution console/Ansible playbook output of a specific background task.
