@@ -1,435 +1,273 @@
-# Edge B.R.O. — Edge Backup & Restore Orchestrator
+# Edge B.R.O. — Backup & Restore Orchestrator
 
-🇬🇧 **[English README](README.md)** | 🇬🇧 **[English Usage Guide](README_USAGE.md)** | 🇷🇺 **[Русский README](README_ru.md)** | 🇷🇺 **[Русская инструкция (Usage Guide)](README_USAGE_ru.md)**
+🇬🇧 [English](README.md) · [Usage Guide](README_USAGE.md) · 🇷🇺 [Русский](README_ru.md) · [Инструкция](README_USAGE_ru.md)
 
-A production-grade, centralized, dockerized orchestration panel designed for managing, backup scheduling, and bare-metal flashing restoration of multiple Debian-based edge nodes.
+Centralized backup management and bare-metal restore system for fleets of Debian-based edge devices. Fully containerized. Ships as a single `docker compose up`.
 
 ---
 
-## 🏗️ Architecture Overview
-
-The system is fully containerized and uses a decoupled architecture to manage concurrency, state synchronization, and privileged hardware execution:
+## Architecture
 
 ```
-                  ┌──────────────────────────────────────────────┐
-                  │              React SPA Frontend              │
-                  │             (Port 7777 - Nginx)              │
-                  └──────────────────────┬───────────────────────┘
-                                         │ REST API
-                                         ▼
-                  ┌──────────────────────────────────────────────┐
-                  │               FastAPI Backend                │
-                  │             (Port 8000 - Uvicorn)            │
-                  └──────────────┬───────────────┬───────────────┘
-                                 │               │
-                     Writes Logs │               │ Dispatches Tasks
-                     & Metadata  │               │
-                                 ▼               ▼
-   ┌──────────────┐       ┌──────────┐      ┌──────────┐       ┌─────────────┐
-   │  PostgreSQL  │ ◄──── │ Database │      │  Redis   │ ◄───► │   Celery    │
-   │ (Port 5432)  │       │  Session │      │  Broker  │       │ Task Worker │
-   └──────────────┘       └──────────┘      └──────────┘       └──────┬──────┘
-                                                                      │ Runs
-                                                                      │ Privileged Actions
-                                                                      ▼
-                                                               ┌─────────────┐
-                                                               │  Edge Fleet │
-                                                               │   Targets   │
-                                                               └─────────────┘
+                    ┌─────────────────────────────────────────────────┐
+                    │              React SPA (Nginx :7777)            │
+                    │   Fleet · Flasher · Archive · Schedule · Logs   │
+                    └────────────────────────┬────────────────────────┘
+                                             │ REST / JSON
+                                             ▼
+                    ┌─────────────────────────────────────────────────┐
+                    │             FastAPI Backend (:8000)              │
+                    │  IP Parser · Job Tracker · Host IP Discovery     │
+                    └────────┬──────────────────────────┬─────────────┘
+                             │                          │
+                  Reads/Writes DB                Dispatches tasks
+                             │                          │
+                             ▼                          ▼
+              ┌──────────────────┐          ┌───────────────────────┐
+              │  PostgreSQL :5432 │          │     Redis :6379       │
+              │  Inventory, logs, │          │  Celery broker +      │
+              │  settings, users  │          │  result backend       │
+              └──────────────────┘          └───────┬───────────────┘
+                                                    │
+                                      ┌─────────────┼──────────────┐
+                                      ▼             ▼              ▼
+                               ┌───────────┐ ┌───────────┐ ┌────────────┐
+                               │  Worker   │ │   Beat    │ │ Borg SSH   │
+                               │ (Celery)  │ │ (Celery)  │ │ Server     │
+                               │ Ansible,  │ │ Scheduled │ │ :12345     │
+                               │ restore,  │ │ prune,    │ │ Encrypted  │
+                               │ backup    │ │ retention │ │ repo store │
+                               └─────┬─────┘ └───────────┘ └────────────┘
+                                     │
+                          SSH + Ansible Playbooks
+                                     │
+                                     ▼
+                            ┌──────────────────┐
+                            │   Edge Nodes     │
+                            │   (Fleet)        │
+                            └──────────────────┘
 ```
 
-### Components:
-1. **React SPA Frontend (Port 7777)**: Responsive, dark-themed dashboard mapped to tabs (Fleet, Flasher, History, Live-USB Client, Settings). Supports multi-language translation (English, Russian, Ukrainian) with a premium animated language selector dropdown. Displays stats (de-duplication ratios, total space) and features a terminal console overlay to stream execution logs in real-time.
-2. **FastAPI Backend (Port 8000)**: Serves RESTful APIs, implements the IP parser (supporting CIDR, lists, and ranges), validates drive type configurations, and tracks active jobs. To enable correct connection configurations inside isolated Docker environments, it dynamically resolves the host's actual physical and VPN IP addresses (excluding docker loopbacks and virtual bridge adapters like `docker0`, `br-*`, and `veth*`) by querying the host network namespace via `/host/proc/1/net/` network tables.
-3. **Celery Worker (Privileged Host-Device Mode)**: Subscribed to task queues to execute playbooks and perform flashing partition commands (requires access to `/dev` of the local orchestrator node during flashing).
-4. **Borg SSH Server (Port 12345)**: Isolated central repository environment where edge node public keys are automatically appended to `/home/borg/.ssh/authorized_keys` under forced command restrictions (`command="borg serve --restrict-to-path ..."`).
-5. **Redis**: In-memory task queue broker and result backend.
-6. **PostgreSQL**: Stores Orchestrator states, global settings, node inventory metadata, backup histories, and task execution logs.
+Seven containers in `docker-compose.yml`:
+
+| Service | Role |
+|---------|------|
+| **frontend** | React SPA behind Nginx. Dark-themed dashboard with Fleet, Flasher, Archive, Schedule, Logs, and Settings tabs. Multi-language (EN/RU/UK). Real-time terminal console overlay. |
+| **backend** | FastAPI on Uvicorn. REST API, IP parser (CIDR / ranges / lists), job tracking. Resolves host physical and VPN IPs by reading `/host/proc/1/net/` (skips docker bridges). |
+| **worker** | Celery worker in privileged host-device mode. Runs Ansible playbooks and disk partitioning commands. Needs `/dev` access for bare-metal flashing. |
+| **beat** | Celery Beat scheduler. Fires daily `borg prune` at 03:00, enforces retention policies. |
+| **borg-server** | Isolated SSH server on port 12345. Central Borg repository. Node keys land in `authorized_keys` under `borg serve --restrict-to-path` forced commands. |
+| **db** | PostgreSQL 15. Stores inventory, backup history, groups, settings, user accounts. |
+| **redis** | Redis 7. Task broker + result backend for Celery. |
 
 ---
 
-## 🛠️ Key Orchestration Modules
+## Core Capabilities
 
-### 1. Fleet Provisioning & Bulk IP Parsing
-- Supports registering hosts via **lists** (comma-separated), **ranges** (e.g. `192.168.1.50-60` or `10.0.0.1-10.0.0.3`), and **CIDR blocks** (e.g. `192.168.1.0/30`).
-- Spawns parallel, concurrent Celery tasks utilizing a pre-configured Celery concurrency of 24 to bootstrap multiple edge nodes simultaneously.
-- Form inputs pre-populate with default credentials (`user`, `admin`, `SSH port 2222`) to speed up administrative workflows.
+### Fleet Provisioning
+- Register nodes by IP lists, ranges (`192.168.1.50-60`), or CIDR blocks (`10.0.0.0/24`).
+- Parallel Celery bootstrap — up to 24 concurrent node setups.
+- Installs packages, injects SSH keys, gathers hardware info — all via Ansible.
 
-### 2. Auto-Prepare Playbook (Label & EFI Extraction)
-- Runs an idempotent Ansible playbook to verify node readiness.
-- Sets persistent filesystem labels (`edgeroot` on the root partition and `edgeboot` on the ESP boot partition).
-- Captures and saves the unique EFI FAT32 filesystem UUID.
-- Rewrites the target's `/etc/fstab` to reference partition labels, shielding the operating system against hardware device drift (e.g., SATA `/dev/sda` transitioning to NVMe `/dev/nvme0n1` on new hardware).
+### Disk Preparation (Auto-Prepare)
+- Assigns persistent filesystem labels: `edgeroot`, `edgeboot`, `edgelog`, `edgestor`, `EFI`.
+- Captures unique EFI FAT32 UUID for later restore.
+- Rewrites `/etc/fstab` to use `LABEL=` mounts — immune to `/dev/sda` ↔ `/dev/nvme0n1` drift.
 
-### 3. Backup Scheduling, Global Deduplication & Resource Limits
-- Backups are initiated remotely via `ssh` command and stream data to the central Borg SSH Server.
-- **SSH Connection Keepalive**: Outgoing backup and initialization commands are configured with client-side SSH keepalives (`ServerAliveInterval` and `ServerAliveCountMax` values configured via environment variables) to maintain tunnel stability over unreliable networks and prevent worker tasks from hanging indefinitely.
-- **Granular Resource limits**: To safeguard host performance and network bandwidth on edge sites, backups can be configured with:
-  - **Upload Rate Limit**: Limits maximum bandwidth throughput (in KiB/s) per backup group.
-  - **CPU Quota**: Restricts backup process CPU usage (0-400% of a single core) globally or per backup group, enforced on client nodes using `systemd-run --scope -p CPUQuota=...`.
-  - **Custom Compression**: Enables selecting specific compression algorithm/level (e.g., `lz4`, `zstd:3` as default, `zstd:5`, etc.) globally or overridden per backup group.
-  - **Optimized Checkpoint Intervals**: Borg's checkpoint interval is dynamically auto-calculated from the upload speed limit to maximize recovery points on slow connections (e.g. checkpointing every ~50 MB at <= 500 KiB/s, ~200 MB at <= 5000 KiB/s, or defaulting to 1800s), with manual group overrides available.
-- **Cross-Device Deduplication & Compression**: Because all edge nodes back up into a single, centralized Borg repository (`/data/borg/fleet`), Borg's chunk-level deduplication and compression span across all devices globally. Identical files, OS binaries, and application assets present on multiple Debian nodes are only stored **once** on the server.
-  - *Example Savings (Assuming a 6 GB base OS footprint per node)*:
-    - **1st Node (Standalone compression & deduplication)**: saves **55% - 65%** of its size right away due to Borg's built-in compression (e.g. `lz4`), reducing a 6 GB system to ~2.2 - 2.7 GB on disk.
-    - **Each additional similar node (Cross-node deduplication)**: saves up to **97%** for identical/cloned nodes (adding only **~100 - 200 MB** for the same device under a different name) and saves about **20% - 30%** of space for nodes with minor system configuration and package differences.
-    - **Incremental backups**: of running systems tend towards only **~100 - 200 MB** of unique incremental data per backup run (storing only unique logs, cache differences, and database states).
-    - This yields a massive overall storage footprint reduction for fleets running similar base images, with incremental runs remaining extremely lightweight.
+### Backup Scheduling & Deduplication
+- Push-model: orchestrator SSHes into the node, runs `borg create`, data streams back to the central repo.
+- **SSH keepalive** tuning via `.env` (`SSH_KEEPALIVE_INTERVAL`, `SSH_KEEPALIVE_COUNT`).
+- **Resource limits** per backup group:
+  - Upload rate cap (KiB/s)
+  - CPU quota (0–400% per core, via `systemd-run --scope`)
+  - Compression algorithm (`lz4`, `zstd:1`–`zstd:9`)
+  - Checkpoint interval — auto-calculated from upload speed, or manual override
+- **Cross-device deduplication**: all nodes share one Borg repo. Identical OS files stored once.
+  - 1st node: 55–65% compression savings (~6 GB → ~2.5 GB)
+  - Each cloned node adds only ~100–200 MB
+  - Incremental runs: ~100–200 MB of unique data
+- **Smart queue scheduler**:
+  - Dynamic concurrency scaling when window time runs short
+  - Bandwidth-aware concurrency caps (≥ 2 MiB/s per stream)
+  - FIFO queue with stagger offsets; slots release instantly on completion
+  - Running backups protected past window close
+- **Retention**: interval-based, count-based, or timeframe-based. Global or per-group override. Pruning runs daily at 03:00 via Celery Beat, followed by automatic `borg compact`.
+- **Exclusions**: configurable in Settings UI. Defaults:
 
-- **Configurable Global Exclusions**: In the **Orchestrator Settings** tab in the web UI, you can configure granular exclusion path patterns (e.g. temporary/virtual mounts or heavy log/data folders). The settings are stored in a structured JSON database dictionary format (`{"pattern": "/var/tmp/*", "comment": "Temporary files"}`) supporting both custom exclusion rules and comments. The list is displayed in a dedicated side-by-side right-hand card with auto-stretching height, complete with instant delete actions.
-  - **Default Exclusions**:
-    - `/dev/*` — System devices
-    - `/proc/*` — Virtual process filesystem
-    - `/sys/*` — Sysfs system info
-    - `/run/*` — Transient runtime files
-    - `/mnt/*` — Mounted filesystems
-    - `/media/*` — Removable media mounts
-    - `/lost+found` — Recovered filesystem fragments
-    - `/var/log/edge/*` — Edge app logs
-    - `/var/opt/edge/blobstore/*` — Local media files storage
-    - `/var/spool/edge/*` — Edge spool directory
+  | Pattern | Purpose |
+  |---------|---------|
+  | `/dev/*` | System devices |
+  | `/proc/*` | Virtual process filesystem |
+  | `/sys/*` | Sysfs system info |
+  | `/run/*` | Transient runtime files |
+  | `/mnt/*` | Mounted filesystems |
+  | `/media/*` | Removable media mounts |
+  | `/lost+found` | Recovered filesystem fragments |
+  | `/var/log/edge/*` | Edge app logs |
+  | `/var/opt/edge/blobstore/*` | Local media file storage |
+  | `/var/spool/edge/*` | Edge spool directory |
+  | `/var/log/journal/*` | Systemd journal logs |
+  | `/var/log/**/*.gz` | Compressed rotated logs |
+  | `/var/log/**/*.1` | Rotated log backups |
+  | `/var/hasplm/*` | Sentinel HASP licensing data |
+  | `/etc/hasplm/*` | Sentinel HASP licensing config |
 
-- **Intelligent Queue Scheduling & Dynamic Concurrency**:
-  - **Dynamic Concurrency Scaling**: Automatically dynamically computes and scales up the group's concurrency limit if the remaining time in the backup window is too short to complete all pending backups, ensuring all scheduled devices finish their runs on time.
-  - **Bandwidth-Aware Concurrency Capping**: Automatically caps the group's concurrency limit if a low `upload_rate_limit` is set (allocating at least 2 MiB/s per backup stream), preventing edge site network choking.
-  - **Sequential FIFO Queue Triggering**: Staggers backup execution by sorting pending nodes by their deterministic host-based stagger offsets and executing them sequentially. When one node finishes its backup, it immediately releases the slot for the next pending device in queue.
-  - **Running Backup Protection**: Currently running backups are allowed to complete and clear their execution flags even after the window end time passes, preventing premature `missed_window` marking.
-  - **Test-specific Intervals**: Supports `"10min"` and `"30min"` execution intervals for fast simulation and local deployment testing, skipping stagger delays and validating successes within the respective timeframe.
-- To prevent database lock-ups on the shared Borg repositories, pruning is decoupled from individual backups. A global Celery Beat schedule triggers a local repository `borg prune` daily at 3:00 AM using the global retention policy (configurable in Settings, or overridden per backup group). The system supports interval-based (daily/weekly/monthly), count-based (keep last N), or timeframe-based (keep within past days/weeks/months/years) retention.
+### Bare-Metal Restore (Flasher)
+- Connect target drive via USB-SATA/NVMe adapter → select node + snapshot → flash.
+- Host's own system drive is filtered out and protected.
+- **Cross-drive migration**: NVMe ↔ SATA restores work seamlessly (label-based fstab).
+- GPT partitioning, EFI UUID preservation, `borg extract`, chroot GRUB reinstall, initramfs rebuild.
+- Network reset: wipes persistent-net rules, injects generic DHCP for `eth*`/`en*`.
+- Sentinel HASP packages reinstalled from local cache if offline.
+- Post-restore check-in service pings orchestrator and updates status to `RESTORED`.
 
-### 4. Bare-Metal Flashing Restore
-- **Device Protection Safeguard**: Scans target block devices on the orchestrator host while shielding the host's own root system drive against accidental overwrite.
-- **Drive Type Mismatch Warning & Cross-Drive Migration**: Because the system strictly uses filesystem labels (`LABEL=edgeroot`) in `/etc/fstab` instead of hardcoded `/dev/sdX` or UUID paths, **you can seamlessly migrate a backup taken from an NVMe drive onto a SATA drive** (or vice versa). The web UI will show a by-design warning when it detects this hardware change to ensure you are aware, but allows you to override and proceed with the cross-drive restoration.
-- **EFI UUID Preservation**: Partitions the target device as GPT, formats the ESP boot partition and explicitly overrides its UUID using the historical captured value (`mkfs.vfat -i <EFI_UUID_HEX>`).
-- **PCIe Network Drift Mitigation & Subnet Discovery**: Wipes old persistent network device bindings and injects generic wildcard interface configurations (`eth*` and `en*`) to guarantee network reachability upon post-flashing boots, and automatically displays discovered active dynamic DHCP IP subnets on target kiosk screens.
-- **Chroot Bootloader Config**: Mounts the system, binds virtualization paths (`/dev`, `/proc`, `/sys`), reinstalls GRUB on the target device, updates initramfs, and writes a fallback EFI loader path (`EFI/BOOT/BOOTX64.EFI`).
-- **Sentinel HASP Offline Reinstallation Cache**: To avoid node-specific HASP licensing fingerprint mismatches, licensing folders (`/etc/hasplm`, `/var/hasplm`) are excluded from Borg backups. Upon restore, the system automatically attempts to reinstall the Sentinel LDK packages (`edge-hasp-eoawt3` and `edge-aksusbd`) inside the target chroot. If no internet connection is available, it falls back to installing packages cached locally inside the central repository (`/data/borg/fleet/packages`), ensuring the target box starts `edgeserver` successfully without blocking on package integrity checks (`dpkg --verify`).
-- **Infinite Loop Post-Restore Checkin**: Injects a one-time check-in service (`edge-restore-checkin.service`) on the target node that runs inside an infinite background loop waiting for internet or network availability to ping the orchestrator. Once connected, it checks in, updates the orchestrator state to `RESTORED`, and self-terminates.
-- **Auditing**: Performs a post-restore verification audit confirming label configurations inside `/etc/fstab` before safely unmounting.
+### Live-CD Kiosk Client
+- Compiles a bootable Debian Live ISO on the fly with baked-in orchestrator IP and auth token.
+- Boot from USB on any edge node → restore over the network without extracting the disk.
+- **Single snapshot sync**: generates a temporary mini-repo via `borg export-tar` | `borg import-tar` pipeline — no need to download full history.
+- Real-time download speed, progress bar, and ETA display.
+- **Kiosk management**: register, approve, block, re-pair kiosks from the dashboard. Dynamic pairing keys.
 
-### 5. Live-USB Offline Client Generation & Single Snapshot Sync
-- Compiles a bootable Debian Live environment on the fly.
-- Embeds the orchestrator's IP address and authentication tokens directly into the generated ISO.
-- When booted on an edge node, launches a secure kiosk UI that connects to the central orchestrator, enabling offline network restoration directly to the node's internal disk without requiring hardware extraction.
-- **Selective Snapshot Sync / Single Snapshot Download**: Allows syncing only a specific selected backup snapshot to the USB client rather than download the entire node history (which could be hundreds of gigabytes).
-- **Dynamic On-The-Fly Repo Compilation**: Generates a temporary, compact Borg repository containing only the single selected archive by running a high-speed `borg export-tar` and `borg import-tar` pipeline on the backend, streaming it over the network as a tar file to the kiosk client on the fly.
-- Displays real-time download speed, progress bar, and estimated time of arrival (ETA) during local USB synchronization.
+### WireGuard VPN Integration
+- Browser webcam QR scanner (`jsQR`) for WireGuard configs, with manual paste fallback.
+- VPN profiles persist to `/media/usb-data` with `0600 root:root` permissions.
+- Backend endpoints: tunnel stats (`wg show`), NM reload, up/down toggle.
 
-### 6. WireGuard VPN Browser QR Integration & Network Settings Persistence
-- **QR Webcam Configuration**: Integrates a browser webcam feed reader using `jsQR` to dynamically scan WireGuard VPN configuration profiles, along with a fallback manual configuration text container.
-- **Persistence on USB**: Saves configured NetworkManager profiles (`.nmconnection`) and WireGuard configs (`wg0.conf`) to `/media/usb-data` at system boot, assigning proper `0600` permissions and ownership (`root:root`) to pass NetworkManager daemon security validation checks.
-- **Control APIs**: Provides backend endpoints to poll active VPN tunnel statistics (`wg show wg0 dump`), reload NM connections (`nmcli connection reload`), and toggle active status (`up`/`down`).
-
-### 7. Sentinel LDK License Management
-- **Automated Version Auditing**: Automatically queries, parses, and persists target Sentinel LDK versions (`hasp_runtime_version`) during initial provisioning bootstrap.
-- **Licensing Card Overlay**: A dedicated licensing card displays license status badges (Active, Expired, Clone Detected, Disabled) in real-time inside the Node Details modal whenever Sentinel is active on a node. The monitoring container is collapsible and collapsed by default to optimize space.
-- **Genuine C2V/Fingerprint Downloader**: Securely compiles node fingerprints directly from target edge devices using `/opt/edge/bin/hasp_update lf` and `/opt/edge/bin/hasp_update i` commands via SSH (falling back to the local Sentinel ACC HTTP API or file validation if CLI is unavailable) and exposes a download button in the dashboard interface.
-- **V2C Update Applier**: Allows operators to drag-and-drop or upload `.V2C` licence keys from the dashboard, executing `hasp_update u` remotely via SSH on the node (with API/web fallback mechanisms in place).
-
----
-
-## 🖥️ System Requirements
-
-### 1. Central Orchestrator Server
-* **CPU**: 2–4 Cores (recommended x86_64, mostly utilized for parallel Ansible bootstrapping and Borg encryption/compression overhead).
-* **RAM**: 4 GB Minimum (8 GB Recommended) to run FastAPI, PostgreSQL, Redis, Celery, and concurrent Borg repository operations comfortably.
-* **Network**: 1 Gbps Ethernet connection recommended for fast backup intake.
-* **Storage Capacity**:
-  * The system drive requires at least **20 GB** of free space for OS and docker layers.
-  * **Dedicated Backup volume**: Sized dynamically according to your fleet requirements. Backups are assumed to run quarterly, staggered uniformly over the quarterly window, retaining the last 5 snapshots (equivalent to 1.25 years of history):
-    * **50 Devices**: ~60 GB recommended space.
-      * *Calculation*: `2.5 GB (base) + (49 * 200 MB) (dedup) + (50 * 5 * 150 MB) (snapshots) + 10 GB (database/logs buffer) = ~60 GB`.
-    * **300 Devices**: ~300 GB recommended space.
-      * *Calculation*: `2.5 GB (base) + (299 * 200 MB) (dedup) + (300 * 5 * 150 MB) (snapshots) + 15 GB (database/logs buffer) = ~300 GB`.
-    * **1000 Devices**: ~1 TB recommended space.
-      * *Calculation*: `2.5 GB (base) + (999 * 200 MB) (dedup) + (1000 * 5 * 150 MB) (snapshots) + 30 GB (database/logs buffer) = ~1 TB`.
-
-### 2. Edge Node Kiosk PC / Laptop
-* **CPU**: 64-bit x86 compatible processor (Intel/AMD).
-* **RAM**: 2 GB Minimum (4 GB Recommended). Since the live technician client boots in volatile RAM using overlayfs, the RAM must accommodate both the operating system environment and the staging payload logs.
-* **Network**: Active Ethernet / Wi-Fi card compatible with standard Debian Linux kernels.
-
-### 3. Flasher USB Storage Drive
-* **Capacity**: 8 GB Minimum (16 GB - 32 GB Recommended) to hold the compiled offline client ISO image.
-* **Speed / Class**: USB 3.0 / USB 3.1 interface is highly recommended (write speed >= 40 MB/s, read speed >= 100 MB/s, e.g., Samsung Bar Plus, SanDisk Ultra Fit) to prevent write timeouts during bare-metal flashing.
-* **MicroSD/SD Cards (if boot device)**: Class 10, UHS-I or UHS-II (read speeds >= 100MB/s).
+### Sentinel LDK Licensing
+- Auto-detects `hasp_runtime_version` during bootstrap.
+- Real-time license status badges: Active / Expired / Clone Detected / Disabled.
+- C2V fingerprint download via SSH (`hasp_update lf` + `hasp_update i`), with ACC API fallback.
+- V2C license upload: drag-and-drop in the dashboard, applied remotely via SSH.
 
 ---
 
-## 🚀 Installation & Usage
+## System Requirements
 
-For full deployment instructions, including server preparation, environment configuration, database migrations, and a comprehensive usage guide, please refer to the:
-- 🇬🇧 **[English Installation & Usage Guide](README_USAGE.md)**
-- 🇷🇺 **[Русская инструкция по установке и использованию](README_USAGE_ru.md)**
+### Orchestrator Server
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| CPU | 2 cores (x86_64) | 4 cores |
+| RAM | 4 GB | 8 GB |
+| Network | 100 Mbps | 1 Gbps |
+| System disk | 20 GB free | — |
+| Backup volume | Sized per fleet — see below | Dedicated drive |
+
+**Backup volume sizing** (quarterly backups, keep last 5 = ~1.25 years):
+
+| Fleet size | Estimate |
+|------------|----------|
+| 50 devices | ~60 GB |
+| 300 devices | ~300 GB |
+| 1000 devices | ~1 TB |
+
+### Edge Node (Kiosk PC)
+- 64-bit x86 CPU, 2 GB RAM (4 GB recommended), Ethernet or Wi-Fi.
+
+### Flasher USB Drive
+- 8 GB minimum (16–32 GB recommended), USB 3.0+.
 
 ---
 
-## 📂 Repository Layout
+## Repository Layout
 
 ```
 .
-├── backend
-│   ├── alembic/                # DB Migrations
-│   ├── playbooks/              # Ansible bootstrap/prepare playbooks
-│   ├── ansible_utils.py        # Python subprocess wrapper for Ansible
-│   ├── main.py                 # FastAPI endpoints
-│   ├── models.py               # SQLAlchemy models
-│   ├── schemas.py              # Pydantic validation schemas
-│   ├── tasks.py                # Celery tasks (backup, bootstrap, prune)
-│   ├── restore_logic.py        # Bare-metal flashing restore routine
-│   └── tests/                  # Pytest unit tests
-├── docker
-│   ├── backend/                # FastAPI & Worker Dockerfile
-│   ├── borg/                   # SSH Borg Server Dockerfile
-│   └── frontend/               # React & Nginx Dockerfile
-├── frontend
+├── backend/
+│   ├── alembic/                 # DB migrations
+│   ├── core/                    # Scheduler, HASP helper, disk ops
+│   ├── playbooks/               # Ansible: bootstrap.yml, prepare.yml
+│   ├── routers/                 # FastAPI route modules
+│   │   ├── nodes_crud.py        #   Fleet CRUD
+│   │   ├── nodes_actions.py     #   Bootstrap, prepare, backup triggers
+│   │   ├── restore.py           #   Flasher logic
+│   │   ├── groups.py            #   Backup group management
+│   │   ├── kiosks.py            #   Kiosk pairing & control
+│   │   ├── iso.py               #   Live-CD ISO generation
+│   │   ├── settings.py          #   Global settings API
+│   │   └── users.py             #   Auth & user management
+│   ├── tasks/                   # Celery task modules
+│   ├── tests/                   # Pytest unit tests
+│   ├── backup_tasks.py          # Backup execution logic
+│   ├── restore_logic.py         # Bare-metal flash routine
+│   ├── iso_tasks.py             # ISO compilation tasks
+│   ├── models.py                # SQLAlchemy models
+│   ├── schemas.py               # Pydantic schemas
+│   └── main.py                  # FastAPI app entry point
+├── docker/
+│   ├── backend/                 # Dockerfile: FastAPI + Worker
+│   ├── borg/                    # Dockerfile: Borg SSH server
+│   ├── frontend/                # Dockerfile: React + Nginx
+│   └── apt-proxy/               # APT caching proxy
+├── frontend/
 │   ├── src/
-│   │   ├── components/         # Fleet, Flasher, History UI tabs
-│   │   ├── App.tsx             # Navigation controller
-│   │   └── index.css           # Tailwind configuration styles
-│   ├── tailwind.config.js
-│   └── nginx.conf              # Production asset routing server configuration
-└── docker-compose.yml          # Container stack orchestration definition
+│   │   ├── components/          # 30 React components (tabs, modals, etc.)
+│   │   ├── context/             # Translation context provider
+│   │   ├── i18n/                # EN/RU/UK translation dictionaries
+│   │   ├── App.tsx              # Main app shell & navigation
+│   │   └── index.css            # Tailwind + custom animations
+│   └── nginx.conf               # Production static server config
+├── docker-compose.yml           # Full stack definition (7 services)
+└── .env.example                 # Environment variable template
 ```
 
 ---
 
-## 🔌 Hardware & Host Storage Stability
+## USB Hardware Stability
 
-When performing bare-metal restore operations on target USB flash drives or external drives through USB-to-SATA/NVMe bridges (e.g., JMicron controllers like `152d:0581`), the default Linux **UAS (USB Attached SCSI)** driver might crash or reset under heavy concurrent queue write loads (like `borg extract`). This causes the disk to hang and locks the flashing process in an uninterruptible `D` (I/O wait) state.
-
-To guarantee host platform stability during bulk bare-metal flashing:
-
-1. **Configure USB Storage Quirks** on the host machine to bypass the buggy `uas` driver and force the ultra-stable legacy `usb-storage` path:
-   ```bash
-   echo -e "options usb-storage quirks=152d:0581:u\noptions uas quirks=152d:0581:u" | sudo tee /etc/modprobe.d/usb-quirks.conf
-   ```
-   *(Replace `152d:0581` with the respective Vendor:Product ID of your USB-to-SATA bridge found in `lsusb` if different).*
-
-2. **Re-plug the USB Drive** to apply the rule, or reset the USB bus programmatically using the host's `usbreset` utility:
-   ```bash
-   sudo usbreset 152d:0581
-   ```
-
----
-
-## 🔍 Changes Made on Target Edge Nodes
-
-This section provides a **complete, exhaustive list** of every modification the orchestrator performs on managed target edge nodes. No changes beyond those listed here are made. All actions are executed via SSH from the orchestrator; no persistent agents or daemons are installed on target nodes.
-
-### Phase 1: Bootstrap (Initial Provisioning)
-
-> Executed by: `playbooks/bootstrap.yml` via Ansible over SSH.
-> Triggered by: Adding a new node through the web UI (Fleet → Add Nodes).
-> Authentication: Password-based SSH (one-time, with the user-supplied credentials).
-
-#### 1.1. OS Compatibility Check *(read-only)*
-
-| Action | Details |
-|--------|---------|
-| File read | `/etc/os-release` or `/etc/debian_version` |
-| Effect | **None** — read-only validation. Rejects OS versions below Debian 10 or Ubuntu 18. |
-
-#### 1.2. Package Installation
-
-| Action | Details |
-|--------|---------|
-| APT update | `apt-get update` is executed to refresh the package index |
-| Packages installed | `python3`, `python3-pip`, `borgbackup`, `parted`, `udev`, `dosfstools`, `e2fsprogs`, `util-linux` |
-| Proxy handling | If an unreachable APT proxy is detected, its config files under `/etc/apt/apt.conf` and `/etc/apt/apt.conf.d/` are **temporarily** renamed to `*.disabled`, and **restored** at the end of the playbook |
-
-#### 1.3. System User Creation
-
-| Action | Details |
-|--------|---------|
-| User created | `borg` — a system user with `/bin/bash` shell and a home directory at `/home/borg` |
-| SSH keypair generated | Ed25519 keypair at `/home/borg/.ssh/id_ed25519` and `/home/borg/.ssh/id_ed25519.pub` |
-| Purpose | The `borg` user's private key is used by the node to authenticate outgoing backup connections to the orchestrator's Borg SSH server |
-
-#### 1.4. SSH Configuration
-
-| File Modified | Change |
-|---------------|--------|
-| `/root/.ssh/authorized_keys` | The orchestrator's public SSH key is appended (created if absent, mode `0600`) |
-| `/root/.ssh/` directory | Created if absent, mode `0700` |
-| `/etc/ssh/sshd_config` | Line `PermitRootLogin` is set to `prohibit-password` (allows key-only root login) |
-| SSH service | Restarted **only if** `sshd_config` was actually changed |
-
-#### 1.5. System Information Gathering *(read-only)*
-
-The following information is **read** from the node and stored in the orchestrator's database. No files are modified during this step:
-
-| Data collected | Source |
-|----------------|--------|
-| Disk type (SATA/NVMe) | `/sys/block/*/queue/rotational`, `lsblk` |
-| EFI partition UUID | `blkid -s UUID` on the EFI partition |
-| Active network interface | `ip route get 8.8.8.8` |
-| Hostname | `hostname` command |
-| OS version | `/etc/os-release` or `/etc/debian_version` |
-| Partition layout (JSON) | `lsblk -J -b -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT,LABEL,UUID,PARTUUID` |
-| Filesystem labels | `e2label` on root, boot, log, and storage partitions |
-| fstab label compliance | Content check of `/etc/fstab` for `LABEL=edge*` entries |
-
----
-
-### Phase 2: Auto-Prepare (Disk Label Standardization)
-
-> Executed by: `playbooks/prepare.yml` via Ansible over SSH.
-> Triggered by: Clicking "Auto-Prepare" on a node with status `NEEDS_FIX`.
-> Authentication: Key-based SSH (using the orchestrator's key authorized during bootstrap).
-> Rollback: If any step fails, the original `/etc/fstab` is automatically restored from backup.
-
-#### 2.1. Fstab Backup
-
-| Action | Details |
-|--------|---------|
-| File created | `/etc/fstab.bak` — a copy of the current `/etc/fstab` (used for automatic rollback on failure) |
-
-#### 2.2. Filesystem Label Assignment
-
-The following partition labels are **written directly** to the on-disk filesystem metadata using `e2label` / `fatlabel`:
-
-| Partition Mount | Label Set | Command |
-|-----------------|-----------|---------|
-| `/` (root) | `edgeroot` | `e2label <device> edgeroot` |
-| `/boot` | `edgeboot` | `e2label <device> edgeboot` |
-| `/var/log/edge` | `edgelog` | `e2label <device> edgelog` |
-| `/var/opt/edge` | `edgestor` | `e2label <device> edgestor` |
-| `/boot/efi` | `EFI` | `fatlabel <device> EFI` (strips any incorrect label) |
-
-#### 2.3. Fstab Rewrite
-
-| File Modified | Change |
-|---------------|--------|
-| `/etc/fstab` | **Completely replaced** with a 5-line standardized template using `LABEL=` entries instead of `/dev/` paths or UUIDs. The EFI partition uses `UUID=<captured_uuid>` |
-
-New `/etc/fstab` content:
-```
-# Standardized fstab via Borg Orchestrator Auto-Prepare
-LABEL=edgeroot   /               ext4    defaults,noatime                  0       1
-UUID=<EFI_UUID>  /boot/efi       vfat    umask=0077,defaults,noatime       0       1
-LABEL=edgeboot   /boot           ext2    defaults,noatime                  0       2
-LABEL=edgelog    /var/log/edge   ext4    defaults,noatime                  0       2
-LABEL=edgestor   /var/opt/edge   ext4    defaults,noatime                  0       2
-```
-
-#### 2.4. Bootloader & Initramfs Update
-
-| Action | Command | Purpose |
-|--------|---------|---------|
-| Reload systemd | `systemctl daemon-reload` | Picks up the new fstab |
-| Verify mounts | `mount -a` | Validates all entries in the new fstab resolve correctly |
-| Update GRUB | `update-grub` | Regenerates GRUB config to reflect new root-by-label |
-| Update initramfs | `update-initramfs -u` | Embeds updated fstab references into the boot initrd |
-
-#### 2.5. Additional System Info Gathered *(read-only)*
-
-Same as Phase 1 (section 1.5), plus:
-
-| Data collected | Source |
-|----------------|--------|
-| CPU model | `lscpu` or `/proc/cpuinfo` |
-| Total RAM | `free -h` |
-| Edge software version | `/etc/motd` (parsed from EDGE banner) |
-
----
-
-### Phase 3: Backup Execution
-
-> Executed by: `backup_tasks.py` — remote SSH command to the node.
-> Triggered by: Manual backup button in the web UI, or by the automatic scheduler.
-> Authentication: Key-based SSH from orchestrator root (`/root/.ssh/id_ed25519`) to node root.
-> Direction: The orchestrator **SSHes into the node** and runs `borg create` on the node. Borg then pushes data **from the node to the orchestrator** over a reverse SSH tunnel using the node's `borg` user key.
-
-#### 3.1. Borg Repository Initialization *(on orchestrator, not on node)*
-
-| Action | Details |
-|--------|---------|
-| Command | `borg init --encryption=repokey ssh://borg@<orchestrator_ip>:12345/data/borg/fleet` |
-| Runs on | **The target node** (via SSH from orchestrator), but the repository is created on the **orchestrator** filesystem |
-| Idempotent | Returns code 2 if already initialized — safely ignored |
-| Effect on node | **None** — only the outgoing SSH connection is made |
-
-#### 3.2. Borg Create *(runs on the target node)*
-
-The orchestrator SSHes to the node as `root` and executes:
+USB-to-SATA/NVMe adapters with UAS drivers (e.g., JMicron `152d:0581`) can hang during heavy `borg extract` writes. Force the stable legacy `usb-storage` driver:
 
 ```bash
-borg create --json --stats \
-  --compression <algorithm> \
-  --checkpoint-interval <seconds> \
-  --remote-ratelimit <kib/s> \
-  ssh://borg@<orchestrator_ip>:12345/data/borg/fleet::<archive_name> \
-  / <exclusions>
+echo -e "options usb-storage quirks=152d:0581:u\noptions uas quirks=152d:0581:u" \
+  | sudo tee /etc/modprobe.d/usb-quirks.conf
+sudo usbreset 152d:0581   # or re-plug the USB cable
 ```
 
-| Aspect | Details |
-|--------|---------|
-| Process on node | A `borg create` process runs temporarily, reading the filesystem and streaming data to the orchestrator |
-| Optional CPU limiting | If a CPU quota is configured, the command is wrapped in `systemd-run --scope -p CPUQuota=<N>% -p IOSchedulingClass=idle` |
-| Files modified on node | **None** — `borg create` is a read-only operation on the source filesystem |
-| Files created on node | **None** — no lock files, cache, or state is written on the node itself |
-| Network | Outgoing SSH connection from node to orchestrator on port 12345, using `/home/borg/.ssh/id_ed25519` |
-| Default exclusions | `/dev/*`, `/proc/*`, `/sys/*`, `/run/*`, `/mnt/*`, `/media/*`, `/lost+found`, `/var/log/edge/*`, `/var/opt/edge/*` |
-
-#### 3.3. Summary of Node Footprint During Backup
-
-| Resource | Impact |
-|----------|--------|
-| Disk writes | **Zero** — backup is a read-only scan |
-| CPU | Controlled by optional `CPUQuota` (via `systemd-run --scope`) |
-| Network | Controlled by `--remote-ratelimit` (KiB/s) |
-| I/O priority | Optional `IOSchedulingClass=idle` when CPU quota is active |
-| Temporary processes | One `borg create` process + one `ssh` tunnel — both terminate when backup completes |
+Replace `152d:0581` with your adapter's Vendor:Product ID from `lsusb`.
 
 ---
 
-### Complete File Change Summary
+## Security & Authentication
 
-The table below lists **every file and system object** modified on the target node across all phases:
-
-| File / Object | Phase | Action | Reversible? |
-|----------------|-------|--------|-------------|
-| APT package index | Bootstrap | `apt-get update` | Auto-refreshed |
-| `python3`, `python3-pip` | Bootstrap | Installed via APT | `apt-get remove` |
-| `borgbackup` | Bootstrap | Installed via APT | `apt-get remove` |
-| `parted`, `udev`, `dosfstools`, `e2fsprogs`, `util-linux` | Bootstrap | Installed via APT | `apt-get remove` |
-| `/home/borg/` (user + home) | Bootstrap | Created system user `borg` | `userdel -r borg` |
-| `/home/borg/.ssh/id_ed25519{,.pub}` | Bootstrap | Ed25519 keypair generated | Delete files |
-| `/root/.ssh/authorized_keys` | Bootstrap | Orchestrator public key appended | Remove the line |
-| `/etc/ssh/sshd_config` | Bootstrap | `PermitRootLogin prohibit-password` | Edit line back |
-| SSH service | Bootstrap | Restarted (if config changed) | N/A |
-| `/etc/apt/apt.conf{,.d/*}` | Bootstrap | Temporarily renamed `*.disabled` → restored | Auto-restored |
-| Partition labels (on-disk metadata) | Prepare | `edgeroot`, `edgeboot`, `edgelog`, `edgestor`, `EFI` | `e2label <dev> ""` |
-| `/etc/fstab` | Prepare | Replaced with label-based template | Restore `/etc/fstab.bak` |
-| `/etc/fstab.bak` | Prepare | Created (backup copy) | Delete file |
-| GRUB config | Prepare | Regenerated via `update-grub` | `update-grub` |
-| Initramfs | Prepare | Rebuilt via `update-initramfs -u` | `update-initramfs -u` |
-| systemd state | Prepare | `daemon-reload` | N/A |
-| *Backup execution* | Backup | **No files modified on node** | N/A |
+- **Dashboard login**: username + password, sessions via HTTP-only JWT cookies (`admin_session`).
+- **Roles**:
+  - **Superadmin** — manages other user accounts (Settings → Users tab).
+  - **Admin** — operates the system but cannot manage users.
+- **Kiosk auth**: paired Live-CD kiosks use pre-baked `Authorization: Bearer <token>` headers. Offline ISOs fall back to `?token=` query params.
+- **First-run seed**: on initial startup, a superadmin account is created from `.env` values (`SUPERADMIN_USERNAME`, `ADMIN_PASSWORD`). Created once — subsequent `.env` changes won't overwrite UI-modified credentials. To reset: clear the `users` table or update `.env` + restart.
 
 ---
 
-## 🔐 Security & User Authentication
+## What the Orchestrator Changes on Target Nodes
 
-To protect the Orchestrator dashboard and API, Edge B.R.O. implements a role-based access control (RBAC) system:
+No persistent agents are installed. All actions are SSH-based, one-time.
 
-1. **Dashboard Authentication**:
-   - Access to the administrative dashboard requires logging in with credentials.
-   - User sessions are managed using secure, HTTP-only `admin_session` JWT cookies, protecting users from Cross-Site Scripting (XSS) attacks.
+### Bootstrap (initial provisioning)
+| What | Details |
+|------|---------|
+| APT packages | `python3`, `python3-pip`, `borgbackup`, `parted`, `e2fsprogs`, `dosfstools`, `util-linux` |
+| SSH key | Orchestrator's Ed25519 pubkey → `/root/.ssh/authorized_keys` |
+| sshd_config | `PermitRootLogin prohibit-password` |
+| Borg user | System user `borg` created with SSH keypair at `/home/borg/.ssh/` |
+| Dead proxy bypass | APT proxy configs temporarily renamed `*.disabled`, restored after install |
 
-2. **User Roles**:
-   - **Superadmin**: The master administrative account. Can manage other administrator accounts under the **Settings → Administrators** sub-tab (create, edit details, set/reset passwords, delete, and add comments).
-   - **Administrator**: Standard admin account. Can view nodes, tasks, settings, triggers backups/restores, but cannot manage other users.
+### Auto-Prepare (disk labels)
+| What | Details |
+|------|---------|
+| Partition labels | `edgeroot`, `edgeboot`, `edgelog`, `edgestor`, `EFI` via `e2label`/`fatlabel` |
+| `/etc/fstab` | Replaced with label-based template. Backup saved as `/etc/fstab.bak` |
+| Bootloader | `update-grub` + `update-initramfs -u` |
 
-3. **Technician Kiosks**:
-   - Paired technician kiosks booted from the Live-USB bypass the username/password login by sending pre-paired tokens in the `Authorization: Bearer <auth_token>` header.
-   - For offline restoration ISOs where network setup is untethered, query parameters (`?token=<auth_token>`) are supported to ensure authorization persists.
+### Backup execution
+| What | Details |
+|------|---------|
+| Files modified on node | **None** — `borg create` is read-only |
+| Processes | Temporary `borg create` + `ssh` tunnel, both terminate on completion |
+| CPU/IO control | Optional `systemd-run --scope -p CPUQuota=... -p IOSchedulingClass=idle` |
 
-4. **Default Seeding & Recovery**:
-   - On the initial startup, the Orchestrator seeds a default Superadmin account using values from the environment variables (`.env`):
-     - Username: `SUPERADMIN_USERNAME` (defaults to `admin` if not set)
-     - Password: `ADMIN_PASSWORD` (defaults to `admin_pass` if not set)
-   - These credentials are created in the database only once. Subsequent changes in the `.env` file will not overwrite changes made via the Web UI.
-   - If you need to reset the master password, change the values in `.env` and restart the container, or clear the `users` table to trigger a re-seed.
+---
 
+## Installation & Usage
+
+→ **[English Usage Guide](README_USAGE.md)** — step-by-step deployment, configuration, and operations manual.
+
+→ **[Русская инструкция](README_USAGE_ru.md)** — подробное руководство на русском.
