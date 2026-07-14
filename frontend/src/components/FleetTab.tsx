@@ -649,14 +649,17 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
         {/* Pagination Footer */}
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4 px-6 py-4 border-t border-zinc-800 bg-zinc-900/20 text-xs font-semibold text-zinc-400">
           <div>
-            Showing <span className="text-zinc-200">{totalNodes === 0 ? 0 : (page - 1) * limit + 1}</span> to{" "}
-            <span className="text-zinc-200">{Math.min(page * limit, totalNodes)}</span> of{" "}
-            <span className="text-zinc-200">{totalNodes}</span> nodes
+            {t('showingLabel')} <span className="text-zinc-200">{totalNodes === 0 ? 0 : (page - 1) * limit + 1}</span>{" "}
+            {t('toLabel')}{" "}
+            <span className="text-zinc-200">{Math.min(page * limit, totalNodes)}</span>{" "}
+            {t('ofLabel')}{" "}
+            <span className="text-zinc-200">{totalNodes}</span>{" "}
+            {t('nodesLabel')}
           </div>
           
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span>Rows per page:</span>
+              <span>{t('rowsPerPage')}:</span>
               <select
                 value={limit}
                 onChange={(e) => {
@@ -678,10 +681,10 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                 disabled={page === 1}
                 className="px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded hover:border-zinc-700 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
-                Previous
+                {t('prev')}
               </button>
               <span className="px-3 text-zinc-300">
-                Page {page} of {totalPages}
+                {t('pageLabel')} {page} {t('ofLabel')} {totalPages}
               </span>
               <button
                 type="button"
@@ -689,7 +692,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                 disabled={page === totalPages}
                 className="px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded hover:border-zinc-700 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
-                Next
+                {t('next')}
               </button>
             </div>
           </div>

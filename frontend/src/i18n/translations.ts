@@ -151,6 +151,17 @@ export const translations: Record<Language, Record<string, string>> = {
     purgeWarningSubtext: 'The Borg repository will remain initialized. This action cannot be undone.',
     purgeArchives: 'Purge Archives',
 
+    // Pagination (shared)
+    showingLabel: 'Showing',
+    toLabel: 'to',
+    ofLabel: 'of',
+    archivesLabel: 'archives',
+    nodesLabel: 'nodes',
+    rowsPerPage: 'Rows per page',
+    pageLabel: 'Page',
+    prev: 'Previous',
+    next: 'Next',
+
     // Logs Tab
     systemLogsTitle: 'System & Security Logs',
     systemLogsSub: 'Monitor real-time orchestrator daemon operations and errors.',
@@ -666,7 +677,17 @@ export const translations: Record<Language, Record<string, string>> = {
     activeLicenseFeatures: 'Active License Features',
     warningLabel: 'Warning',
     storageRootWarning: 'Borg Backup Repository or Client ISO Cache resides on the system root partition. Please mount dedicated external storage volumes to prevent host drive space exhaustion.',
-    warningsCount: 'System Health Warnings'
+    warningsCount: 'System Health Warnings',
+
+    // Misc / Missing
+    saveLabel: 'Save',
+    edit: 'Edit',
+    fillAllFields: 'Please fill in all required fields',
+    auditLogsSub: 'Monitor administrative actions and user login attempts.',
+    adminPasswordHint: 'Leave blank to keep current password',
+    kioskPairingSuccess: 'Connected and paired successfully!',
+    selectPolicyTypePlaceholder: '-- Select Policy Type --',
+    selectUnitPlaceholder: '-- Select Unit --'
   },
   ru: {
     // Navigation / Tabs
@@ -817,6 +838,17 @@ export const translations: Record<Language, Record<string, string>> = {
     purgeWarningTitle: 'Подтвердите очистку архивов',
     purgeWarningSubtext: 'Репозиторий Borg останется инициализированным. Это действие необратимо.',
     purgeArchives: 'Очистить архивы',
+
+    // Pagination (shared)
+    showingLabel: 'Показано',
+    toLabel: 'по',
+    ofLabel: 'из',
+    archivesLabel: 'архивов',
+    nodesLabel: 'узлов',
+    rowsPerPage: 'Строк на странице',
+    pageLabel: 'Страница',
+    prev: 'Назад',
+    next: 'Вперёд',
 
     // Logs Tab
     systemLogsTitle: 'Системные логи и безопасность',
@@ -1332,7 +1364,17 @@ export const translations: Record<Language, Record<string, string>> = {
     activeLicenseFeatures: 'Активные фичи лицензии',
     warningLabel: 'Внимание',
     storageRootWarning: 'Репозиторий бэкапов Borg или кэш образов ISO находится на системном разделе. Пожалуйста, подключите внешние тома хранения для предотвращения переполнения диска.',
-    warningsCount: 'Предупреждения системы'
+    warningsCount: 'Предупреждения системы',
+
+    // Misc / Missing
+    saveLabel: 'Сохранить',
+    edit: 'Изменить',
+    fillAllFields: 'Пожалуйста, заполните все обязательные поля',
+    auditLogsSub: 'Мониторинг административных действий и попыток входа пользователей.',
+    adminPasswordHint: 'Оставьте пустым, чтобы сохранить текущий пароль',
+    kioskPairingSuccess: 'Успешно подключено и сопряжено!',
+    selectPolicyTypePlaceholder: '-- Выберите тип политики --',
+    selectUnitPlaceholder: '-- Выберите единицу --'
   },
   uk: {
     // Navigation / Tabs
@@ -1483,6 +1525,17 @@ export const translations: Record<Language, Record<string, string>> = {
     purgeWarningTitle: 'Підтвердьте очищення архівів',
     purgeWarningSubtext: 'Репозиторій Borg залишиться ініціалізованим. Ця дія є незворотною.',
     purgeArchives: 'Очистити архіви',
+
+    // Pagination (shared)
+    showingLabel: 'Показано',
+    toLabel: 'по',
+    ofLabel: 'з',
+    archivesLabel: 'архівів',
+    nodesLabel: 'вузлів',
+    rowsPerPage: 'Рядків на сторінці',
+    pageLabel: 'Сторінка',
+    prev: 'Назад',
+    next: 'Вперед',
 
     // Logs Tab
     systemLogsTitle: 'Системні логи та безпека',
@@ -1995,6 +2048,16 @@ export const translations: Record<Language, Record<string, string>> = {
     activeLicenseFeatures: 'Активні фічі ліцензии',
     warningLabel: 'Увага',
     storageRootWarning: 'Репозиторій бекапів Borg або кеш образів ISO знаходиться на системному розділі. Будь ласка, підключіть зовнішні томи зберігання для запобігання переповнення диска.',
-    warningsCount: 'Попередження системи'
+    warningsCount: 'Попередження системи',
+
+    // Misc / Missing
+    saveLabel: 'Зберегти',
+    edit: 'Редагувати',
+    fillAllFields: 'Будь ласка, заповніть усі обов\'язкові поля',
+    auditLogsSub: 'Моніторинг адміністративних дій та спроб входу користувачів.',
+    adminPasswordHint: 'Залиште порожнім, щоб зберегти поточний пароль',
+    kioskPairingSuccess: 'Успішно підключено та сполучено!',
+    selectPolicyTypePlaceholder: '-- Виберіть тип політики --',
+    selectUnitPlaceholder: '-- Виберіть одиницю --'
   }
 };
