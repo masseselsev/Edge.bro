@@ -73,6 +73,11 @@ BORG_HOST_DATA_PATH=borg-data     # Docker volume by default
 ```
 
 > **About `SUPERADMIN_USERNAME` / `ADMIN_PASSWORD`**: these values seed the first superadmin account on initial startup. Once created, the account lives in the database. Changing `.env` later won't overwrite a password you've already changed via the web UI. To force-reset: clear the `users` table in PostgreSQL and restart.
+>
+> 🔑 **Generating a secure `JWT_SECRET_KEY`**: Run this command to generate a strong random secret key for session signing:
+> ```bash
+> python3 -c "import secrets; print(secrets.token_hex(32))"
+> ```
 
 ### 2.2 Configure backup storage
 
