@@ -441,14 +441,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                       {kiosk.approved_at ? new Date(kiosk.approved_at).toLocaleString() : <span className="text-zinc-650">—</span>}
                     </td>
                     <td className="py-3.5 px-4">
-                      {kiosk.is_rebuilding ? (
-                        <div className="flex flex-col gap-1 items-start">
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/25 animate-pulse uppercase">
-                            <RefreshCw size={8} className="animate-spin" />
-                            {t('rebuildingLabel') || 'Rebuilding'}
-                          </span>
-                        </div>
-                      ) : kiosk.iso_built_at ? (
+                      {kiosk.iso_built_at ? (
                         <div className="space-y-1">
                           <div className="font-mono text-zinc-350">
                             {new Date(kiosk.iso_built_at).toLocaleString()}
@@ -480,6 +473,13 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                               </span>
                             );
                           })()}
+                        </div>
+                      ) : kiosk.is_rebuilding ? (
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/25 animate-pulse uppercase">
+                            <RefreshCw size={8} className="animate-spin" />
+                            {t('rebuildingLabel') || 'Rebuilding'}
+                          </span>
                         </div>
                       ) : (
                         <span className="text-zinc-650">—</span>
