@@ -160,8 +160,10 @@ Seven containers in `docker-compose.yml`:
 | 300 devices | ~300 GB | ~150–200 GB |
 | 1000 devices | ~1 TB | ~500–600 GB |
 
-### Edge Node (Kiosk PC)
-- 64-bit x86 CPU, 2 GB RAM (4 GB recommended), Ethernet or Wi-Fi.
+### Edge Node (Target Device)
+- **Supported OS**: Debian 10 or newer.
+- **Supported Hardware**: EMBC3000 motherboards or newer.
+- **Specifications**: 64-bit x86 CPU, 2 GB RAM (4 GB recommended), Ethernet or Wi-Fi.
 
 ### Flasher USB Drive
 - Minimum 32 GB (preferably larger), write speed ≥ 15-20 MB/s. Recommended: Netac US5 level or higher.
