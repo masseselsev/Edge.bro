@@ -25,11 +25,19 @@ type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings' | 'clientiso' |
 
 function AppContent() {
   const { t, language } = useTranslation();
-  const [activeTab, setActiveTab] = useState<Tab>('fleet');
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const saved = localStorage.getItem('activeTab') as Tab | null;
+    const valid: Tab[] = ['fleet', 'flasher', 'history', 'logs', 'settings', 'clientiso', 'schedule'];
+    return saved && valid.includes(saved) ? saved : 'fleet';
+  });
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem('theme');
     return (saved === 'light' || saved === 'dark') ? saved : 'dark';
   });
+
+  useEffect(() => {
+    localStorage.setItem('activeTab', activeTab);
+  }, [activeTab]);
 
   useEffect(() => {
     if (theme === 'light') {
