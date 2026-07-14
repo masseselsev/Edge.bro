@@ -94,7 +94,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
       const res = await fetch(`/api/nodes?mode=${restoreMode}`);
       if (res.ok) {
         const data = await res.json();
-        setNodes(Array.isArray(data) ? data : []);
+        setNodes(Array.isArray(data) ? data : (data.nodes || []));
       } else {
         setNodes([]);
       }

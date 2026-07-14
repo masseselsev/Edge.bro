@@ -100,14 +100,14 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
       ]);
 
       if (nRes.ok) {
-        const allNodes = await nRes.json();
-        if (Array.isArray(allNodes)) {
-          const found = allNodes.find((n: Node) => n.id === nodeId);
-          if (found) {
-            setNode(found);
-            setNotes(found.notes || '');
-            setGroupId(found.group_id || 0);
-            if (found.status === 'RESTORED') {
+        const data = await nRes.json();
+        const allNodes = Array.isArray(data) ? data : (data.nodes || []);
+        const found = allNodes.find((n: Node) => n.id === nodeId);
+        if (found) {
+          setNode(found);
+          setNotes(found.notes || '');
+          setGroupId(found.group_id || 0);
+          if (found.status === 'RESTORED') {
               setSentinelExpanded(true);
               setTimeout(() => {
                 const el = document.getElementById('sentinel-licensing-section');
@@ -118,7 +118,6 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
             }
           }
         }
-      }
       
       if (hRes.ok) {
         const histData = await hRes.json();

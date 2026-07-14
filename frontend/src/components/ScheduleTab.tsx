@@ -77,7 +77,10 @@ export default function ScheduleTab() {
       ]);
       
       if (gRes.ok) setGroups(await gRes.json());
-      if (nRes.ok) setNodes(await nRes.json());
+      if (nRes.ok) {
+        const nData = await nRes.json();
+        setNodes(Array.isArray(nData) ? nData : (nData.nodes || []));
+      }
       if (lRes.ok) setLoadData(await lRes.json());
     } catch (err) {
       console.error("Failed to fetch scheduling data:", err);

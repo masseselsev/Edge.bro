@@ -240,7 +240,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
       const nodesRes = await fetch('/api/nodes');
       if (nodesRes.ok) {
         const nodesData = await nodesRes.json();
-        setNodes(Array.isArray(nodesData) ? nodesData : []);
+        setNodes(Array.isArray(nodesData) ? nodesData : (nodesData.nodes || []));
       } else {
         setNodes([]);
       }
