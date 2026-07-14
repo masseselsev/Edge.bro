@@ -16,17 +16,17 @@ Centralized backup management and bare-metal restore system for fleets of Debian
                                              │ REST / JSON
                                              ▼
                     ┌─────────────────────────────────────────────────┐
-                    │             FastAPI Backend (:8000)              │
-                    │  IP Parser · Job Tracker · Host IP Discovery     │
+                    │             FastAPI Backend (:8000)             │
+                    │   IP Parser · Job Tracker · Host IP Discovery   │
                     └────────┬──────────────────────────┬─────────────┘
                              │                          │
                   Reads/Writes DB                Dispatches tasks
                              │                          │
                              ▼                          ▼
               ┌──────────────────┐          ┌───────────────────────┐
-              │  PostgreSQL :5432 │          │     Redis :6379       │
-              │  Inventory, logs, │          │  Celery broker +      │
-              │  settings, users  │          │  result backend       │
+              │ PostgreSQL :5432 │          │     Redis :6379       │
+              │ Inventory, logs, │          │  Celery broker +      │
+              │ settings, users  │          │  result backend       │
               └──────────────────┘          └───────┬───────────────┘
                                                     │
                                       ┌─────────────┼──────────────┐
