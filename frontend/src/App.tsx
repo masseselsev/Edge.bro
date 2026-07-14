@@ -1010,7 +1010,7 @@ function AppContent() {
 
       {/* Main Body */}
       <main className={`flex-1 max-w-7xl w-full mx-auto px-6 py-8 ${isKiosk ? (restoreMode === 'online' && kioskStatus !== 'APPROVED' ? 'pb-28' : 'pb-20') : 'pb-20'}`}>
-        <div key={activeTab} className="animate-fade-in">
+        <div key={activeTab} className="animate-tab-in">
           {renderTabContent()}
         </div>
       </main>
