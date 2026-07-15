@@ -9,7 +9,8 @@ import models
 from main import app
 from database import get_db
 
-TEST_DATABASE_URL = "sqlite:///./test_nodes_pag_db.db"
+from sqlalchemy.pool import StaticPool
+TEST_DATABASE_URL = "sqlite:///:memory:"
 
 @pytest.fixture(scope="module")
 def db_session():
@@ -18,7 +19,11 @@ def db_session():
             os.remove("./test_nodes_pag_db.db")
         except Exception:
             pass
-    engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        TEST_DATABASE_URL, 
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool
+    )
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     
     Base.metadata.create_all(bind=engine)

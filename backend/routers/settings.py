@@ -151,6 +151,7 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
         ("server_ips", "Server IPs"),
         ("server_name", "Server Name"),
         ("default_credentials_id", "Default Credentials ID"),
+        ("server_net_capacity_mbps", "Server Net Capacity Mbps"),
     ]
     for attr, label in fields:
         old_val = getattr(settings, attr, None)
@@ -204,6 +205,7 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     settings.server_name = payload.server_name
     settings.bootstrap_credentials = new_creds
     settings.default_credentials_id = payload.default_credentials_id
+    settings.server_net_capacity_mbps = payload.server_net_capacity_mbps
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(settings, "bootstrap_credentials")
     flag_modified(settings, "global_exclusions")
