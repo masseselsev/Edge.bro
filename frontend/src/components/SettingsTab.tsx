@@ -123,7 +123,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           setPolicyKeepMonthly(data.keep_monthly ?? 6);
         }
 
-        setGlobalExclusions(data.global_exclusions || []);
+        setGlobalExclusions([...(data.global_exclusions || [])].sort((a, b) => a.pattern.localeCompare(b.pattern)));
         setOrchestratorIp(data.orchestrator_ip || '');
         setAvailableIps(data.available_ips || []);
         setLanguageState(data.language || 'en');
@@ -764,7 +764,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                     const pattern = newExclusionInput.trim();
                     const comment = newExclusionComment.trim() || 'Custom exclusion';
                     if (pattern && !globalExclusions.some(item => item.pattern === pattern)) {
-                      setGlobalExclusions([...globalExclusions, { pattern, comment }]);
+                      setGlobalExclusions([...globalExclusions, { pattern, comment }].sort((a, b) => a.pattern.localeCompare(b.pattern)));
                     }
                     setNewExclusionInput('');
                     setNewExclusionComment('');
