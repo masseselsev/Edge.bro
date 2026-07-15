@@ -388,3 +388,22 @@ def test_bandwidth_fallback_to_memory_on_redis_failure():
 
     assert result2.rx_speed > 0, "Should calculate non-zero speed on second call"
 
+
+def test_bandwidth_endpoint_metrics():
+    """Verify that get_bandwidth returns the correct keys and fields."""
+    from unittest.mock import patch, MagicMock
+    _fallback_traffic_cache.clear()
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = None
+
+    with patch.object(network_module, "_redis_client", mock_redis):
+        with patch("routers.network.get_network_bytes", return_value=(1000.0, 5_000_000, 3_000_000)):
+            result = get_bandwidth()
+
+    assert hasattr(result, "rx_speed")
+    assert hasattr(result, "tx_speed")
+    assert hasattr(result, "rx_percent")
+    assert hasattr(result, "tx_percent")
+    assert hasattr(result, "cpu_usage")
+    assert hasattr(result, "ram_usage")
+

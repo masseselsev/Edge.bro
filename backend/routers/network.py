@@ -8,6 +8,9 @@ try:
 except ImportError:
     redis = None
 from fastapi import APIRouter, Depends
+from database import get_db, SessionLocal
+from sqlalchemy.orm import Session
+import models
 try:
     from routers.users import require_admin
 except ImportError:
@@ -16,6 +19,15 @@ except ImportError:
         pass
 from pydantic import BaseModel, Field
 from typing import Optional, List
+
+class BandwidthResponse(BaseModel):
+    rx_speed: float = Field(..., description="Download speed in bytes/sec")
+    tx_speed: float = Field(..., description="Upload speed in bytes/sec")
+    rx_percent: float = Field(..., description="Download load in percent of limits")
+    tx_percent: float = Field(..., description="Upload load in percent of limits")
+    cpu_usage: float = Field(..., description="CPU utilization in percent (0-100)")
+    ram_usage: float = Field(..., description="RAM utilization in percent (0-100)")
+
 
 _redis_client = None
 if redis:
@@ -87,9 +99,6 @@ class VpnStatusResponse(BaseModel):
     sent_bytes: int = 0
     last_handshake: int = 0
 
-class BandwidthResponse(BaseModel):
-    rx_speed: float = Field(..., description="Download speed in bytes/sec")
-    tx_speed: float = Field(..., description="Upload speed in bytes/sec")
 
 
 def get_network_bytes() -> tuple[float, int, int]:
@@ -184,19 +193,84 @@ def backup_network_profiles():
         print(f"Failed to backup network profiles: {e}")
 
 
+def get_cpu_times() -> tuple[float, float]:
+    """Read CPU times from /proc/stat. Returns (total_time, idle_time)."""
+    base_dir = "/proc"
+    for p in ["/host/proc", "/proc"]:
+        if os.path.exists(f"{p}/stat"):
+            base_dir = p
+            break
+    try:
+        with open(f"{base_dir}/stat", "r") as f:
+            for line in f:
+                if line.startswith("cpu "):
+                    parts = line.split()
+                    times = [float(x) for x in parts[1:9]]
+                    total = sum(times)
+                    idle = float(parts[4]) + float(parts[5])
+                    return total, idle
+    except Exception:
+        pass
+    return 0.0, 0.0
+
+
+def get_ram_usage() -> float:
+    """Read RAM usage from /proc/meminfo. Returns percentage (0-100)."""
+    base_dir = "/proc"
+    for p in ["/host/proc", "/proc"]:
+        if os.path.exists(f"{p}/meminfo"):
+            base_dir = p
+            break
+    try:
+        mem_total = 0.0
+        mem_avail = 0.0
+        with open(f"{base_dir}/meminfo", "r") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    mem_total = float(line.split()[1])
+                elif line.startswith("MemAvailable:"):
+                    mem_avail = float(line.split()[1])
+        if mem_total > 0:
+            return 100.0 * (mem_total - mem_avail) / mem_total
+    except Exception:
+        pass
+    return 0.0
+
+
 BANDWIDTH_CACHE_KEY = "orch_net_traffic"
 BANDWIDTH_CACHE_TTL = 60
 BANDWIDTH_MIN_INTERVAL = 0.5  # seconds; shorter intervals would spike the rate
 
 
 @router.get("/bandwidth", response_model=BandwidthResponse)
-def get_bandwidth() -> BandwidthResponse:
-    """Return the orchestrator server's real-time network Rx/Tx speeds in bytes/sec.
+def get_bandwidth(db: Optional[Session] = Depends(get_db)) -> BandwidthResponse:
+    """Return the orchestrator server's real-time CPU, RAM, and Network utilization.
 
     Uses a Redis snapshot cache to avoid blocking sleeps.  Falls back to an
     in-process dict when Redis is unavailable so the endpoint never crashes.
     """
+    capacity_mbps = 1000
+    temp_db = None
+    try:
+        if db is not None:
+            settings = db.query(models.Settings).first()
+            if settings and settings.server_net_capacity_mbps is not None:
+                capacity_mbps = settings.server_net_capacity_mbps
+        else:
+            temp_db = SessionLocal()
+            settings = temp_db.query(models.Settings).first()
+            if settings and settings.server_net_capacity_mbps is not None:
+                capacity_mbps = settings.server_net_capacity_mbps
+    except Exception:
+        pass
+    finally:
+        if temp_db is not None:
+            temp_db.close()
+
+    limit_bytes = capacity_mbps * 125000  # 1 Mbps = 125,000 bytes/sec
     current_time, current_rx, current_tx = get_network_bytes()
+    cpu_total, cpu_idle = get_cpu_times()
+    ram_usage = get_ram_usage()
 
     # ── Load previous snapshot ──────────────────────────────────────────────
     prev: dict | None = None
@@ -220,22 +294,49 @@ def get_bandwidth() -> BandwidthResponse:
             "tx_bytes": current_tx,
             "rx_speed": 0.0,
             "tx_speed": 0.0,
+            "cpu_total": cpu_total,
+            "cpu_idle": cpu_idle,
+            "cpu_usage": 0.0,
         }
         _store_snapshot(snapshot, use_redis)
-        return BandwidthResponse(rx_speed=0.0, tx_speed=0.0)
+        return BandwidthResponse(
+            rx_speed=0.0,
+            tx_speed=0.0,
+            rx_percent=0.0,
+            tx_percent=0.0,
+            cpu_usage=0.0,
+            ram_usage=ram_usage,
+        )
 
     delta_time = current_time - prev["timestamp"]
 
     # ── Too soon since last measurement: return cached speed ─────────────────
     if delta_time < BANDWIDTH_MIN_INTERVAL:
+        rx_speed = float(prev.get("rx_speed", 0.0))
+        tx_speed = float(prev.get("tx_speed", 0.0))
+        rx_percent = min(100.0, 100.0 * rx_speed / limit_bytes) if limit_bytes > 0 else 0.0
+        tx_percent = min(100.0, 100.0 * tx_speed / limit_bytes) if limit_bytes > 0 else 0.0
         return BandwidthResponse(
-            rx_speed=float(prev.get("rx_speed", 0.0)),
-            tx_speed=float(prev.get("tx_speed", 0.0)),
+            rx_speed=rx_speed,
+            tx_speed=tx_speed,
+            rx_percent=rx_percent,
+            tx_percent=tx_percent,
+            cpu_usage=float(prev.get("cpu_usage", 0.0)),
+            ram_usage=ram_usage,
         )
 
     # ── Compute derivative ────────────────────────────────────────────────────
     rx_speed = max(0.0, (current_rx - prev["rx_bytes"]) / delta_time)
     tx_speed = max(0.0, (current_tx - prev["tx_bytes"]) / delta_time)
+    rx_percent = min(100.0, 100.0 * rx_speed / limit_bytes) if limit_bytes > 0 else 0.0
+    tx_percent = min(100.0, 100.0 * tx_speed / limit_bytes) if limit_bytes > 0 else 0.0
+
+    delta_cpu_total = cpu_total - prev.get("cpu_total", 0.0)
+    delta_cpu_idle = cpu_idle - prev.get("cpu_idle", 0.0)
+    if delta_cpu_total > 0:
+        cpu_usage = max(0.0, min(100.0, 100.0 * (1.0 - (delta_cpu_idle / delta_cpu_total))))
+    else:
+        cpu_usage = prev.get("cpu_usage", 0.0)
 
     snapshot = {
         "timestamp": current_time,
@@ -243,9 +344,20 @@ def get_bandwidth() -> BandwidthResponse:
         "tx_bytes": current_tx,
         "rx_speed": rx_speed,
         "tx_speed": tx_speed,
+        "cpu_total": cpu_total,
+        "cpu_idle": cpu_idle,
+        "cpu_usage": cpu_usage,
     }
     _store_snapshot(snapshot, use_redis)
-    return BandwidthResponse(rx_speed=rx_speed, tx_speed=tx_speed)
+    return BandwidthResponse(
+        rx_speed=rx_speed,
+        tx_speed=tx_speed,
+        rx_percent=rx_percent,
+        tx_percent=tx_percent,
+        cpu_usage=cpu_usage,
+        ram_usage=ram_usage,
+    )
+
 
 
 def _store_snapshot(snapshot: dict, use_redis: bool) -> None:
