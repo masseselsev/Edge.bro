@@ -291,12 +291,7 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
             if active_mode == "online":
                 try:
                     log_callback("Fetching node configuration from orchestrator...")
-                    nodes_req = urllib.request.Request(
-                        f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes",
-                        headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
-                    )
-                    with urllib.request.urlopen(nodes_req, timeout=5) as response:
-                        nodes_data = json.loads(response.read().decode())
+                    nodes_data = get_kiosk_nodes(mode="online")
                     for n in nodes_data:
                         if n["id"] == req.node_id:
                             partitions = n.get("partition_layout")
@@ -1004,12 +999,7 @@ def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
         cached_layout = None
         cached_history = None
         try:
-            nodes_req = urllib.request.Request(
-                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/nodes",
-                headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
-            )
-            with urllib.request.urlopen(nodes_req, timeout=5) as response:
-                nodes_data = json.loads(response.read().decode())
+            nodes_data = get_kiosk_nodes(mode="online")
             for n in nodes_data:
                 if n["hostname"] == hostname:
                     cached_layout = {
