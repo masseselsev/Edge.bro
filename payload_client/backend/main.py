@@ -263,25 +263,25 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
                 pass
 
         # Resolve repository path and load layout
-        if archive_exists_locally:
-            log_callback(f"Archive {req.archive_name} found in local USB cache. Using offline restore.")
-            repo_path = local_repo
-            
-            # Load local partition layout
-            layout_path = os.path.join(local_repo, "partition_layout.json")
-            if os.path.exists(layout_path):
-                try:
-                    with open(layout_path, "r") as f:
-                        layout_data = json.load(f)
-                        partitions = layout_data.get("partition_layout")
-                        efi_uuid = layout_data.get("efi_uuid") or efi_uuid
-                        log_callback("Loaded partition layout from local cache.")
-                except Exception as e:
-                    log_callback(f"WARNING: Failed to load cached partition layout: {e}")
+        if active_mode == "online":
+            log_callback("Using online restore from orchestrator.")
+            repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}/data/borg/fleet"
         else:
-            if active_mode == "online":
-                log_callback("Using online restore from orchestrator.")
-                repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}/data/borg/fleet"
+            if archive_exists_locally:
+                log_callback(f"Archive {req.archive_name} found in local USB cache. Using offline restore.")
+                repo_path = local_repo
+                
+                # Load local partition layout
+                layout_path = os.path.join(local_repo, "partition_layout.json")
+                if os.path.exists(layout_path):
+                    try:
+                        with open(layout_path, "r") as f:
+                            layout_data = json.load(f)
+                            partitions = layout_data.get("partition_layout")
+                            efi_uuid = layout_data.get("efi_uuid") or efi_uuid
+                            log_callback("Loaded partition layout from local cache.")
+                    except Exception as e:
+                        log_callback(f"WARNING: Failed to load cached partition layout: {e}")
             else:
                 log_callback("Online mode is unavailable. Attempting offline restore from local cache.")
                 repo_path = local_repo
