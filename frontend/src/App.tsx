@@ -23,6 +23,12 @@ import KioskFooter from './components/KioskFooter';
 
 type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings' | 'clientiso' | 'schedule';
 
+const getUsageColorClass = (percent: number): string => {
+  if (percent >= 80) return 'text-rose-400 font-bold animate-pulse';
+  if (percent >= 50) return 'text-amber-400 font-semibold';
+  return 'text-emerald-400';
+};
+
 function AppContent() {
   const { t, language } = useTranslation();
   const [activeTab, setActiveTab] = useState<Tab>(() => {
@@ -761,7 +767,7 @@ function AppContent() {
                 {/* CPU Usage */}
                 <div className="flex items-center gap-1.5" title="CPU Utilization">
                   <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold font-mono">CPU</span>
-                  <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${bandwidth.cpu_usage > 80 ? 'text-amber-400 animate-pulse' : 'text-zinc-200'}`}>
+                  <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${getUsageColorClass(bandwidth.cpu_usage)}`}>
                     {bandwidth.cpu_usage.toFixed(0)}%
                   </span>
                 </div>
@@ -770,7 +776,7 @@ function AppContent() {
                 {/* RAM Usage */}
                 <div className="flex items-center gap-1.5" title="RAM Utilization">
                   <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold font-mono">RAM</span>
-                  <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${bandwidth.ram_usage > 85 ? 'text-amber-400 animate-pulse' : 'text-zinc-200'}`}>
+                  <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${getUsageColorClass(bandwidth.ram_usage)}`}>
                     {bandwidth.ram_usage.toFixed(0)}%
                   </span>
                 </div>
@@ -778,23 +784,23 @@ function AppContent() {
                 
                 {/* Download (Rx) */}
                 <div className="flex items-center gap-1.5" title={t('bandwidthDownload')}>
-                  <ArrowDown size={12} className={bandwidth.rx_speed > 1024 ? 'text-emerald-400 animate-pulse' : 'text-zinc-600'} />
+                  <ArrowDown size={12} className={bandwidth.rx_speed > 1024 ? `${getUsageColorClass(bandwidth.rx_percent)} animate-pulse` : 'text-zinc-600'} />
                   <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold font-mono">RX</span>
-                  <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${bandwidth.rx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                  <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${getUsageColorClass(bandwidth.rx_percent)}`}>
                     {formatSpeed(bandwidth.rx_speed)}
                   </span>
-                  <span className="text-[9px] text-zinc-500 font-mono">({bandwidth.rx_percent.toFixed(1)}%)</span>
+                  <span className={`text-[9px] font-mono ${getUsageColorClass(bandwidth.rx_percent)}`}>({bandwidth.rx_percent.toFixed(1)}%)</span>
                 </div>
                 <div className="w-px h-3 bg-zinc-800" />
                 
                 {/* Upload (Tx) */}
                 <div className="flex items-center gap-1.5" title={t('bandwidthUpload')}>
-                  <ArrowUp size={12} className={bandwidth.tx_speed > 1024 ? 'text-indigo-400 animate-pulse' : 'text-zinc-600'} />
+                  <ArrowUp size={12} className={bandwidth.tx_speed > 1024 ? `${getUsageColorClass(bandwidth.tx_percent)} animate-pulse` : 'text-zinc-600'} />
                   <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold font-mono">TX</span>
-                  <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${bandwidth.tx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                  <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${getUsageColorClass(bandwidth.tx_percent)}`}>
                     {formatSpeed(bandwidth.tx_speed)}
                   </span>
-                  <span className="text-[9px] text-zinc-500 font-mono">({bandwidth.tx_percent.toFixed(1)}%)</span>
+                  <span className={`text-[9px] font-mono ${getUsageColorClass(bandwidth.tx_percent)}`}>({bandwidth.tx_percent.toFixed(1)}%)</span>
                 </div>
               </div>
             )}
