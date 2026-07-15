@@ -110,8 +110,14 @@ function AppContent() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Bandwidth monitoring state (admin-only, non-kiosk)
-  const [bandwidth, setBandwidth] = useState<{ rx_speed: number; tx_speed: number } | null>(null);
+  const [bandwidth, setBandwidth] = useState<{
+    rx_speed: number;
+    tx_speed: number;
+    rx_percent: number;
+    tx_percent: number;
+    cpu_usage: number;
+    ram_usage: number;
+  } | null>(null);
 
   const formatSpeed = (bytesPerSec: number): string => {
     if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
@@ -749,9 +755,27 @@ function AppContent() {
               </div>
             </div>
 
-            {/* Center: Bandwidth Widget — admin-only, orchestrator mode */}
+            {/* Center: Server Metrics Widget — admin-only, orchestrator mode */}
             {!isKiosk && isAuthenticated && bandwidth && (
               <div className="flex-shrink-0 flex items-center gap-3 bg-zinc-950/40 border border-zinc-800/60 rounded-xl px-3 py-1.5 shadow-inner transition-all duration-300">
+                {/* CPU Usage */}
+                <div className="flex items-center gap-1.5" title="CPU Utilization">
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold font-mono">CPU</span>
+                  <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${bandwidth.cpu_usage > 80 ? 'text-amber-400 animate-pulse' : 'text-zinc-200'}`}>
+                    {bandwidth.cpu_usage.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="w-px h-3 bg-zinc-800" />
+                
+                {/* RAM Usage */}
+                <div className="flex items-center gap-1.5" title="RAM Utilization">
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold font-mono">RAM</span>
+                  <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${bandwidth.ram_usage > 85 ? 'text-amber-400 animate-pulse' : 'text-zinc-200'}`}>
+                    {bandwidth.ram_usage.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="w-px h-3 bg-zinc-800" />
+                
                 {/* Download (Rx) */}
                 <div className="flex items-center gap-1.5" title={t('bandwidthDownload')}>
                   <ArrowDown size={12} className={bandwidth.rx_speed > 1024 ? 'text-emerald-400 animate-pulse' : 'text-zinc-600'} />
@@ -759,8 +783,10 @@ function AppContent() {
                   <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${bandwidth.rx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
                     {formatSpeed(bandwidth.rx_speed)}
                   </span>
+                  <span className="text-[9px] text-zinc-500 font-mono">({bandwidth.rx_percent.toFixed(1)}%)</span>
                 </div>
                 <div className="w-px h-3 bg-zinc-800" />
+                
                 {/* Upload (Tx) */}
                 <div className="flex items-center gap-1.5" title={t('bandwidthUpload')}>
                   <ArrowUp size={12} className={bandwidth.tx_speed > 1024 ? 'text-indigo-400 animate-pulse' : 'text-zinc-600'} />
@@ -768,6 +794,7 @@ function AppContent() {
                   <span className={`text-[11px] font-mono font-semibold transition-colors duration-500 ${bandwidth.tx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
                     {formatSpeed(bandwidth.tx_speed)}
                   </span>
+                  <span className="text-[9px] text-zinc-500 font-mono">({bandwidth.tx_percent.toFixed(1)}%)</span>
                 </div>
               </div>
             )}
