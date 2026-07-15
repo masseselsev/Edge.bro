@@ -37,7 +37,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [defaultCpuQuota, setDefaultCpuQuota] = useState<number | ''>('');
   const [hostDataPath, setHostDataPath] = useState<string | null>(null);
   const [maxKioskIsos, setMaxKioskIsos] = useState(5);
-  const [serverNetCapacityMbps, setServerNetCapacityMbps] = useState(1000);
+  const [serverNetCapacityMbps, setServerNetCapacityMbps] = useState<number | ''>(1000);
 
   const [serverName, setServerName] = useState('orchestrator');
   const [bootstrapCredentials, setBootstrapCredentials] = useState<{ id: string, username: string, password: string, comment?: string }[]>([]);
@@ -213,7 +213,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           server_ips: manualIps,
           max_kiosk_isos: maxKioskIsos,
           server_name: serverName,
-          server_net_capacity_mbps: Number(serverNetCapacityMbps),
+          server_net_capacity_mbps: serverNetCapacityMbps === '' ? 1000 : Number(serverNetCapacityMbps),
 
           bootstrap_credentials: bootstrapCredentials,
           default_credentials_id: defaultCredentialsId,
@@ -483,7 +483,10 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                       min={1}
                       required
                       value={serverNetCapacityMbps}
-                      onChange={(e) => setServerNetCapacityMbps(parseInt(e.target.value) || 1000)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setServerNetCapacityMbps(val === '' ? '' : parseInt(val, 10) || 0);
+                      }}
                       className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                     />
                     <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
@@ -820,7 +823,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                   server_ips: manualIps,
                   max_kiosk_isos: maxKioskIsos,
                   server_name: serverName,
-                  server_net_capacity_mbps: Number(serverNetCapacityMbps),
+                  server_net_capacity_mbps: serverNetCapacityMbps === '' ? 1000 : Number(serverNetCapacityMbps),
 
                   bootstrap_credentials: newCreds,
                   default_credentials_id: newDefaultId,
