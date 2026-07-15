@@ -43,6 +43,8 @@ class Settings(Base):
     server_name = Column(String, default="orchestrator", nullable=False)
     bootstrap_credentials = Column(JSON, nullable=True, default=lambda: [{"id": "default", "username": "user", "password": "admin"}])
     default_credentials_id = Column(String, nullable=True, default='default')
+    server_net_capacity_mbps = Column(Integer, default=1000, nullable=False)
+
 
 
 

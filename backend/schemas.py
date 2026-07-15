@@ -57,6 +57,8 @@ class SettingsBase(BaseModel):
     server_name: str = Field(default='orchestrator')
     bootstrap_credentials: List[CredentialSchema] = Field(default=[])
     default_credentials_id: Optional[str] = Field(default='')
+    server_net_capacity_mbps: int = Field(default=1000, ge=1)
+
 
     @field_validator('server_name')
     @classmethod
