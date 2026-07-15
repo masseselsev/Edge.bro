@@ -598,7 +598,10 @@ def get_kiosk_nodes(mode: Optional[str] = None):
                 headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
             )
             with urllib.request.urlopen(req, timeout=5) as response:
-                return json.loads(response.read().decode())
+                res_data = json.loads(response.read().decode())
+                if isinstance(res_data, dict) and "nodes" in res_data:
+                    return res_data["nodes"]
+                return res_data
         except Exception as e:
             logging.error(f"Failed to fetch nodes from orchestrator: {e}")
             raise HTTPException(status_code=502, detail=f"Failed to contact orchestrator: {str(e)}")
