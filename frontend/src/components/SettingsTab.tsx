@@ -37,6 +37,8 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [defaultCpuQuota, setDefaultCpuQuota] = useState<number | ''>('');
   const [hostDataPath, setHostDataPath] = useState<string | null>(null);
   const [maxKioskIsos, setMaxKioskIsos] = useState(5);
+  const [serverNetCapacityMbps, setServerNetCapacityMbps] = useState(1000);
+
   const [serverName, setServerName] = useState('orchestrator');
   const [bootstrapCredentials, setBootstrapCredentials] = useState<{ id: string, username: string, password: string, comment?: string }[]>([]);
   const [defaultCredentialsId, setDefaultCredentialsId] = useState('');
@@ -134,6 +136,10 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         if (data.max_kiosk_isos !== undefined) {
           setMaxKioskIsos(data.max_kiosk_isos);
         }
+        if (data.server_net_capacity_mbps !== undefined) {
+          setServerNetCapacityMbps(data.server_net_capacity_mbps);
+        }
+
         if (data.server_name !== undefined) {
           setServerName(data.server_name || 'orchestrator');
         }
@@ -207,6 +213,8 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           server_ips: manualIps,
           max_kiosk_isos: maxKioskIsos,
           server_name: serverName,
+          server_net_capacity_mbps: Number(serverNetCapacityMbps),
+
           bootstrap_credentials: bootstrapCredentials,
           default_credentials_id: defaultCredentialsId,
           retention_policy: {
@@ -464,6 +472,26 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                     </p>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
+                      {t('serverNetCapacityLabel') || 'Server Network Capacity (Mbps)'}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      required
+                      value={serverNetCapacityMbps}
+                      onChange={(e) => setServerNetCapacityMbps(parseInt(e.target.value) || 1000)}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                    />
+                    <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
+                      {t('serverNetCapacityHelp') || 'Used as the 100% capacity limit when rendering network load percentages in the header.'}
+                    </p>
+                  </div>
+                </div>
+
 
                 <div className="mb-4 space-y-3 border border-zinc-800/80 p-4 rounded-xl bg-zinc-950/40">
                   <div>
@@ -792,6 +820,8 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                   server_ips: manualIps,
                   max_kiosk_isos: maxKioskIsos,
                   server_name: serverName,
+                  server_net_capacity_mbps: Number(serverNetCapacityMbps),
+
                   bootstrap_credentials: newCreds,
                   default_credentials_id: newDefaultId,
                   retention_policy: {

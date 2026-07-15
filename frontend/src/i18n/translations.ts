@@ -179,6 +179,9 @@ export const translations: Record<Language, Record<string, string>> = {
     serverNameLabel: 'Server Name',
     serverNamePlaceholder: 'Enter server name (e.g. main-server)',
     serverNameError: 'Server name must contain only letters, numbers, hyphens, and underscores, without spaces.',
+    serverNetCapacityLabel: 'Server Network Capacity (Mbps)',
+    serverNetCapacityHelp: 'Used as the 100% capacity limit when rendering network load percentages in the header.',
+
     borgSshPort: 'Borg SSH Daemon Port',
     repoLocation: 'Repository Location',
     globalPruning: 'Global Retention Policies',
@@ -867,6 +870,9 @@ export const translations: Record<Language, Record<string, string>> = {
     serverNameLabel: 'Название сервера',
     serverNamePlaceholder: 'Введите название сервера (например main-server)',
     serverNameError: 'Название сервера должно содержать только буквы, цифры, дефисы и подчеркивания, без пробелов.',
+    serverNetCapacityLabel: 'Пропускная способность сети сервера (Мбит/с)',
+    serverNetCapacityHelp: 'Используется как лимит 100% пропускной способности при отображении процентов сетевой нагрузки в заголовке.',
+
     borgSshPort: 'Порт SSH-демона Borg',
     repoLocation: 'Путь к репозиториям',
     globalPruning: 'Глобальная политика удержания',
@@ -1554,6 +1560,9 @@ export const translations: Record<Language, Record<string, string>> = {
     serverNameLabel: 'Назва сервера',
     serverNamePlaceholder: 'Введіть назву сервера (наприклад main-server)',
     serverNameError: 'Назва сервера повинна містити тільки букви, цифри, дефіси та підкреслення, без пробілів.',
+    serverNetCapacityLabel: 'Пропускна здатність мережі сервера (Мбіт/с)',
+    serverNetCapacityHelp: 'Використовується як ліміт 100% пропускної здатності при відображенні відсотків мережевого навантаження в заголовку.',
+
     borgSshPort: 'Порт SSH-демона Borg',
     repoLocation: 'Шлях до репозиторіїв',
     globalPruning: 'Глобальна політика утримання',
