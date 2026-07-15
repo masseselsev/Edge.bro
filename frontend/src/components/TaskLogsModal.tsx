@@ -23,6 +23,8 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
   const { t } = useTranslation();
   const [status, setStatus] = useState('PENDING');
   const [logs, setLogs] = useState('');
+  const [downloadSpeed, setDownloadSpeed] = useState('');
+  const [eta, setEta] = useState('');
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const notFoundCountRef = useRef(0);
@@ -51,6 +53,8 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
       const data = await res.json();
       setStatus(data.status);
       setLogs(data.log_output || data.logs || '');
+      setDownloadSpeed(data.download_speed || '');
+      setEta(data.eta || '');
     } catch (e) {
       console.error(e);
     }
@@ -124,6 +128,13 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
             <TermIcon className="text-zinc-400 flex-shrink-0" size={18} />
             <span className="font-bold text-zinc-50 text-sm truncate">{title}</span>
             {getStatusIndicator()}
+            {downloadSpeed && (
+              <span className="inline-flex items-center gap-1 text-indigo-400 text-[10px] font-bold bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full select-none shrink-0">
+                <ArrowDown size={10} className="animate-pulse" />
+                {downloadSpeed}
+                {eta && eta !== '--' && ` (ETA: ${eta})`}
+              </span>
+            )}
           </div>
 
           {/* Bandwidth Widget */}
