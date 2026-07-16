@@ -38,6 +38,18 @@ restore_mode = "offline"
 local_storage_path = "/media/usb-data"
 available_server_ips = []
 autocheck_in_thread_started = False
+payload_update_available = False
+latest_payload_hash = ""
+LOCAL_HASH_PATH = "/opt/offline-client/payload_hash.txt"
+
+def read_local_payload_hash() -> str:
+    try:
+        if os.path.exists(LOCAL_HASH_PATH):
+            with open(LOCAL_HASH_PATH, "r") as f:
+                return f.read().strip()
+    except Exception as e:
+        logging.error(f"Failed to read local payload hash: {e}")
+    return ""
 
 cfg = {}
 if os.path.exists(CONFIG_PATH):
@@ -1270,9 +1282,11 @@ def auto_register_with_orchestrator():
     while True:
         try:
             url = f"http://{orchestrator_ip}:{orchestrator_api_port}/api/kiosks/auto-handshake"
+            local_hash = read_local_payload_hash()
             payload = {
                 "kiosk_id": kiosk_id,
-                "ssh_pub_key": pub_key_data
+                "ssh_pub_key": pub_key_data,
+                "payload_hash": local_hash
             }
             post_data = json.dumps(payload).encode("utf-8")
             req_obj = urllib.request.Request(
@@ -1286,6 +1300,10 @@ def auto_register_with_orchestrator():
             with urllib.request.urlopen(req_obj, timeout=10) as response:
                 res_data = json.loads(response.read().decode())
                 
+            global payload_update_available, latest_payload_hash
+            payload_update_available = res_data.get("payload_outdated", False)
+            latest_payload_hash = res_data.get("current_hash", "")
+
             status_returned = res_data.get("status")
             if status_returned == "SUCCESS" or status_returned == "APPROVED":
                 kiosk_status = "APPROVED"
@@ -1353,6 +1371,87 @@ def request_activation():
     except Exception as e:
         logging.error(f"Failed to submit activation request to orchestrator: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to request activation: {str(e)}")
+
+
+@app.get("/api/kiosk/update-status")
+def get_kiosk_update_status():
+    return {"update_available": payload_update_available}
+
+
+@app.post("/api/kiosk/update")
+def start_kiosk_update():
+    if not payload_update_available or not latest_payload_hash:
+        raise HTTPException(status_code=400, detail="No client updates available")
+    
+    # Run the update flow asynchronously to avoid blocking the API request
+    def perform_update():
+        import shutil
+        import tarfile
+        import time
+        try:
+            logging.info("Starting offline client self-update...")
+            archive_url = f"http://{orchestrator_ip}:{orchestrator_api_port}/api/kiosks/payload-archive"
+            archive_path = "/tmp/payload.tar.gz"
+            staging_path = "/opt/offline-client-staging"
+            live_path = "/opt/offline-client"
+            persistent_path = "/media/usb-data/offline-client"
+            
+            # 1. Download tarball from orchestrator
+            urllib.request.urlretrieve(archive_url, archive_path)
+            logging.info(f"Downloaded payload archive to {archive_path}")
+            
+            # 2. Extract to staging
+            if os.path.exists(staging_path):
+                shutil.rmtree(staging_path)
+            os.makedirs(staging_path, exist_ok=True)
+            
+            with tarfile.open(archive_path, "r") as tar:
+                # The archive has root directory "offline-client"
+                for member in tar.getmembers():
+                    if member.name.startswith("offline-client/"):
+                        member.name = member.name.replace("offline-client/", "", 1)
+                        tar.extract(member, path=staging_path)
+            logging.info(f"Extracted payload to staging directory {staging_path}")
+            
+            # 3. Preserve keys and configs
+            shutil.copy2(os.path.join(live_path, "backend", "config.json"), os.path.join(staging_path, "backend", "config.json"))
+            # SSH keys
+            for key_file in ("id_ed25519", "id_ed25519.pub"):
+                src_key = os.path.join(live_path, "backend", key_file)
+                if os.path.exists(src_key):
+                    shutil.copy2(src_key, os.path.join(staging_path, "backend", key_file))
+            
+            # 4. Write new hash to staging
+            with open(os.path.join(staging_path, "payload_hash.txt"), "w") as f:
+                f.write(latest_payload_hash)
+            
+            # 5. Mirror staging to persistent partition if mounted
+            if os.path.exists("/media/usb-data") or os.path.exists("/media/usb-data/config.json"):
+                logging.info(f"Syncing updates to persistent storage: {persistent_path}")
+                if os.path.exists(persistent_path):
+                    shutil.rmtree(persistent_path)
+                shutil.copytree(staging_path, persistent_path)
+                
+            # 6. Swap live directory
+            backup_path = "/opt/offline-client-backup"
+            if os.path.exists(backup_path):
+                shutil.rmtree(backup_path)
+            os.rename(live_path, backup_path)
+            os.rename(staging_path, live_path)
+            shutil.rmtree(backup_path)
+            logging.info("Payload client directories swapped successfully")
+            
+            # 7. Restart systemd service
+            logging.info("Restarting offline-backend.service...")
+            time.sleep(1)
+            subprocess.Popen(["sudo", "systemctl", "restart", "offline-backend.service"])
+            
+        except Exception as e:
+            logging.error(f"Error during self-update: {e}")
+            
+    import threading
+    threading.Thread(target=perform_update, daemon=True).start()
+    return {"status": "updating"}
 
 
 # Fallback to serve the React frontend built for the offline client
