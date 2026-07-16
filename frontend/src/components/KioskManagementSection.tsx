@@ -23,6 +23,7 @@ interface Kiosk {
   rebuild_required: boolean;
   iso_built_at?: string | null;
   is_rebuilding?: boolean;
+  payload_outdated?: boolean;
 }
 
 interface KioskManagementSectionProps {
@@ -486,7 +487,17 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                       )}
                     </td>
                     <td className="py-2 px-2.5 text-zinc-300 font-mono">
-                      {kiosk.ip_address || <span className="text-zinc-655">—</span>}
+                      <div className="flex items-center gap-1.5">
+                        {kiosk.ip_address || <span className="text-zinc-655">—</span>}
+                        {kiosk.payload_outdated && (
+                          <span 
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 cursor-help select-none shrink-0"
+                            title={t('updateRecommendedTooltip') || 'Kiosk client version is older than the server payload'}
+                          >
+                            {t('updateRecommendedBadge') || 'Update recommended'}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2 px-2.5 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-1.5 justify-end">

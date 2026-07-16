@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2, ShieldAlert, Link2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 
@@ -46,6 +46,42 @@ export default function KioskFooter({
   healthWarnings
 }: KioskFooterProps) {
   const { t } = useTranslation();
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updating, setUpdating] = useState(false);
+
+  useEffect(() => {
+    const checkUpdate = async () => {
+      try {
+        const res = await fetch('/api/kiosk/update-status');
+        if (res.ok) {
+          const data = await res.json();
+          setUpdateAvailable(data.update_available);
+        }
+      } catch (err) {
+        console.error('Failed to check kiosk update status:', err);
+      }
+    };
+    checkUpdate();
+    const interval = setInterval(checkUpdate, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleStartUpdate = async () => {
+    setUpdating(true);
+    try {
+      const res = await fetch('/api/kiosk/update', { method: 'POST' });
+      if (res.ok) {
+        setUpdateAvailable(false);
+      } else {
+        alert('Update failed to start');
+        setUpdating(false);
+      }
+    } catch (err) {
+      console.error('Update request error:', err);
+      alert('Update failed to start');
+      setUpdating(false);
+    }
+  };
 
   return (
     <footer className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-900 flex flex-col animate-fade-in">
@@ -101,6 +137,39 @@ export default function KioskFooter({
               {t('kioskPairOtherServer') || 'Pair with another server'}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Update Available Bar (Horizontal) */}
+      {updateAvailable && (
+        <div className="px-6 py-2.5 bg-amber-950/20 border-b border-zinc-900/60 flex flex-wrap items-center justify-between gap-4 text-xs font-semibold animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={13} className="text-amber-400 animate-pulse" />
+            <span className="text-amber-400 font-bold">{t('updateAvailable') || 'Client Update Available'}</span>
+            <span className="h-3 w-px bg-zinc-800" />
+            <span className="text-[11px] text-zinc-400 font-medium font-semibold">
+              {t('updateAvailableDesc') || 'An updated client software version is available on the server. Update is highly recommended.'}
+            </span>
+          </div>
+          
+          <button
+            type="button"
+            onClick={handleStartUpdate}
+            disabled={updating}
+            className="px-3 py-1 bg-amber-650 hover:bg-amber-550 disabled:opacity-50 text-white rounded font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1.5 active:translate-y-0.5"
+          >
+            {updating ? (
+              <>
+                <Loader2 size={11} className="animate-spin" />
+                {t('updating') || 'Updating...'}
+              </>
+            ) : (
+              <>
+                <RefreshCw size={11} />
+                {t('updateNow') || 'Update Now'}
+              </>
+            )}
+          </button>
         </div>
       )}
 
