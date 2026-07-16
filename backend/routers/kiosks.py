@@ -483,3 +483,70 @@ def update_kiosk(kiosk_id: int, req: schemas.KioskUpdate, request: Request = Non
     return kiosk
 
 
+import tarfile
+import io
+from fastapi.responses import StreamingResponse
+from payload_hash import compute_payload_hash
+
+@router.get("/payload-hash")
+def get_kiosk_payload_hash():
+    # Dynamically compute hash
+    h = compute_payload_hash()
+    return {"hash": h}
+
+@router.get("/payload-archive")
+def get_kiosk_payload_archive():
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w:gz") as tar:
+        # Add payload_client files
+        if os.path.exists("/payload_client"):
+            for root, dirs, files in os.walk("/payload_client"):
+                if any(ignored in root for ignored in ("__pycache__", ".git")):
+                    continue
+                for file in files:
+                    if file.endswith(".pyc") or file.endswith(".pyo") or file in ("config.json", "payload_hash.txt"):
+                        continue
+                    full_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(full_path, "/payload_client")
+                    tar.add(full_path, arcname=os.path.join("offline-client", rel_path))
+        else:
+            local_paths = ["./payload_client", "../payload_client"]
+            selected_path = next((p for p in local_paths if os.path.exists(p)), None)
+            if selected_path:
+                for root, dirs, files in os.walk(selected_path):
+                    if any(ignored in root for ignored in ("__pycache__", ".git")):
+                        continue
+                    for file in files:
+                        if file.endswith(".pyc") or file.endswith(".pyo") or file in ("config.json", "payload_hash.txt"):
+                            continue
+                        full_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(full_path, selected_path)
+                        tar.add(full_path, arcname=os.path.join("offline-client", rel_path))
+        
+        # Add frontend build files if they exist
+        frontend_build_path = "/opt/frontend_build"
+        if os.path.exists(frontend_build_path):
+            for root, dirs, files in os.walk(frontend_build_path):
+                for file in files:
+                    full_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(full_path, frontend_build_path)
+                    tar.add(full_path, arcname=os.path.join("offline-client", "backend", "frontend_build", rel_path))
+        else:
+            local_build_paths = ["./frontend/dist", "../frontend/dist"]
+            selected_build_path = next((p for p in local_build_paths if os.path.exists(p)), None)
+            if selected_build_path:
+                for root, dirs, files in os.walk(selected_build_path):
+                    for file in files:
+                        full_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(full_path, selected_build_path)
+                        tar.add(full_path, arcname=os.path.join("offline-client", "backend", "frontend_build", rel_path))
+
+    out.seek(0)
+    return StreamingResponse(
+        out, 
+        media_type="application/gzip", 
+        headers={"Content-Disposition": "attachment; filename=payload.tar.gz"}
+    )
+
+
+
