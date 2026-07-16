@@ -63,6 +63,12 @@ else
     mount "$NEW_PART" "$MOUNT_POINT"
 fi
 
+# If persistent software updates exist, copy them over the RAM overlay first
+if [ -d "$MOUNT_POINT/offline-client" ]; then
+    echo "Persistent software updates found. Synchronizing into overlay..."
+    cp -r "$MOUNT_POINT/offline-client/"* /opt/offline-client/
+fi
+
 # Setup storage layout & symlinks
 mkdir -p "$MOUNT_POINT"/.ssh
 mkdir -p "$MOUNT_POINT"/borg/fleet
