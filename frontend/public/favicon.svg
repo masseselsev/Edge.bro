@@ -1,21 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <style>
-    @keyframes ping {
-      0% {
-        transform: scale(1);
-        opacity: 0.9;
-      }
-      80%, 100% {
-        transform: scale(2.2);
-        opacity: 0;
-      }
-    }
-    .ping-dot {
-      transform-origin: 24.5px 7.5px;
-      animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-    }
-  </style>
-  
   <!-- Solid background matching overwatch body-bg (#0b0f19) -->
   <rect width="32" height="32" rx="9" fill="#0b0f19"/>
   
@@ -28,8 +11,4 @@
     <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" 
           fill="none" stroke="#a5b4fc" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  
-  <!-- Active Green Status Dot at top-right of container -->
-  <circle class="ping-dot" cx="24.5" cy="7.5" r="1.8" fill="#10b981" />
-  <circle cx="24.5" cy="7.5" r="1.8" fill="#10b981" />
 </svg>
