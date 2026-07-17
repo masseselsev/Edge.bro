@@ -743,8 +743,8 @@ function AppContent() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             {/* Left: Brand Identity with SVG logo */}
             <div className="flex-1 flex items-center gap-3 justify-center md:justify-start">
-              <div className="relative p-2 bg-indigo-600/15 border border-indigo-500/30 rounded-lg shadow-lg flex items-center justify-center w-9 h-9">
-                <svg className="w-5 h-5 text-indigo-400 filter drop-shadow-[0_0_4px_rgba(99,102,241,0.6)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <div className="relative p-2 bg-indigo-600/15 border border-indigo-500/30 rounded-lg shadow-lg flex items-center justify-center w-10 h-10">
+                <svg className="w-6 h-6 text-indigo-400 filter drop-shadow-[0_0_4px_rgba(99,102,241,0.6)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
                 <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
@@ -756,7 +756,7 @@ function AppContent() {
                   <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono font-bold">{appVersion}</span>
                 </h1>
                 <p className="text-[9px] text-zinc-500 font-semibold mt-1.5 uppercase tracking-wider">
-                  {language === 'ru' ? 'Оркестратор бэкапа и восстановления Edge' : language === 'uk' ? 'Оркестратор бекапу та відновлення Edge' : 'Edge Backup & Restore Orchestrator'}
+                  {language === 'ru' ? 'Оркестратор бэкапа и восстановления' : language === 'uk' ? 'Оркестратор бекапу та відновлення' : 'Backup & Restore Orchestrator'}
                 </p>
               </div>
             </div>
