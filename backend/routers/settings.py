@@ -184,7 +184,6 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
             changes.extend(policy_changes)
 
     rebuild_needed = (
-        settings.language != payload.language or 
         settings.server_ips != payload.server_ips or 
         settings.orchestrator_ip != payload.orchestrator_ip
     )

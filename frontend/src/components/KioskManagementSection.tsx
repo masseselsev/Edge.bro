@@ -332,7 +332,6 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                   <th className="py-1.5 px-2.5">{t('statusLabel') || 'Status'}</th>
                   <th className="py-1.5 px-2.5">{t('kioskApprovedAtLabel') || 'Approval Date'}</th>
                   <th className="py-1.5 px-2.5">{t('kioskIsoBuiltAtLabel') || 'ISO Built'}</th>
-                  <th className="py-1.5 px-2.5">{t('ipAddressLabel') || 'IP Address'}</th>
                   <th className="py-1.5 px-2.5 text-right">{t('actionsLabel') || 'Actions'}</th>
                 </tr>
               </thead>
@@ -395,7 +394,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                       </div>
                     </td>
                     <td className="py-2 px-2.5 font-semibold">
-                      <div className="space-y-0.5">
+                      <div className="space-y-1">
                         <div>
                           {kiosk.status === 'APPROVED' ? (
                             kiosk.is_online ? (
@@ -432,8 +431,21 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                             </span>
                           )}
                         </div>
+                        {kiosk.ip_address && (
+                          <div className="flex items-center gap-1.5 text-[10px] text-zinc-350 font-mono font-bold leading-none">
+                            <span>{kiosk.ip_address}</span>
+                            {kiosk.payload_outdated && (
+                              <span 
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 cursor-help select-none shrink-0"
+                                title={t('updateRecommendedTooltip') || 'Kiosk client version is older than the server payload'}
+                              >
+                                {t('updateRecommendedBadge') || 'Update recommended'}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <div className="text-[9px] text-zinc-500 font-mono">
-                          <span className="text-zinc-650 font-sans mr-0.5">{t('kioskCreatedAtLabel') || 'Created'}:</span>{' '}
+                          <span className="text-zinc-650 font-sans mr-0.5">{t('kioskCreatedAtLabel') || 'Built'}:</span>{' '}
                           {kiosk.created_at ? new Date(kiosk.created_at).toLocaleString() : '—'}
                         </div>
                       </div>
@@ -486,19 +498,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                         <span className="text-zinc-655">—</span>
                       )}
                     </td>
-                    <td className="py-2 px-2.5 text-zinc-300 font-mono">
-                      <div className="flex items-center gap-1.5">
-                        {kiosk.ip_address || <span className="text-zinc-655">—</span>}
-                        {kiosk.payload_outdated && (
-                          <span 
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 cursor-help select-none shrink-0"
-                            title={t('updateRecommendedTooltip') || 'Kiosk client version is older than the server payload'}
-                          >
-                            {t('updateRecommendedBadge') || 'Update recommended'}
-                          </span>
-                        )}
-                      </div>
-                    </td>
+
                     <td className="py-2 px-2.5 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-1.5 justify-end">
                         {/* Toggle Active state (Block/Unblock) */}
