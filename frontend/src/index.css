@@ -290,4 +290,34 @@ button, a, label, span, p, h1, h2, h3, h4, h5, h6 {
   border-color: #e4e4e7 !important;
 }
 
+/* Global typography overrides to increase system-wide font readability */
+label {
+  font-size: 11.5px !important;
+  letter-spacing: 0.05em !important;
+}
+
+input, select, textarea {
+  font-size: 13.5px !important;
+}
+
+.text-\[9px\] {
+  font-size: 10.5px !important;
+}
+
+.text-\[10px\] {
+  font-size: 11.5px !important;
+}
+
+.text-\[11px\] {
+  font-size: 12.5px !important;
+}
+
+.text-xs {
+  font-size: 13px !important;
+}
+
+.text-sm {
+  font-size: 14.5px !important;
+}
+
 
