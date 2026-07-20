@@ -194,6 +194,7 @@ class Kiosk(Base):
     target_ip = Column(String, nullable=True)
     rebuild_required = Column(Boolean, default=False, nullable=False)
     iso_built_at = Column(DateTime, nullable=True)
+    payload_outdated = Column(Boolean, default=False, nullable=False)
 
 
 

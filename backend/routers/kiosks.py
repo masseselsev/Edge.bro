@@ -409,6 +409,12 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
         elif request.client:
             kiosk.ip_address = request.client.host
         
+    current_hash = compute_payload_hash()
+    is_outdated = False
+    if req.payload_hash and req.payload_hash != current_hash:
+        is_outdated = True
+    kiosk.payload_outdated = is_outdated
+
     if kiosk.status == "PENDING":
         # Keep it pending, update metadata if needed, but do not authorize SSH
         kiosk.kiosk_id = kiosk_id
@@ -417,7 +423,11 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
         from database import log_user_action
         kiosk_username = f"Kiosk: {kiosk.name} (KioskID: {kiosk.kiosk_id})" if kiosk.name else f"Kiosk: {kiosk.kiosk_id}"
         log_user_action(db, kiosk_username, "Auto Handshake Pending", "Kiosk requested status check, remains pending activation", request)
-        return {"status": "PENDING"}
+        return {
+            "status": "PENDING",
+            "payload_outdated": is_outdated,
+            "current_hash": current_hash
+        }
 
     if kiosk.status == "APPROVED":
         # Check if this ID is already associated with another kiosk
@@ -443,7 +453,9 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
         log_user_action(db, kiosk_username, "Auto Handshake Approved", "Authorized kiosk and registered public key", request)
         return {
             "status": "APPROVED",
-            "borg_passphrase": os.getenv("BORG_PASSPHRASE", "")
+            "borg_passphrase": os.getenv("BORG_PASSPHRASE", ""),
+            "payload_outdated": is_outdated,
+            "current_hash": current_hash
         }
         
     raise HTTPException(status_code=403, detail=f"Kiosk status is {kiosk.status}")
