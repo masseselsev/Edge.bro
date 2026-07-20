@@ -36,7 +36,7 @@ export default function IpPromptModal({
         </div>
 
         <div className="flex justify-center py-2 bg-zinc-950/60 rounded-xl border border-zinc-800/80">
-          <img src="/edge_bro_logo.png" alt="Edge B.R.O. Logo" className="w-40 h-40 object-contain rounded-lg shadow-lg border border-indigo-500/20" />
+          <img src="/edge_bro_logo.png" alt="Edge-B.R.O. Logo" className="w-40 h-40 object-contain rounded-lg shadow-lg border border-indigo-500/20" />
         </div>
 
         <p className="text-xs text-zinc-300 leading-relaxed font-medium">

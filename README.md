@@ -1,4 +1,4 @@
-# Edge B.R.O. — Backup & Restore Orchestrator
+# Edge-B.R.O. — Backup & Restore Orchestrator
 
 🇬🇧 [English](README.md) · [Usage Guide](README_USAGE.md) · 🇷🇺 [Русский](README_ru.md) · [Инструкция](README_USAGE_ru.md)
 

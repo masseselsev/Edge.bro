@@ -20,7 +20,7 @@ from routers import kiosks as kiosks_router
 from routers import users as users_router
 from routers import health as health_router
 
-app = FastAPI(title="Edge B.R.O. API", version=VERSION)
+app = FastAPI(title="Edge-B.R.O. API", version=VERSION)
 
 # Configure CORS
 app.add_middleware(

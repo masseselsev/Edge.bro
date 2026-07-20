@@ -726,7 +726,7 @@ function AppContent() {
             </div>
             <div className="text-center space-y-2">
               <h2 className="text-lg font-bold text-zinc-100 tracking-tight">
-                <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2.5 py-1 rounded font-mono font-bold text-sm uppercase tracking-wider">Edge B.R.O.</span>
+                <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2.5 py-1 rounded font-mono font-bold text-sm uppercase tracking-wider">Edge-B.R.O.</span>
               </h2>
               <div className="flex items-center justify-center gap-2 text-zinc-400 text-xs font-semibold">
                 <Loader2 size={14} className="animate-spin text-indigo-400" />
@@ -752,7 +752,7 @@ function AppContent() {
               </div>
               <div>
                 <h1 className="text-base font-bold text-zinc-50 tracking-tight leading-none flex items-center gap-2">
-                  <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded font-mono font-bold text-xs uppercase tracking-wider">Edge B.R.O.</span>
+                  <span className="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded font-mono font-bold text-xs uppercase tracking-wider">Edge-B.R.O.</span>
                   <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono font-bold">{appVersion}</span>
                 </h1>
                 <p className="text-[9px] text-zinc-500 font-semibold mt-1.5 uppercase tracking-wider">

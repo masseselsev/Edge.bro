@@ -19,7 +19,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Setup / Welcome IP Prompt Modal
     welcomeSetup: 'Welcome & Setup',
     configureOrchestratorIp: 'Configure Orchestrator IP',
-    welcomeExplanation: 'No edge nodes registered yet. To ensure new nodes can communicate with this Edge B.R.O., please verify and set the Orchestrator IP Address below.',
+    welcomeExplanation: 'No edge nodes registered yet. To ensure new nodes can communicate with this Edge-B.R.O., please verify and set the Orchestrator IP Address below.',
     orchestratorIpLabel: 'Orchestrator IP Address',
     orchestratorIpHint: 'IP of this server reachable by edge nodes.',
     skip: 'Skip',
@@ -716,7 +716,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Setup / Welcome IP Prompt Modal
     welcomeSetup: 'Приветствие и настройка',
     configureOrchestratorIp: 'Настройка IP оркестратора',
-    welcomeExplanation: 'Узлы ещё не добавлены. Подтвердите и укажите IP-адрес Edge B.R.O. ниже, чтобы новые узлы могли связаться с сервером.',
+    welcomeExplanation: 'Узлы ещё не добавлены. Подтвердите и укажите IP-адрес Edge-B.R.O. ниже, чтобы новые узлы могли связаться с сервером.',
     orchestratorIpLabel: 'IP-адрес оркестратора',
     orchestratorIpHint: 'IP-адрес сервера, доступный для узлов в сети.',
     skip: 'Пропустить',
@@ -1412,7 +1412,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Setup / Welcome IP Prompt Modal
     welcomeSetup: 'Вітання та налаштування',
     configureOrchestratorIp: 'Налаштування IP оркестратора',
-    welcomeExplanation: 'Вузли ще не додані. Підтвердьте та вкажіть IP-адресу Edge B.R.O. нижче, щоб нові вузли могли зв\'язатися з сервером.',
+    welcomeExplanation: 'Вузли ще не додані. Підтвердьте та вкажіть IP-адресу Edge-B.R.O. нижче, щоб нові вузли могли зв\'язатися з сервером.',
     orchestratorIpLabel: 'IP-адреса оркестратора',
     orchestratorIpHint: 'IP-адреса сервера, доступна для вузлів у мережі.',
     skip: 'Пропустити',

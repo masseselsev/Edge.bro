@@ -52,7 +52,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           <div>
             <h2 className="text-xl font-bold text-zinc-50 tracking-tight">{t('loginTitle')}</h2>
             <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wider mt-1 font-mono">
-              Edge B.R.O.
+              Edge-B.R.O.
             </p>
           </div>
         </div>
