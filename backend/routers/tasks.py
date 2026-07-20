@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from database import get_db
 import models
@@ -9,11 +9,11 @@ from routers.users import require_admin, require_kiosk_or_admin
 router = APIRouter(prefix="/api/tasks")
 
 @router.get("", response_model=List[schemas.TaskLogResponse])
-def get_all_tasks(db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
+def get_all_tasks(limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
     """
-    Lists all background task execution logs ordered by created_at desc.
+    Lists background task execution logs ordered by created_at desc.
     """
-    return db.query(models.TaskLog).order_by(models.TaskLog.created_at.desc()).all()
+    return db.query(models.TaskLog).order_by(models.TaskLog.created_at.desc()).limit(limit).all()
 
 @router.get("/debug-logs", response_model=List[schemas.SystemLogResponse])
 def get_debug_logs(db: Session = Depends(get_db), current_user = Depends(require_admin)):

@@ -879,12 +879,12 @@ def exit_kiosk():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/tasks")
-def get_kiosk_tasks():
+def get_kiosk_tasks(limit: int = 200):
     global restore_mode
     if restore_mode == "online":
         try:
             req = urllib.request.Request(
-                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/tasks",
+                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/tasks?limit={limit}",
                 headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
             )
             with urllib.request.urlopen(req, timeout=5) as response:

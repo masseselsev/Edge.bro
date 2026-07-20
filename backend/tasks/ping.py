@@ -22,7 +22,7 @@ async def ping_all_async(ips: list[str]) -> list[bool]:
     tasks_list = [tasks.async_ping_ip(ip) for ip in ips]
     return await asyncio.gather(*tasks_list)
 
-@celery_app.task
+@celery_app.task(name="tasks.ping_all_nodes_task")
 def ping_all_nodes_task() -> Dict[str, Any]:
     """
     Periodic task running every 30 seconds to ping all nodes

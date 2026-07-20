@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Terminal, Search, CheckCircle2, AlertCircle, RefreshCw, Eye, ShieldAlert } from 'lucide-react';
+import { Terminal, Search, CheckCircle2, AlertCircle, RefreshCw, Eye, ShieldAlert, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 
 interface TaskLog {
@@ -30,6 +30,8 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
   const [tasks, setTasks] = useState<TaskLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
 
   // Debug Mode State
   const [debugMode, setDebugMode] = useState(false);
@@ -39,6 +41,9 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
 
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
 
   const fetchTasks = async () => {
     try {
@@ -151,6 +156,10 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
     );
   });
 
+  const totalTasks = filteredTasks.length;
+  const totalPages = Math.max(1, Math.ceil(totalTasks / limit));
+  const paginatedTasks = filteredTasks.slice((page - 1) * limit, page * limit);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -205,12 +214,12 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">{t('loading')}</td>
                   </tr>
-                ) : filteredTasks.length === 0 ? (
+                ) : paginatedTasks.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">{t('noTasksFound')}</td>
                   </tr>
                 ) : (
-                  filteredTasks.map(task => (
+                  paginatedTasks.map(task => (
                     <tr key={task.id} className="hover:bg-zinc-800/30 transition-colors">
                       <td className="px-4 py-2.5 font-mono text-xs text-zinc-400">{task.id}</td>
                       <td className="px-4 py-2.5 font-semibold text-zinc-100 capitalize">{task.task_type.toLowerCase()}</td>
@@ -231,6 +240,63 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
                 )}
               </tbody>
             </table>
+
+            {/* Pagination Footer */}
+            {!loading && totalTasks > 0 && (
+              <div className="px-4 py-3 bg-zinc-950/40 border-t border-zinc-800 flex flex-wrap justify-between items-center text-xs text-zinc-400 gap-3">
+                <div>
+                  {t('showingLabel') || 'Showing'}{' '}
+                  <span className="text-zinc-200">{totalTasks === 0 ? 0 : (page - 1) * limit + 1}</span>{' '}
+                  {t('toLabel') || 'to'}{' '}
+                  <span className="text-zinc-200">{Math.min(page * limit, totalTasks)}</span>{' '}
+                  {t('ofLabel') || 'of'}{' '}
+                  <span className="text-zinc-200">{totalTasks}</span>{' '}
+                  {t('tasksLabel') || 'tasks'}
+                </div>
+                
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span>{t('rowsPerPage') || 'Rows per page'}:</span>
+                    <select
+                      value={limit}
+                      onChange={(e) => {
+                        setLimit(Number(e.target.value));
+                        setPage(1);
+                      }}
+                      className="bg-zinc-950 border border-zinc-800 rounded px-1.5 py-1 text-zinc-200 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+                    >
+                      {[10, 20, 50, 100].map(val => (
+                        <option key={val} value={val}>{val}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                      disabled={page === 1}
+                      className="px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded hover:border-zinc-700 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center gap-1"
+                    >
+                      <ChevronLeft size={14} />
+                      {t('prev') || 'Previous'}
+                    </button>
+                    <span className="px-3 text-zinc-300">
+                      {t('pageLabel') || 'Page'} {page} {t('ofLabel') || 'of'} {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={page >= totalPages}
+                      className="px-2.5 py-1.5 bg-zinc-900 border border-zinc-800 rounded hover:border-zinc-700 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center gap-1"
+                    >
+                      {t('next') || 'Next'}
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </>
       ) : (

@@ -7,7 +7,7 @@ from models import TaskLog
 from celery_app import celery_app
 import tasks
 
-@celery_app.task
+@celery_app.task(name="tasks.docker_system_cleanup_task")
 def docker_system_cleanup_task() -> Dict[str, Any]:
     """
     Weekly cleanup task to prune unused Docker build cache and images.
@@ -41,7 +41,7 @@ def docker_system_cleanup_task() -> Dict[str, Any]:
         tasks.logger.error(f"Error in docker_system_cleanup_task: {str(e)}")
         return {"status": "FAILED", "error": str(e)}
 
-@celery_app.task
+@celery_app.task(name="tasks.db_task_log_prune_task")
 def db_task_log_prune_task() -> Dict[str, Any]:
     """
     Daily database log pruning task. Clears completed TaskLog records older than 30 days.

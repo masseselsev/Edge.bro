@@ -7,7 +7,7 @@ from models import Node, TaskLog, Settings
 from celery_app import celery_app
 import tasks
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, name="tasks.run_bootstrap_task")
 def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: str, force_orchestrator_proxy: bool = False) -> Dict[str, Any]:
     """
     Celery task to run the Node bootstrapping process using Ansible.
@@ -159,7 +159,7 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
     db.close()
     return res
 
-@celery_app.task
+@celery_app.task(name="tasks.auto_retry_bootstrap_task")
 def auto_retry_bootstrap_task() -> Dict[str, Any]:
     """
     Periodic task to check for OFFLINE nodes, retrieve credentials from Redis,

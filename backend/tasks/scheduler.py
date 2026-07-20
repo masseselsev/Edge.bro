@@ -4,7 +4,7 @@ from models import Node
 from celery_app import celery_app
 import tasks
 
-@celery_app.task
+@celery_app.task(name="tasks.scheduler_tick")
 def scheduler_tick() -> Dict[str, Any]:
     """
     Periodic task running every minute to evaluate node scheduling rules
