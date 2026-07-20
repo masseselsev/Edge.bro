@@ -132,7 +132,8 @@ def delete_kiosk(kiosk_id: int, request: Request = None, db: Session = Depends(g
         try:
             from iso_tasks import CACHE_DIR
             import os
-            iso_path = os.path.join(CACHE_DIR, "history", f"Edge.bro-kiosk-{kiosk.auth_token}.iso")
+            server_name = settings.server_name if (settings and settings.server_name) else "Edge-B.R.O."
+            iso_path = os.path.join(CACHE_DIR, "history", f"{server_name}-kiosk-{kiosk.auth_token}.iso")
             if os.path.exists(iso_path):
                 os.remove(iso_path)
         except Exception as e:

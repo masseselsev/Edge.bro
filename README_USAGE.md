@@ -33,8 +33,8 @@ Any x86_64 Linux machine with Docker works. An Intel NUC, a mini-PC, or a full s
 ### 2.1 Clone and configure
 
 ```bash
-git clone https://github.com/masseselsev/Edge.bro.git /opt/stacks/Edge.bro
-cd /opt/stacks/Edge.bro
+git clone https://github.com/masseselsev/Edge-B.R.O.git /opt/stacks/Edge-B.R.O.
+cd /opt/stacks/Edge-B.R.O.
 cp .env.example .env
 ```
 
@@ -390,7 +390,7 @@ BACKUP_DIR="/var/backups/edge_bro_db"
 mkdir -p "$BACKUP_DIR"
 FILENAME="${BACKUP_DIR}/db_backup_$(date +%Y%m%d_%H%M%S).sql.gz"
 
-docker compose -f /opt/stacks/Edge.bro/docker-compose.yml \
+docker compose -f /opt/stacks/Edge-B.R.O./docker-compose.yml \
   exec -T db pg_dump -U postgres borg_orchestrator | gzip > "$FILENAME"
 
 # Keep 30 days of history
