@@ -32,6 +32,8 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
+  const [totalTasks, setTotalTasks] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Debug Mode State
   const [debugMode, setDebugMode] = useState(false);
@@ -47,10 +49,19 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
 
   const fetchTasks = async () => {
     try {
-      const res = await fetch('/api/tasks');
+      const query = new URLSearchParams({
+        page: String(page),
+        limit: String(limit),
+      });
+      if (searchQuery.trim()) {
+        query.append('search', searchQuery.trim());
+      }
+      const res = await fetch(`/api/tasks?${query.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setTasks(data);
+        setTasks(data.items || []);
+        setTotalTasks(data.total || 0);
+        setTotalPages(data.pages || 1);
       }
     } catch (e) {
       console.error('Failed to fetch tasks:', e);
@@ -86,7 +97,7 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
       const interval = setInterval(fetchDebugLogs, 3000);
       return () => clearInterval(interval);
     }
-  }, [debugMode]);
+  }, [debugMode, page, limit, searchQuery]);
 
   // Reset initial load flag when entering debug mode
   useEffect(() => {
@@ -147,19 +158,6 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
     }
   };
 
-  const filteredTasks = tasks.filter(task => {
-    const q = searchQuery.toLowerCase();
-    return (
-      task.id.toLowerCase().includes(q) ||
-      task.task_type.toLowerCase().includes(q) ||
-      task.status.toLowerCase().includes(q)
-    );
-  });
-
-  const totalTasks = filteredTasks.length;
-  const totalPages = Math.max(1, Math.ceil(totalTasks / limit));
-  const paginatedTasks = filteredTasks.slice((page - 1) * limit, page * limit);
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -214,12 +212,12 @@ export default function LogsTab({ onViewLogs, timezone, isKiosk = false }: LogsT
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">{t('loading')}</td>
                   </tr>
-                ) : paginatedTasks.length === 0 ? (
+                ) : tasks.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">{t('noTasksFound')}</td>
                   </tr>
                 ) : (
-                  paginatedTasks.map(task => (
+                  tasks.map(task => (
                     <tr key={task.id} className="hover:bg-zinc-800/30 transition-colors">
                       <td className="px-4 py-2.5 font-mono text-xs text-zinc-400">{task.id}</td>
                       <td className="px-4 py-2.5 font-semibold text-zinc-100 capitalize">{task.task_type.toLowerCase()}</td>

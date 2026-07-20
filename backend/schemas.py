@@ -182,6 +182,24 @@ class PaginatedBackupHistoryResponse(BaseModel):
 class BackupTriggerRequest(BaseModel):
     comment: Optional[str] = None
 
+class TaskLogSummaryResponse(BaseModel):
+    id: str
+    task_type: str
+    status: str
+    node_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class PaginatedTaskLogResponse(BaseModel):
+    items: List[TaskLogSummaryResponse]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
 class TaskLogResponse(BaseModel):
     id: str
     task_type: str
@@ -269,6 +287,7 @@ class KioskResponse(UTCModel, KioskBase):
     is_online: Optional[bool] = None
     iso_built_at: Optional[datetime] = None
     is_rebuilding: bool = False
+    payload_outdated: Optional[bool] = False
 
 
 class HandshakeRequest(BaseModel):
@@ -352,6 +371,7 @@ class AutoHandshakeRequest(BaseModel):
     kiosk_id: Optional[str] = None
     uuid: Optional[str] = None
     ssh_pub_key: str
+    payload_hash: Optional[str] = None
 
 
 class RequestActivationRequest(BaseModel):

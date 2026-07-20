@@ -1,6 +1,8 @@
-from typing import List
+from typing import List, Optional
+from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, defer
 from database import get_db
 import models
 import schemas
@@ -8,12 +10,40 @@ from routers.users import require_admin, require_kiosk_or_admin
 
 router = APIRouter(prefix="/api/tasks")
 
-@router.get("", response_model=List[schemas.TaskLogResponse])
-def get_all_tasks(limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
+@router.get("", response_model=schemas.PaginatedTaskLogResponse)
+def get_all_tasks(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
+    db: Session = Depends(get_db), 
+    current_user = Depends(require_kiosk_or_admin)
+):
     """
-    Lists background task execution logs ordered by created_at desc.
+    Lists paginated background task execution logs (excluding heavy log_output text) ordered by created_at desc.
     """
-    return db.query(models.TaskLog).order_by(models.TaskLog.created_at.desc()).limit(limit).all()
+    query = db.query(models.TaskLog).options(defer(models.TaskLog.log_output))
+    if search:
+        s = f"%{search.strip().lower()}%"
+        query = query.filter(
+            or_(
+                models.TaskLog.id.ilike(s),
+                models.TaskLog.task_type.ilike(s),
+                models.TaskLog.status.ilike(s)
+            )
+        )
+    
+    total = query.count()
+    pages = max(1, ceil(total / limit))
+    offset = (page - 1) * limit
+    items = query.order_by(models.TaskLog.created_at.desc()).offset(offset).limit(limit).all()
+    
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": pages
+    }
 
 @router.get("/debug-logs", response_model=List[schemas.SystemLogResponse])
 def get_debug_logs(db: Session = Depends(get_db), current_user = Depends(require_admin)):

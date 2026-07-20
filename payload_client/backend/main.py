@@ -879,12 +879,15 @@ def exit_kiosk():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/tasks")
-def get_kiosk_tasks(limit: int = 200):
+def get_kiosk_tasks(page: int = 1, limit: int = 20, search: Optional[str] = None):
     global restore_mode
     if restore_mode == "online":
         try:
+            params = f"page={page}&limit={limit}"
+            if search:
+                params += f"&search={urllib.parse.quote(search)}"
             req = urllib.request.Request(
-                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/tasks?limit={limit}",
+                f"http://{orchestrator_ip}:{orchestrator_api_port}/api/tasks?{params}",
                 headers={"Authorization": f"Bearer {auth_token}"} if auth_token else {}
             )
             with urllib.request.urlopen(req, timeout=5) as response:
@@ -897,6 +900,10 @@ def get_kiosk_tasks(limit: int = 200):
         tasks_list = []
         for tid in task_status:
             task_type = "RESTORE" if "restore" in task_logs.get(tid, "").lower() else "SYNC"
+            if search:
+                s = search.lower()
+                if s not in tid.lower() and s not in task_type.lower() and s not in task_status[tid].lower():
+                    continue
             tasks_list.append({
                 "id": tid,
                 "task_type": task_type,
@@ -904,7 +911,16 @@ def get_kiosk_tasks(limit: int = 200):
                 "created_at": "2026-06-17T00:00:00Z",
                 "updated_at": "2026-06-17T00:00:00Z",
             })
-        return tasks_list
+        total = len(tasks_list)
+        pages = max(1, math.ceil(total / limit)) if limit > 0 else 1
+        offset = (page - 1) * limit
+        return {
+            "items": tasks_list[offset:offset + limit],
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "pages": pages
+        }
 
 @app.get("/api/tasks/debug-logs")
 def get_kiosk_debug_logs():
