@@ -628,7 +628,7 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
 
         history_dir = os.path.join(CACHE_DIR, "history")
         os.makedirs(history_dir, exist_ok=True)
-        server_name = settings.server_name if (settings and settings.server_name) else "Edge.bro"
+        server_name = settings.server_name if (settings and settings.server_name) else "Edge-B.R.O."
         
         # Clean up any existing ISO files for this kiosk token first to ensure clean generation and save space
         for file in os.listdir(history_dir):

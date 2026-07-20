@@ -141,7 +141,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         }
 
         if (data.server_name !== undefined) {
-          setServerName(data.server_name || 'orchestrator');
+          setServerName(data.server_name || 'Edge-B.R.O.');
         }
         if (data.bootstrap_credentials !== undefined) {
           setBootstrapCredentials(data.bootstrap_credentials || []);

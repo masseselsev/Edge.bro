@@ -72,7 +72,7 @@ def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_ad
     kiosks = db.query(models.Kiosk).all()
     from iso_tasks import CACHE_DIR
     settings = db.query(models.Settings).first()
-    server_name = settings.server_name if (settings and settings.server_name) else "Edge.bro"
+    server_name = settings.server_name if (settings and settings.server_name) else "Edge-B.R.O."
     for k in kiosks:
         if k.last_seen:
             k.is_online = (datetime.now() - k.last_seen).total_seconds() < 30

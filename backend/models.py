@@ -40,7 +40,7 @@ class Settings(Base):
     default_cpu_quota = Column(Integer, default=30, nullable=True)   # % of one core, NULL = no limit
     server_ips = Column(JSON, nullable=True)
     max_kiosk_isos = Column(Integer, default=5, nullable=False)
-    server_name = Column(String, default="orchestrator", nullable=False)
+    server_name = Column(String, default="Edge-B.R.O.", nullable=False)
     bootstrap_credentials = Column(JSON, nullable=True, default=lambda: [{"id": "default", "username": "user", "password": "admin"}])
     default_credentials_id = Column(String, nullable=True, default='default')
     server_net_capacity_mbps = Column(Integer, default=1000, nullable=False)

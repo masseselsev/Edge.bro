@@ -54,7 +54,7 @@ class SettingsBase(BaseModel):
     default_cpu_quota: Optional[int] = Field(default=30, ge=0, le=400)
     server_ips: Optional[List[str]] = Field(default=[])
     max_kiosk_isos: int = Field(default=5, ge=1)
-    server_name: str = Field(default='orchestrator')
+    server_name: str = Field(default='Edge-B.R.O.')
     bootstrap_credentials: List[CredentialSchema] = Field(default=[])
     default_credentials_id: Optional[str] = Field(default='')
     server_net_capacity_mbps: int = Field(default=1000, ge=1)
