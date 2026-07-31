@@ -1,11 +1,10 @@
 name: Release Build and Push
 
 on:
+  # Only on published releases. A `push: tags` trigger would fire a second,
+  # identical build for the same tag, since publishing a release pushes one.
   release:
     types: [published]
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:
