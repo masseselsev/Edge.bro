@@ -29,6 +29,37 @@ def compute_checkpoint_interval(rate_kib: Optional[int]) -> int:
     return 1800
 
 
+def resolve_borg_target(
+    orchestrator_behind_nat: bool,
+    direct_ip: Optional[str],
+    borg_ssh_port: int,
+    repo_path: str = "/data/borg/fleet",
+) -> tuple:
+    """
+    Decides how the node should reach the orchestrator's borg-server.
+
+    Normally the node connects directly to the orchestrator's real IP. When
+    the orchestrator sits behind NAT and nodes cannot reach it directly, we
+    instead open a reverse tunnel on the SAME ssh connection the orchestrator
+    already makes to the node (for bootstrap/backup-trigger, which only needs
+    outbound reachability from the orchestrator's side): `-R
+    {port}:borg-server:22` makes 127.0.0.1:{port} on the NODE forward back to
+    the orchestrator's borg-server container. The node's own borg client then
+    talks to itself instead of the unreachable real IP.
+
+    Returns (extra_ssh_args, borg_repo_url). extra_ssh_args is empty in the
+    direct case, so callers that don't pass it through get identical output
+    to before this existed.
+    """
+    if orchestrator_behind_nat:
+        extra_ssh_args = ["-R", f"{borg_ssh_port}:borg-server:22"]
+        borg_repo_url = f"ssh://borg@127.0.0.1:{borg_ssh_port}{repo_path}"
+        return extra_ssh_args, borg_repo_url
+
+    borg_repo_url = f"ssh://borg@{direct_ip}:{borg_ssh_port}{repo_path}"
+    return [], borg_repo_url
+
+
 def build_borg_create_cmd(
     node_ip: str,
     node_ssh_port: int,
@@ -40,6 +71,7 @@ def build_borg_create_cmd(
     checkpoint_secs: int,
     cpu_quota: Optional[int],
     borg_passphrase: str,
+    extra_ssh_args: Optional[list] = None,
 ) -> list:
     """
     Builds the SSH command list to run borg create on the node,
@@ -84,6 +116,7 @@ def build_borg_create_cmd(
         "-o", f"ServerAliveCountMax={count}",
         "-p", str(node_ssh_port),
         "-i", "/root/.ssh/id_ed25519",
+        *(extra_ssh_args or []),
         f"root@{node_ip}",
         inner_cmd,
     ]
@@ -97,11 +130,18 @@ def cleanup_locks_and_resolve_ip(
     borg_passphrase: str,
     configured_ip: Optional[str],
     borg_ssh_port: int,
-) -> str:
+    orchestrator_behind_nat: bool = False,
+) -> Optional[str]:
     """
     Cleans up stale Borg locks on the node and server, and resolves the correct
     orchestrator IP to use by verifying configured IP reachability or falling back
     to the incoming SSH connection IP.
+
+    When orchestrator_behind_nat is True, direct reachability is known to be
+    impossible (that's the whole point of the flag), so the reachability probe
+    is skipped — it would only waste a timeout and log a misleading "unreachable,
+    falling back" message. Lock cleanup still runs. The return value is None in
+    that case; callers must use resolve_borg_target() for the repo URL instead.
     """
     from tasks import log_to_task  # local import to avoid circular deps
 
@@ -118,7 +158,9 @@ def cleanup_locks_and_resolve_ip(
         f"root@{node_ip}",
     ]
 
-    test_ip = configured_ip.strip() if configured_ip else ""
+    # In NAT mode direct reachability is impossible by definition, so don't even
+    # attempt the /dev/tcp probe — it can only waste a timeout.
+    test_ip = "" if orchestrator_behind_nat else (configured_ip.strip() if configured_ip else "")
     remote_cmd = (
         f"echo \"$SSH_CONNECTION\"; "
         f"if [ -n \"{test_ip}\" ] && timeout 2 bash -c \"cat < /dev/null > /dev/tcp/{test_ip}/{borg_ssh_port}\" 2>/dev/null; then "
@@ -175,6 +217,10 @@ def cleanup_locks_and_resolve_ip(
             log_to_task(task_id, f"[Lock cleanup] WARNING: Repo break-lock failed: {res.stderr.strip()}")
     except Exception as e:
         log_to_task(task_id, f"[Lock cleanup] WARNING: Server-side lock check exception: {e}")
+
+    if orchestrator_behind_nat:
+        log_to_task(task_id, "Orchestrator is behind NAT — will reach it through a reverse tunnel instead of a direct IP.")
+        return None
 
     resolved_ip = None
     if is_reachable and test_ip:
@@ -329,10 +375,15 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         borg_passphrase=os.getenv("BORG_PASSPHRASE", ""),
         configured_ip=settings.orchestrator_ip,
         borg_ssh_port=settings.borg_ssh_port,
+        orchestrator_behind_nat=settings.orchestrator_behind_nat,
     )
 
     archive_name = f"{node.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-    borg_repo_url = f"ssh://borg@{orchestrator_ip}:{settings.borg_ssh_port}/data/borg/fleet"
+    extra_ssh_args, borg_repo_url = resolve_borg_target(
+        orchestrator_behind_nat=settings.orchestrator_behind_nat,
+        direct_ip=orchestrator_ip,
+        borg_ssh_port=settings.borg_ssh_port,
+    )
 
     fix_repo_permissions("/data/borg/fleet")
 
@@ -346,6 +397,7 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         "-o", f"ServerAliveCountMax={count}",
         "-p", str(node.ssh_port),
         "-i", "/root/.ssh/id_ed25519",
+        *extra_ssh_args,
         f"root@{node.ip_address}",
         f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ServerAliveInterval={interval} -o ServerAliveCountMax={count}' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' BORG_RELOCATED_REPO_ACCESS_IS_OK=yes borg init --encryption=repokey {borg_repo_url}"
     ]
@@ -417,6 +469,7 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         checkpoint_secs=checkpoint_secs,
         cpu_quota=cpu_quota,
         borg_passphrase=os.getenv('BORG_PASSPHRASE', ''),
+        extra_ssh_args=extra_ssh_args,
     )
 
     log_to_task(task_id, f"Running remote command on node: {' '.join(ssh_cmd[:6])} [COMMAND MASKED]")

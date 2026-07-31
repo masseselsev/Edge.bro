@@ -82,6 +82,8 @@ ISO_CACHE_HOST_PATH=iso-cache     # Base/client ISO cache, Docker volume by defa
 > ```bash
 > python3 -c "import secrets; print(secrets.token_hex(32))"
 > ```
+>
+> 🌐 **If nodes can't reach the orchestrator directly** (it sits behind NAT with no port forwarding): enable **"Orchestrator is behind NAT"** in Settings → Orchestrator Network Addresses. Backups then tunnel through the orchestrator's own outbound SSH connection to each node instead of connecting straight to the orchestrator's IP. This adds SSH encryption overhead on every backup (the data is encrypted twice), so leave it off unless nodes genuinely can't connect directly. It only covers automated/manual Fleet backups — Live-USB kiosk pairing and restore still need their own network path (e.g. the kiosk's WireGuard client) if the orchestrator is unreachable.
 
 ### 2.2 Configure backup storage
 
