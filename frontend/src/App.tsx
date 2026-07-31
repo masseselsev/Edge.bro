@@ -23,6 +23,10 @@ import KioskFooter from './components/KioskFooter';
 
 type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings' | 'clientiso' | 'schedule';
 
+// Persists across reloads so the empty-fleet nag stops once dismissed —
+// only re-armed if the flag itself is cleared (e.g. cleared browser storage).
+const IP_PROMPT_DISMISSED_KEY = 'edge_bro_ip_prompt_dismissed';
+
 const getUsageColorClass = (percent: number): string => {
   if (percent >= 80) return 'text-rose-400 font-bold animate-pulse';
   if (percent >= 50) return 'text-amber-400 font-semibold';
@@ -481,10 +485,13 @@ function AppContent() {
           setAvailableIps(sett.available_ips || []);
           
           fetch('/api/nodes')
-            .then(res => res.json())
+            .then(res => {
+              if (!res.ok) throw new Error('Failed to fetch nodes');
+              return res.json();
+            })
             .then(nodes => {
               const nodesList = Array.isArray(nodes) ? nodes : (nodes.nodes || []);
-              if (nodesList.length === 0) {
+              if (nodesList.length === 0 && !localStorage.getItem(IP_PROMPT_DISMISSED_KEY)) {
                 setShowIpPromptModal(true);
               }
             })
@@ -604,10 +611,13 @@ function AppContent() {
         setAvailableIps(sett.available_ips || []);
         
         fetch('/api/nodes')
-          .then(res => res.json())
+          .then(res => {
+            if (!res.ok) throw new Error('Failed to fetch nodes');
+            return res.json();
+          })
           .then(nodes => {
             const nodesList = Array.isArray(nodes) ? nodes : (nodes.nodes || []);
-            if (nodesList.length === 0) {
+            if (nodesList.length === 0 && !localStorage.getItem(IP_PROMPT_DISMISSED_KEY)) {
               setShowIpPromptModal(true);
             }
           })
@@ -670,6 +680,7 @@ function AppContent() {
         })
       });
       if (res.ok) {
+        localStorage.setItem(IP_PROMPT_DISMISSED_KEY, '1');
         setShowIpPromptModal(false);
       }
     } catch (err) {
@@ -1407,7 +1418,10 @@ function AppContent() {
       {/* IP Prompt Modal when there are no nodes */}
       {showIpPromptModal && (
         <IpPromptModal
-          onClose={() => setShowIpPromptModal(false)}
+          onClose={() => {
+            localStorage.setItem(IP_PROMPT_DISMISSED_KEY, '1');
+            setShowIpPromptModal(false);
+          }}
           onSubmit={handleSaveIp}
           orchestratorIp={orchestratorIp}
           setOrchestratorIp={setOrchestratorIp}
