@@ -287,3 +287,36 @@ def test_run_backup_task_direct_mode_unchanged(mock_run, mock_popen, mock_log, m
     assert "-R" not in popen_call_args
     inner_cmd = popen_call_args[-1]
     assert "ssh://borg@203.0.113.5:12345/data/borg/fleet" in inner_cmd
+
+
+# --- three-level NAT override: node > group > global ---
+
+class _Obj:
+    """Minimal stand-in exposing only orchestrator_behind_nat."""
+    def __init__(self, value):
+        self.orchestrator_behind_nat = value
+
+
+@pytest.mark.parametrize("node_val,group_val,global_val,expected", [
+    # nothing overridden -> global wins
+    (None,  None,  False, False),
+    (None,  None,  True,  True),
+    # group overrides global, in both directions
+    (None,  True,  False, True),
+    (None,  False, True,  False),
+    # node overrides everything, in both directions
+    (True,  False, False, True),
+    (False, True,  True,  False),
+    # explicit False must not be mistaken for "unset"
+    (False, None,  True,  False),
+])
+def test_resolve_behind_nat_precedence(node_val, group_val, global_val, expected):
+    from backup_tasks import resolve_behind_nat
+    assert resolve_behind_nat(_Obj(node_val), _Obj(group_val), _Obj(global_val)) is expected
+
+
+def test_resolve_behind_nat_without_group():
+    """A node with no group falls straight through to the global setting."""
+    from backup_tasks import resolve_behind_nat
+    assert resolve_behind_nat(_Obj(None), None, _Obj(True)) is True
+    assert resolve_behind_nat(_Obj(False), None, _Obj(True)) is False
