@@ -35,11 +35,13 @@ services:
       SUPERADMIN_USERNAME: ${SUPERADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      SSH_KEEPALIVE_INTERVAL: ${SSH_KEEPALIVE_INTERVAL:-30}
+      SSH_KEEPALIVE_COUNT: ${SSH_KEEPALIVE_COUNT:-3}
     volumes:
       - ./backend:/app
       - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/root/.ssh
-      - iso-cache:/opt/data/iso_cache
+      - ${ISO_CACHE_HOST_PATH:-iso-cache}:/opt/data/iso_cache
       - /proc:/host/proc:ro
       - ./payload_client:/payload_client
       - frontend-build:/opt/frontend_build
@@ -68,12 +70,14 @@ services:
       SUPERADMIN_USERNAME: ${SUPERADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      SSH_KEEPALIVE_INTERVAL: ${SSH_KEEPALIVE_INTERVAL:-30}
+      SSH_KEEPALIVE_COUNT: ${SSH_KEEPALIVE_COUNT:-3}
     volumes:
       - ./backend:/app
       - /dev:/dev
       - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/root/.ssh
-      - iso-cache:/opt/data/iso_cache
+      - ${ISO_CACHE_HOST_PATH:-iso-cache}:/opt/data/iso_cache
       - frontend-build:/opt/frontend_build
       - ./payload_client:/payload_client
       - /proc:/host/proc:ro
@@ -100,6 +104,8 @@ services:
       SUPERADMIN_USERNAME: ${SUPERADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      SSH_KEEPALIVE_INTERVAL: ${SSH_KEEPALIVE_INTERVAL:-30}
+      SSH_KEEPALIVE_COUNT: ${SSH_KEEPALIVE_COUNT:-3}
     volumes:
       - ./backend:/app
       - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
@@ -146,26 +152,28 @@ services:
       - 8.8.8.8
       - 10.102.1.21
 
+# Fixed volume names keep data attached even if the stack directory is renamed.
+# external: false lets Compose create them on first run.
 volumes:
   pg-data:
-    name: backup-edge-restore_pg-data
-    external: true
+    name: edge-bro_pg-data
+    external: false
   borg-data:
-    name: backup-edge-restore_borg-data
-    external: true
+    name: edge-bro_borg-data
+    external: false
   ssh-keys:
-    name: backup-edge-restore_ssh-keys
-    external: true
+    name: edge-bro_ssh-keys
+    external: false
   redis-data:
-    name: backup-edge-restore_redis-data
-    external: true
+    name: edge-bro_redis-data
+    external: false
   iso-cache:
-    name: backup-edge-restore_iso-cache
-    external: true
+    name: edge-bro_iso-cache
+    external: false
   frontend-build:
-    name: backup-edge-restore_frontend-build
-    external: true
+    name: edge-bro_frontend-build
+    external: false
   apt-cache:
-    name: backup-edge-restore_apt-cache
-    external: true
+    name: edge-bro_apt-cache
+    external: false
 

@@ -66,10 +66,14 @@ JWT_SECRET_KEY=<random_secret>     # Used to sign session tokens
 # SSH_KEEPALIVE_INTERVAL=30        # Seconds between keepalive packets
 # SSH_KEEPALIVE_COUNT=3            # Missed responses before disconnect
 
-# ── Storage path ──
+# ── Storage paths ──
 BORG_HOST_DATA_PATH=borg-data     # Docker volume by default
                                    # Set an absolute path for external storage:
                                    # BORG_HOST_DATA_PATH=/mnt/hdd/borg_data
+
+ISO_CACHE_HOST_PATH=iso-cache     # Base/client ISO cache, Docker volume by default
+                                   # Set an absolute path for external storage:
+                                   # ISO_CACHE_HOST_PATH=/mnt/hdd/iso_cache
 ```
 
 > **About `SUPERADMIN_USERNAME` / `ADMIN_PASSWORD`**: these values seed the first superadmin account on initial startup. Once created, the account lives in the database. Changing `.env` later won't overwrite a password you've already changed via the web UI. To force-reset: clear the `users` table in PostgreSQL and restart.
@@ -98,7 +102,36 @@ BORG_HOST_DATA_PATH=/mnt/hdd/borg_data
 
 The configured path is shown in the web UI under **Settings**.
 
-### 2.3 Start everything
+### 2.3 Configure ISO cache storage
+
+Separately from backups, the orchestrator keeps an ISO cache at `/opt/data/iso_cache` inside the containers. It holds the downloaded Debian base image plus every generated USB-Kiosk client image, so plan for **~20 GB or more**. By default it lives in the `iso-cache` Docker volume under `/var/lib/docker/volumes/`.
+
+To move it to a dedicated drive:
+
+```bash
+mkdir -p /mnt/hdd/iso_cache
+chown -R 1000:1000 /mnt/hdd/iso_cache
+```
+
+Then set in `.env`:
+```env
+ISO_CACHE_HOST_PATH=/mnt/hdd/iso_cache
+```
+
+Apply the change — no rebuild needed, the containers just get recreated with the new mount:
+
+```bash
+docker compose up -d
+```
+
+> ⚠️ Changing this path does **not** move existing data. Anything already cached (base ISO, built client images) stays in the old location and will be re-downloaded or rebuilt. To keep it, copy the contents across before restarting:
+> ```bash
+> docker run --rm -v edge-bro_iso-cache:/from -v /mnt/hdd/iso_cache:/to alpine cp -a /from/. /to/
+> ```
+
+If the cache sits on the system root partition, the dashboard raises an `ISO_CACHE_ON_ROOT` health warning.
+
+### 2.4 Start everything
 
 ```bash
 docker compose up -d --build
@@ -439,4 +472,25 @@ For low-level Docker issues or standard output logs of all services (Nginx, Fast
 docker compose logs --tail=2000 > edge_bro_logs.txt
 ```
 Attach `edge_bro_logs.txt` to the support ticket.
+
+### 10.3 `external volume "..." not found` on startup
+
+Older revisions of `docker-compose.yml` declared every named volume as `external: true`, which tells Compose the volumes already exist and must never be created. On a fresh install nothing has created them yet, so `docker compose up` aborts with:
+
+```
+external volume "backup-edge-restore_apt-cache" not found
+```
+
+This is fixed in current revisions — the volumes are declared `external: false` and Compose creates them on first run. Pull the latest code and start normally:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+If you already worked around it by hand, note that volumes are now named `edge-bro_*`. Data written under the old `backup-edge-restore_*` names is not picked up automatically — list what exists with `docker volume ls`, and copy anything worth keeping:
+
+```bash
+docker run --rm -v backup-edge-restore_pg-data:/from -v edge-bro_pg-data:/to alpine cp -a /from/. /to/
+```
 

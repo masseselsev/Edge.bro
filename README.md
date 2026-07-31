@@ -150,7 +150,8 @@ Seven containers in `docker-compose.yml`:
 | RAM | 4 GB | 8 GB |
 | Network | 100 Mbps | 1 Gbps |
 | System disk | 20 GB free | — |
-| Backup volume | Sized per fleet — see below | Dedicated drive |
+| ISO cache | 20 GB free | Dedicated drive (`ISO_CACHE_HOST_PATH`) |
+| Backup volume | Sized per fleet — see below | Dedicated drive (`BORG_HOST_DATA_PATH`) |
 
 **Backup volume sizing** (quarterly backups, keep last 5 = ~1.25 years). For fleets with highly uniform/identical hardware, Borg's cross-device deduplication is significantly more efficient:
 
