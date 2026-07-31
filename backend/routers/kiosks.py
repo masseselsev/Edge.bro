@@ -72,7 +72,7 @@ def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_ad
     kiosks = db.query(models.Kiosk).all()
     from iso_tasks import CACHE_DIR
     settings = db.query(models.Settings).first()
-    server_name = settings.server_name if (settings and settings.server_name) else "Edge-B.R.O."
+    server_name = settings.server_name if (settings and settings.server_name) else "edge-bro"
     for k in kiosks:
         if k.last_seen:
             k.is_online = (datetime.now() - k.last_seen).total_seconds() < 30
@@ -132,7 +132,7 @@ def delete_kiosk(kiosk_id: int, request: Request = None, db: Session = Depends(g
         try:
             from iso_tasks import CACHE_DIR
             import os
-            server_name = settings.server_name if (settings and settings.server_name) else "Edge-B.R.O."
+            server_name = settings.server_name if (settings and settings.server_name) else "edge-bro"
             iso_path = os.path.join(CACHE_DIR, "history", f"{server_name}-kiosk-{kiosk.auth_token}.iso")
             if os.path.exists(iso_path):
                 os.remove(iso_path)

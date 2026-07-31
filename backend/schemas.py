@@ -54,7 +54,7 @@ class SettingsBase(BaseModel):
     default_cpu_quota: Optional[int] = Field(default=30, ge=0, le=400)
     server_ips: Optional[List[str]] = Field(default=[])
     max_kiosk_isos: int = Field(default=5, ge=1)
-    server_name: str = Field(default='Edge-B.R.O.')
+    server_name: str = Field(default='edge-bro')
     bootstrap_credentials: List[CredentialSchema] = Field(default=[])
     default_credentials_id: Optional[str] = Field(default='')
     server_net_capacity_mbps: int = Field(default=1000, ge=1)
@@ -64,8 +64,14 @@ class SettingsBase(BaseModel):
     @classmethod
     def validate_server_name(cls, v: str) -> str:
         import re
-        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
-            raise ValueError("Server name must contain only letters, numbers, hyphens, and underscores, without spaces.")
+        # Used as an ISO filename prefix, so it is normalised to lowercase and
+        # kept free of dots and separators.
+        v = v.lower()
+        if not re.match(r'^[a-z0-9][a-z0-9_-]*$', v):
+            raise ValueError(
+                "Server name must start with a letter or digit and contain only "
+                "letters, numbers, hyphens, and underscores — no dots or spaces."
+            )
         return v
 
 
