@@ -173,16 +173,21 @@ def ensure_orchestrator_ssh_key() -> str:
 
 def fix_repo_permissions(repo_path: str) -> None:
     """Ensures repository files and their parent directories are owned by user borg (1000:1000)."""
-    try:
-        parent_dir = os.path.dirname(repo_path)
-        if os.path.exists(parent_dir):
-            subprocess.run(["chown", "1000:1000", parent_dir], check=True)
-            subprocess.run(["chmod", "755", parent_dir], check=True)
+    parent_dir = os.path.dirname(repo_path)
+    if os.path.exists(parent_dir):
+        try:
+            subprocess.run(["chown", "1000:1000", parent_dir], check=False)
+            subprocess.run(["chmod", "755", parent_dir], check=False)
+        except Exception as e:
+            logger.warning(f"Could not chown parent directory {parent_dir}: {str(e)}")
             
-        if os.path.exists(repo_path):
+    if os.path.exists(repo_path):
+        try:
             subprocess.run(["chown", "-R", "1000:1000", repo_path], check=True)
-    except Exception as e:
-        logger.error(f"Failed to chown repo {repo_path}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Failed to chown repo {repo_path}: {str(e)}")
+
+
 
 # Expose task endpoints directly from tasks
 from tasks.bootstrap import run_bootstrap_task, auto_retry_bootstrap_task
