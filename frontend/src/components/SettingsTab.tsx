@@ -7,6 +7,7 @@ import type { Language } from '../i18n/translations';
 import AdminsTab from './AdminsTab';
 import AuditLogsTab from './AuditLogsTab';
 import { CredentialsModal } from './CredentialsModal';
+import { InfoLabel } from './InfoLabel';
 
 interface SettingsTabProps {
   onSettingsUpdated?: (settings: any) => void;
@@ -379,13 +380,10 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                       resolved by Docker at container start, so changing them means
                       editing .env and recreating the containers. */}
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('storageLocation')}</label>
+                    <InfoLabel label={t('storageLocation')} hint={t('storageLocationHint')} />
                     <div className="px-3 py-2 bg-zinc-950/60 border border-zinc-800 border-dashed rounded-lg">
                       <p className="text-[11px] text-zinc-400 font-mono break-all">
                         {t('storageLocationBackups')}: <span className="text-zinc-200">{hostDataPath || 'borg-data'}</span>
-                      </p>
-                      <p className="text-[10px] text-zinc-500 mt-1.5 leading-relaxed">
-                        {t('storageLocationHint')}
                       </p>
                     </div>
                   </div>
@@ -402,7 +400,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('cpuQuota')}</label>
+                    <InfoLabel label={t('cpuQuota')} hint={t('cpuQuotaHint')} />
                     <input
                       type="number"
                       min={0}
@@ -412,9 +410,6 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                       className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none font-mono"
                       placeholder="e.g. 50"
                     />
-                    <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
-                      {t('cpuQuotaHint')}
-                    </p>
                   </div>
                 </div>
 
@@ -455,9 +450,10 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
-                      {t('maxKioskIsosLabel') || 'Max Kiosk ISOs in Repository'}
-                    </label>
+                    <InfoLabel
+                      label={t('maxKioskIsosLabel') || 'Max Kiosk ISOs in Repository'}
+                      hint={t('maxKioskIsosSub') || 'Maximum number of issued kiosk ISOs to keep in history before automatic pruning.'}
+                    />
                     <input
                       type="number"
                       min={1}
@@ -466,17 +462,15 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                       onChange={(e) => setMaxKioskIsos(parseInt(e.target.value) || 5)}
                       className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                     />
-                    <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
-                      {t('maxKioskIsosSub') || 'Maximum number of issued kiosk ISOs to keep in history before automatic pruning.'}
-                    </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
-                      {t('serverNetCapacityLabel') || 'Server Network Capacity (Mbps)'}
-                    </label>
+                    <InfoLabel
+                      label={t('serverNetCapacityLabel') || 'Server Network Capacity (Mbps)'}
+                      hint={t('serverNetCapacityHelp') || 'Used as the 100% capacity limit when rendering network load percentages in the header.'}
+                    />
                     <input
                       type="number"
                       min={1}
@@ -488,9 +482,6 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                       }}
                       className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                     />
-                    <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
-                      {t('serverNetCapacityHelp') || 'Used as the 100% capacity limit when rendering network load percentages in the header.'}
-                    </p>
                   </div>
                 </div>
 
