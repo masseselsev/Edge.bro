@@ -1,3 +1,5 @@
+import os
+
 from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean
 from sqlalchemy.sql import func
 from database import Base
@@ -32,7 +34,9 @@ class Settings(Base):
         {"pattern": "/var/hasplm/*", "comment": "Sentinel HASP licensing data"},
         {"pattern": "/etc/hasplm/*", "comment": "Sentinel HASP licensing config"}
     ])
-    orchestrator_ip = Column(String, default='', nullable=False)
+    # Seeded from .env so a fresh install shows the configured IP in the UI.
+    # Once set through the UI the DB value wins; .env is only the initial value.
+    orchestrator_ip = Column(String, default=lambda: os.getenv("ORCHESTRATOR_IP", ""), nullable=False)
     timezone = Column(String, default='Browser Local', nullable=False)
     language = Column(String, default='en', nullable=False)
     retention_policy = Column(JSON, nullable=True)

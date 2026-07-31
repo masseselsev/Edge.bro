@@ -168,6 +168,14 @@ def upgrade_settings(db: Session):
         db.add(settings)
         db.commit()
     else:
+        # Installs created before orchestrator_ip was seeded show an empty field
+        # in the UI while tasks silently fall back to the env var. Backfill it.
+        if not settings.orchestrator_ip:
+            env_ip = os.getenv("ORCHESTRATOR_IP", "")
+            if env_ip:
+                settings.orchestrator_ip = env_ip
+                db.commit()
+                print(f"Seeded orchestrator_ip from ORCHESTRATOR_IP env: {env_ip}")
         if settings.default_cpu_quota == 10:
             settings.default_cpu_quota = 30
             db.commit()
