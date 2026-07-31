@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from celery_app import celery_app
 
 from database import SessionLocal
-from models import Node, TaskLog, BackupHistory, Settings
+from models import Node, TaskLog, BackupHistory, Settings, BackupGroup
 from ansible_utils import run_ansible_playbook
 
 # Re-use logging configuration from tasks
@@ -328,8 +328,13 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
 
     import redis
     import time
+    from core.schedule_estimate import backup_lock_ttl_seconds
     redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
-    redis_client.setex(f"backup_running:{node.id}", 14400, f"{int(time.time())}:{task_id}")
+    # Sized from this node's history rather than a flat 4h: on slow links a
+    # backup that outlives its lock gets killed by the next scheduler tick.
+    group = db.query(BackupGroup).filter(BackupGroup.id == node.group_id).first() if node.group_id else None
+    _lock_ttl = backup_lock_ttl_seconds(db, node.id, group.upload_rate_limit if group else None)
+    redis_client.setex(f"backup_running:{node.id}", _lock_ttl, f"{int(time.time())}:{task_id}")
 
     # Check Sentinel HASP license for READY nodes
     if node.status == "READY":
