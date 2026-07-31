@@ -66,10 +66,14 @@ JWT_SECRET_KEY=<случайный_секрет>  # Используется д�
 # SSH_KEEPALIVE_INTERVAL=30        # Секунды между keepalive-пакетами
 # SSH_KEEPALIVE_COUNT=3            # Пропущенных ответов до разрыва
 
-# ── Путь к хранилищу ──
+# ── Пути к хранилищам ──
 BORG_HOST_DATA_PATH=borg-data     # Docker volume по умолчанию
                                    # Для внешнего хранилища укажите абсолютный путь:
                                    # BORG_HOST_DATA_PATH=/mnt/hdd/borg_data
+
+ISO_CACHE_HOST_PATH=iso-cache     # Кэш базового и клиентских ISO, Docker volume по умолчанию
+                                   # Для внешнего хранилища укажите абсолютный путь:
+                                   # ISO_CACHE_HOST_PATH=/mnt/hdd/iso_cache
 ```
 
 > **Про `SUPERADMIN_USERNAME` / `ADMIN_PASSWORD`**: эти значения создают первую учётную запись суперадмина при первом старте. После создания аккаунт живёт в базе данных. Если вы поменяли пароль через веб-интерфейс, повторное изменение `.env` его не перезапишет. Для принудительного сброса: очистите таблицу `users` в PostgreSQL и перезапустите.
@@ -98,7 +102,36 @@ BORG_HOST_DATA_PATH=/mnt/hdd/borg_data
 
 Настроенный путь отображается в веб-интерфейсе в разделе **Настройки**.
 
-### 2.3 Запуск
+### 2.3 Настройка хранилища ISO-кэша
+
+Отдельно от бэкапов оркестратор держит ISO-кэш по пути `/opt/data/iso_cache` внутри контейнеров. Там лежит скачанный базовый образ Debian и все собранные образы USB-Kiosk клиента, поэтому закладывайте **от ~20 ГБ**. По умолчанию кэш находится в Docker volume `iso-cache` в `/var/lib/docker/volumes/`.
+
+Чтобы перенести его на отдельный диск:
+
+```bash
+mkdir -p /mnt/hdd/iso_cache
+chown -R 1000:1000 /mnt/hdd/iso_cache
+```
+
+Затем в `.env`:
+```env
+ISO_CACHE_HOST_PATH=/mnt/hdd/iso_cache
+```
+
+Применение изменения — пересборка не нужна, контейнеры просто пересоздаются с новым монтированием:
+
+```bash
+docker compose up -d
+```
+
+> ⚠️ Смена пути **не переносит** существующие данные. Всё, что уже закэшировано (базовый ISO, собранные клиентские образы), останется в старом месте и будет скачано/собрано заново. Чтобы сохранить данные, скопируйте содержимое перед перезапуском:
+> ```bash
+> docker run --rm -v edge-bro_iso-cache:/from -v /mnt/hdd/iso_cache:/to alpine cp -a /from/. /to/
+> ```
+
+Если кэш находится на корневом разделе системы, панель показывает предупреждение здоровья `ISO_CACHE_ON_ROOT`.
+
+### 2.4 Запуск
 
 ```bash
 docker compose up -d --build
@@ -439,4 +472,25 @@ docker compose exec -T db psql -U postgres -d borg_orchestrator < recovery.sql
 docker compose logs --tail=2000 > edge_bro_logs.txt
 ```
 Приложите полученный файл `edge_bro_logs.txt` к обращению в техническую поддержку.
+
+### 10.3 Ошибка `external volume "..." not found` при запуске
+
+В старых редакциях `docker-compose.yml` все именованные тома были объявлены как `external: true` — это указывает Compose, что тома уже существуют и создавать их нельзя. При чистой установке их ещё никто не создал, поэтому `docker compose up` падает с ошибкой:
+
+```
+external volume "backup-edge-restore_apt-cache" not found
+```
+
+В текущих редакциях это исправлено — тома объявлены как `external: false`, и Compose создаёт их при первом запуске. Обновите код и запускайте обычным способом:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Если вы уже обошли проблему вручную, учтите: тома теперь называются `edge-bro_*`. Данные, записанные под старыми именами `backup-edge-restore_*`, автоматически не подхватятся — посмотрите список через `docker volume ls` и скопируйте то, что нужно сохранить:
+
+```bash
+docker run --rm -v backup-edge-restore_pg-data:/from -v edge-bro_pg-data:/to alpine cp -a /from/. /to/
+```
 
