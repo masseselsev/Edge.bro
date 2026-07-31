@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from database import get_db
 from routers.users import require_admin
+import paths
 
 router = APIRouter(prefix="/api/health", dependencies=[Depends(require_admin)])
 logger = logging.getLogger(__name__)
@@ -24,12 +25,12 @@ def get_system_health(db: Session = Depends(get_db)):
             })
             
         # Check Client ISO Cache volume
-        iso_path = "/opt/data/iso_cache"
+        iso_path = paths.ISO_CACHE_DIR
         if os.path.exists(iso_path) and os.stat(iso_path).st_dev == root_dev:
             warnings.append({
                 "code": "ISO_CACHE_ON_ROOT",
                 "type": "WARNING",
-                "message": "Client ISO cache storage (/opt/data/iso_cache) resides on the system root partition instead of an external drive/volume."
+                "message": f"Client ISO cache storage ({iso_path}) resides on the system root partition instead of an external drive/volume."
             })
     except Exception as e:
         logger.error(f"System health check failed: {str(e)}")

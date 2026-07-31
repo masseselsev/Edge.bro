@@ -141,7 +141,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         }
 
         if (data.server_name !== undefined) {
-          setServerName(data.server_name || 'Edge-B.R.O.');
+          setServerName(data.server_name || 'edge-bro');
         }
         if (data.bootstrap_credentials !== undefined) {
           setBootstrapCredentials(data.bootstrap_credentials || []);
@@ -375,20 +375,19 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                       className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
+                  {/* Storage location is not editable here: the paths are bind-mounts
+                      resolved by Docker at container start, so changing them means
+                      editing .env and recreating the containers. */}
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('repoLocation')}</label>
-                    <input
-                      type="text"
-                      required
-                      value={repoPath}
-                      onChange={(e) => setRepoPath(e.target.value)}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                    />
-                    {hostDataPath && (
-                      <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
-                        {`${t('hostDataPathLabelPrefix') || 'Physical host path (configured in .env): '}${hostDataPath}`}
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('storageLocation')}</label>
+                    <div className="px-3 py-2 bg-zinc-950/60 border border-zinc-800 border-dashed rounded-lg">
+                      <p className="text-[11px] text-zinc-400 font-mono break-all">
+                        {t('storageLocationBackups')}: <span className="text-zinc-200">{hostDataPath || 'borg-data'}</span>
                       </p>
-                    )}
+                      <p className="text-[10px] text-zinc-500 mt-1.5 leading-relaxed">
+                        {t('storageLocationHint')}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
