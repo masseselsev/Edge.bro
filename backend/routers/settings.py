@@ -144,6 +144,7 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
         ("keep_monthly", "Keep Monthly"),
         ("global_exclusions", "Global Exclusions"),
         ("orchestrator_ip", "Orchestrator IP"),
+        ("orchestrator_behind_nat", "Orchestrator Behind NAT"),
         ("timezone", "Timezone"),
         ("language", "Language"),
         ("default_compression", "Compression"),
@@ -195,6 +196,7 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     settings.keep_monthly = payload.keep_monthly
     settings.global_exclusions = [e.model_dump() for e in payload.global_exclusions] if payload.global_exclusions else []
     settings.orchestrator_ip = payload.orchestrator_ip
+    settings.orchestrator_behind_nat = payload.orchestrator_behind_nat
     settings.timezone = payload.timezone
     settings.language = payload.language
     settings.retention_policy = payload.retention_policy.model_dump() if payload.retention_policy else None

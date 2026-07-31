@@ -30,6 +30,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [newExclusionInput, setNewExclusionInput] = useState('');
   const [newExclusionComment, setNewExclusionComment] = useState('');
   const [orchestratorIp, setOrchestratorIp] = useState('');
+  const [orchestratorBehindNat, setOrchestratorBehindNat] = useState(false);
   const [availableIps, setAvailableIps] = useState<string[]>([]);
   const [manualIps, setManualIps] = useState<string[]>([]);
   const [newIpInput, setNewIpInput] = useState('');
@@ -126,6 +127,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
 
         setGlobalExclusions([...(data.global_exclusions || [])].sort((a, b) => a.pattern.localeCompare(b.pattern)));
         setOrchestratorIp(data.orchestrator_ip || '');
+        setOrchestratorBehindNat(!!data.orchestrator_behind_nat);
         setAvailableIps(data.available_ips || []);
         setLanguageState(data.language || 'en');
         setDefaultCompression(data.default_compression || 'zstd:3');
@@ -207,6 +209,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           keep_monthly: policyKeepMonthly,
           global_exclusions: globalExclusions,
           orchestrator_ip: orchestratorIp,
+          orchestrator_behind_nat: orchestratorBehindNat,
           timezone: savedTz,
           language: language,
           default_compression: defaultCompression,
@@ -560,6 +563,23 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                       {t('addButton') || 'Add'}
                     </button>
                   </div>
+
+                  <label className="flex items-start gap-2.5 pt-3 border-t border-zinc-800/60 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={orchestratorBehindNat}
+                      onChange={(e) => setOrchestratorBehindNat(e.target.checked)}
+                      className="mt-0.5 rounded border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-3.5 w-3.5 shrink-0"
+                    />
+                    <span>
+                      <span className="text-xs font-semibold text-zinc-300 block">
+                        {t('orchestratorBehindNatLabel') || 'Orchestrator is behind NAT'}
+                      </span>
+                      <span className="text-[10px] text-zinc-500 leading-relaxed block mt-0.5">
+                        {t('orchestratorBehindNatHint') || "Nodes can't reach this server directly. Backups are tunneled through the orchestrator's own outbound SSH connection to each node instead. Adds encryption overhead on every backup — leave off unless nodes genuinely can't connect directly."}
+                      </span>
+                    </span>
+                  </label>
                 </div>
 
                 {/* Bootstrap Credentials management sub-card */}
@@ -806,6 +826,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                   keep_monthly: policyKeepMonthly,
                   global_exclusions: globalExclusions,
                   orchestrator_ip: orchestratorIp,
+          orchestrator_behind_nat: orchestratorBehindNat,
                   timezone: savedTz,
                   language: language,
                   default_compression: defaultCompression,

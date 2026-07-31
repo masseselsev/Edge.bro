@@ -47,6 +47,7 @@ class SettingsBase(BaseModel):
     keep_monthly: int = Field(default=6, ge=0)
     global_exclusions: List[ExclusionSchema] = Field(default=[])
     orchestrator_ip: str = Field(default='')
+    orchestrator_behind_nat: bool = Field(default=False)
     timezone: str = Field(default='Browser Local')
     language: str = Field(default='en')
     retention_policy: Optional[RetentionPolicySchema] = None

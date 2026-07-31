@@ -37,6 +37,10 @@ class Settings(Base):
     # Seeded from .env so a fresh install shows the configured IP in the UI.
     # Once set through the UI the DB value wins; .env is only the initial value.
     orchestrator_ip = Column(String, default=lambda: os.getenv("ORCHESTRATOR_IP", ""), nullable=False)
+    # When true, nodes cannot reach the orchestrator directly (it sits behind NAT).
+    # Backups instead go through a reverse SSH tunnel opened on the orchestrator's
+    # own outbound connection to the node. See backup_tasks.resolve_borg_target.
+    orchestrator_behind_nat = Column(Boolean, default=False, nullable=False)
     timezone = Column(String, default='Browser Local', nullable=False)
     language = Column(String, default='en', nullable=False)
     retention_policy = Column(JSON, nullable=True)
