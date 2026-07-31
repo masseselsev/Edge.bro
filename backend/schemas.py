@@ -98,6 +98,10 @@ class BackupGroupBase(BaseModel):
     timezone: str = Field(default='UTC')
     override_retention: bool = False
     retention_policy: Optional[RetentionPolicySchema] = None
+    # None = inherit the global Settings value
+    orchestrator_behind_nat: Optional[bool] = Field(
+        default=None, description="None = inherit global setting"
+    )
     # Resource limits (None = inherit global default / unlimited)
     upload_rate_limit: Optional[int] = Field(default=None, ge=0, description="KiB/s, None = unlimited")
     compression: Optional[str] = Field(default=None, description="e.g. 'zstd:3', None = global default")
@@ -154,6 +158,8 @@ class NodeResponse(BaseModel):
     backup_task_id: Optional[str] = None
     last_ping_status: Optional[bool] = None
     last_available_at: Optional[datetime] = None
+    # None = inherit from the node's group, then the global setting
+    orchestrator_behind_nat: Optional[bool] = None
 
     class Config:
         from_attributes = True
@@ -240,6 +246,11 @@ class SystemLogResponse(BaseModel):
 
 class NodeNotesUpdate(BaseModel):
     notes: Optional[str] = None
+
+
+class NodeNatOverrideUpdate(BaseModel):
+    # None clears the override -> inherit from group, then global settings
+    orchestrator_behind_nat: Optional[bool] = None
 
 
 class NodeProvisionRequest(BaseModel):

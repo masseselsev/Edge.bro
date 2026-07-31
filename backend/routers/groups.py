@@ -54,6 +54,7 @@ def create_group(payload: schemas.BackupGroupCreate, request: Request = None, db
         timezone=payload.timezone,
         override_retention=payload.override_retention,
         retention_policy=payload.retention_policy.model_dump() if payload.retention_policy else None,
+        orchestrator_behind_nat=payload.orchestrator_behind_nat,
         upload_rate_limit=payload.upload_rate_limit,
         compression=payload.compression,
         checkpoint_interval=payload.checkpoint_interval,
@@ -85,6 +86,7 @@ def update_group(group_id: int, payload: schemas.BackupGroupCreate, request: Req
     group.timezone = payload.timezone
     group.override_retention = payload.override_retention
     group.retention_policy = payload.retention_policy.model_dump() if payload.retention_policy else None
+    group.orchestrator_behind_nat = payload.orchestrator_behind_nat
     group.upload_rate_limit = payload.upload_rate_limit
     group.compression = payload.compression
     group.checkpoint_interval = payload.checkpoint_interval

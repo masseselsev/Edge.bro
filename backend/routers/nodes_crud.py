@@ -193,6 +193,7 @@ def get_nodes(
             "edge_version": node.edge_version,
             "hasp_runtime_version": node.hasp_runtime_version,
             "notes": node.notes,
+            "orchestrator_behind_nat": node.orchestrator_behind_nat,
             "is_backup_running": is_running,
             "backup_progress": progress,
             "backup_task_id": running_task_id,

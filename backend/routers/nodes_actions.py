@@ -125,6 +125,28 @@ def update_node_notes(node_id: int, payload: schemas.NodeNotesUpdate, request: R
     return {"message": "Node notes updated successfully."}
 
 
+@router.post("/{node_id}/nat-override")
+def update_node_nat_override(node_id: int, payload: schemas.NodeNatOverrideUpdate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    """
+    Overrides whether the orchestrator is behind NAT for this specific node.
+    None clears the override so the node inherits from its group, then global.
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+
+    node.orchestrator_behind_nat = payload.orchestrator_behind_nat
+    db.commit()
+
+    if payload.orchestrator_behind_nat is None:
+        described = "inherit"
+    else:
+        described = "behind NAT" if payload.orchestrator_behind_nat else "direct"
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Update Node NAT Override", f"Set NAT mode for node '{node.hostname}' to {described}", request)
+    return {"message": "Node NAT override updated successfully."}
+
+
 @router.post("/{node_id}/backup-today")
 def trigger_backup_today(node_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """

@@ -76,6 +76,10 @@ class BackupGroup(Base):
     override_retention = Column(Boolean, default=False, nullable=False)
     retention_policy = Column(JSON, nullable=True)
 
+    # NULL = inherit the global Settings value. Set per group when only some
+    # sites sit behind NAT relative to the orchestrator.
+    orchestrator_behind_nat = Column(Boolean, nullable=True)
+
     # Resource limits
     upload_rate_limit = Column(Integer, nullable=True)   # KiB/s, NULL = unlimited
     compression = Column(String, nullable=True)           # e.g. "zstd:3", NULL = global default
@@ -113,6 +117,9 @@ class Node(Base):
     memory_info = Column(String, nullable=True)
     edge_version = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
+    # NULL = inherit from the node's group, then the global Settings value.
+    # Set per node for the odd site that differs from the rest of its group.
+    orchestrator_behind_nat = Column(Boolean, nullable=True)
     hasp_runtime_version = Column(String, nullable=True)
     hasp_license_v2c = Column(Text, nullable=True)
 
