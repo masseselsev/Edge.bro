@@ -15,6 +15,8 @@ interface Device {
 interface EdgeNode {
   id: number;
   hostname: string;
+  ip_address: string;
+  notes: string | null;
   disk_type: string;
   efi_uuid: string | null;
   last_backup: string | null;
@@ -252,12 +254,18 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   const selectedNode = nodes.find(n => n.id === Number(selectedNodeId));
 
   // Options converters
+  // Sublabel stays a plain string so SearchableSelect can match IP and notes when filtering.
   const nodeOptions = nodes
     .filter(n => n.last_backup !== null)
     .map(n => ({
       value: n.id,
       label: n.hostname,
-      sublabel: `Original Disk: ${n.disk_type}${n.efi_uuid ? '' : ' [NO EFI UUID]'}${n.repo_size_bytes !== undefined ? ` — Repo Size: ${getFormatSize(n.repo_size_bytes)}` : ''}`,
+      sublabel: [
+        n.ip_address,
+        `Original Disk: ${n.disk_type}${n.efi_uuid ? '' : ' [NO EFI UUID]'}`,
+        ...(n.repo_size_bytes !== undefined ? [`Repo Size: ${getFormatSize(n.repo_size_bytes)}`] : []),
+        ...(n.notes?.trim() ? [n.notes.trim()] : []),
+      ].filter(Boolean).join(' — '),
       disabled: false
     }));
 
