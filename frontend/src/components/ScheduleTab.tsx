@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Plus, Edit2, Trash2, Play, Activity, RefreshCw } from 'lucide-react';
+import { Calendar, Plus, Edit2, Trash2, Play, Activity, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import BackupGroupModal from './BackupGroupModal';
 import type { BackupGroup } from './BackupGroupModal';
+import { InfoLabel } from './InfoLabel';
 
 interface Node {
   id: number;
@@ -16,55 +17,91 @@ interface Node {
   last_available_at?: string | null;
 }
 
+interface GroupWindowFit {
+  group_id: number;
+  group_name: string;
+  nodes_per_run: number;
+  est_hours: number;
+  window_hours: number;
+  concurrency: number;
+  capacity_hours: number;
+  fits: boolean;
+  rate_limit_kib: number | null;
+  has_estimate: boolean;
+}
+
 interface LoadData {
   day_load: number[];
   week_load: number[];
   month_load: number[];
+  day_hours: number[];
+  week_hours: number[];
+  month_hours: number[];
+  group_fit: GroupWindowFit[];
 }
+
+const EMPTY_LOAD: LoadData = {
+  day_load: Array(24).fill(0),
+  week_load: Array(7).fill(0),
+  month_load: Array(4).fill(0),
+  day_hours: Array(24).fill(0),
+  week_hours: Array(7).fill(0),
+  month_hours: Array(4).fill(0),
+  group_fit: []
+};
+
+type Metric = 'nodes' | 'hours';
+type Bucket = 'day' | 'week' | 'month';
+
+// A node count and an hour count need very different "this is red" points, so
+// each metric keeps its own thresholds.
+const THRESHOLD_DEFAULTS: Record<Metric, Record<Bucket, number>> = {
+  nodes: { day: 10, week: 100, month: 400 },
+  hours: { day: 8, week: 40, month: 160 }
+};
+
+// The 'nodes' keys predate the hours metric and are kept as-is.
+const thresholdKey = (bucket: Bucket, metric: Metric) =>
+  `scheduler_${bucket}_threshold${metric === 'hours' ? '_hours' : ''}`;
 
 export default function ScheduleTab() {
   const { t, language } = useTranslation();
-  
+
   const [groups, setGroups] = useState<BackupGroup[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
-  const [loadData, setLoadData] = useState<LoadData>({
-    day_load: Array(24).fill(0),
-    week_load: Array(7).fill(0),
-    month_load: Array(4).fill(0)
-  });
-  
+  const [loadData, setLoadData] = useState<LoadData>(EMPTY_LOAD);
+
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<BackupGroup | null>(null);
 
-  // Threshold states for planned load maps
-  const [dayThreshold, setDayThreshold] = useState<number>(() => {
-    const saved = localStorage.getItem('scheduler_day_threshold');
-    return saved ? Number(saved) : 10;
-  });
-  const [weekThreshold, setWeekThreshold] = useState<number>(() => {
-    const saved = localStorage.getItem('scheduler_week_threshold');
-    return saved ? Number(saved) : 100;
-  });
-  const [monthThreshold, setMonthThreshold] = useState<number>(() => {
-    const saved = localStorage.getItem('scheduler_month_threshold');
-    return saved ? Number(saved) : 400;
+  const [metric, setMetric] = useState<Metric>(
+    () => (localStorage.getItem('scheduler_load_metric') as Metric) || 'nodes'
+  );
+
+  const handleMetricChange = (m: Metric) => {
+    setMetric(m);
+    localStorage.setItem('scheduler_load_metric', m);
+  };
+
+  // Threshold states for planned load maps, keyed `${bucket}_${metric}`
+  const [thresholds, setThresholds] = useState<Record<string, number>>(() => {
+    const out: Record<string, number> = {};
+    (['nodes', 'hours'] as Metric[]).forEach(m => {
+      (['day', 'week', 'month'] as Bucket[]).forEach(b => {
+        const saved = localStorage.getItem(thresholdKey(b, m));
+        out[`${b}_${m}`] = saved ? Number(saved) : THRESHOLD_DEFAULTS[m][b];
+      });
+    });
+    return out;
   });
 
-  const handleDayThresholdChange = (val: number) => {
+  const thresholdFor = (bucket: Bucket) => thresholds[`${bucket}_${metric}`] || 1;
+
+  const handleThresholdChange = (bucket: Bucket, val: number) => {
     const v = Math.max(1, val);
-    setDayThreshold(v);
-    localStorage.setItem('scheduler_day_threshold', String(v));
-  };
-  const handleWeekThresholdChange = (val: number) => {
-    const v = Math.max(1, val);
-    setWeekThreshold(v);
-    localStorage.setItem('scheduler_week_threshold', String(v));
-  };
-  const handleMonthThresholdChange = (val: number) => {
-    const v = Math.max(1, val);
-    setMonthThreshold(v);
-    localStorage.setItem('scheduler_month_threshold', String(v));
+    setThresholds(prev => ({ ...prev, [`${bucket}_${metric}`]: v }));
+    localStorage.setItem(thresholdKey(bucket, metric), String(v));
   };
 
   const fetchData = async () => {
@@ -81,7 +118,9 @@ export default function ScheduleTab() {
         const nData = await nRes.json();
         setNodes(Array.isArray(nData) ? nData : (nData.nodes || []));
       }
-      if (lRes.ok) setLoadData(await lRes.json());
+      // Merged onto the zeroed shape so an older backend that omits the hour
+      // buckets renders empty maps instead of crashing on undefined.map().
+      if (lRes.ok) setLoadData({ ...EMPTY_LOAD, ...(await lRes.json()) });
     } catch (err) {
       console.error("Failed to fetch scheduling data:", err);
     } finally {
@@ -138,23 +177,47 @@ export default function ScheduleTab() {
   };
 
   // HSL Hues Helper
-  const getDayMarkerColor = (count: number) => {
-    const ratio = count / dayThreshold;
+  const getMarkerColor = (value: number, bucket: Bucket) => {
+    const ratio = value / thresholdFor(bucket);
     const hue = Math.max(0, 120 - ratio * 120);
     return `hsl(${hue}, 85%, 45%)`;
   };
 
-  const getWeekMarkerColor = (count: number) => {
-    const ratio = count / weekThreshold;
-    const hue = Math.max(0, 120 - ratio * 120);
-    return `hsl(${hue}, 85%, 45%)`;
+  const formatHours = (h: number) => {
+    if (!h) return '0';
+    if (h < 10) return h.toFixed(1);
+    return String(Math.round(h));
   };
 
-  const getMonthMarkerColor = (count: number) => {
-    const ratio = count / monthThreshold;
-    const hue = Math.max(0, 120 - ratio * 120);
-    return `hsl(${hue}, 85%, 45%)`;
+  /** The number drawn inside a cell, for whichever metric is selected. */
+  const cellValue = (count: number, hours: number) =>
+    metric === 'hours' ? formatHours(hours) : String(count);
+
+  /** Tooltips always show both, so switching metric never hides information. */
+  const cellDetail = (count: number, hours: number) =>
+    `${count} ${t('backups')} · ${formatHours(hours)} ${t('hoursShort')}`;
+
+  const seriesFor = (bucket: Bucket) => {
+    const counts = bucket === 'day' ? loadData.day_load : bucket === 'week' ? loadData.week_load : loadData.month_load;
+    const hours = bucket === 'day' ? loadData.day_hours : bucket === 'week' ? loadData.week_hours : loadData.month_hours;
+    return counts.map((count, idx) => ({ count, hours: hours[idx] ?? 0 }));
   };
+
+  const renderThresholdRow = (bucket: Bucket) => (
+    <div className="flex justify-between items-center text-xs text-zinc-500 font-mono h-5">
+      <span>0 = {t('greenColor')}</span>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="number"
+          min={1}
+          value={thresholdFor(bucket)}
+          onChange={(e) => handleThresholdChange(bucket, Number(e.target.value))}
+          className="w-12 px-1 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
+        />
+        <span>{metric === 'hours' ? `${t('hoursShort')} ` : ''}= {t('redColor')}</span>
+      </div>
+    </div>
+  );
 
   const getDayOfWeekName = (idx: number) => {
     const daysEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -188,10 +251,30 @@ export default function ScheduleTab() {
 
       {/* Scheduler Planned Loads */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-md space-y-6">
-        <h3 className="text-lg font-semibold text-zinc-200 flex items-center gap-2 border-b border-zinc-800 pb-3">
-          <Activity className="h-5 w-5 text-indigo-400 animate-pulse" />
-          {t('schedulerLoad')}
-        </h3>
+        <div className="flex justify-between items-center border-b border-zinc-800 pb-3 gap-4 flex-wrap">
+          <h3 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
+            <Activity className="h-5 w-5 text-indigo-400 animate-pulse" />
+            {t('schedulerLoad')}
+          </h3>
+
+          {/* Node counts hide the real cost on slow links, so the same maps can
+              be read as estimated transfer hours instead. */}
+          <div className="flex items-center gap-1 p-0.5 bg-zinc-950 border border-zinc-800 rounded-lg">
+            {(['nodes', 'hours'] as Metric[]).map(m => (
+              <button
+                key={m}
+                onClick={() => handleMetricChange(m)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition ${
+                  metric === m
+                    ? 'bg-indigo-600 text-white shadow'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {m === 'nodes' ? t('loadMetricNodes') : t('loadMetricHours')}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Day Load Grid (24 Hour Markers) */}
@@ -204,8 +287,8 @@ export default function ScheduleTab() {
             </div>
             <div className="flex-1 flex flex-col justify-center p-4 bg-zinc-950/50 rounded-lg border border-zinc-800/80">
               <div className="grid grid-cols-8 gap-2.5 justify-items-center">
-                {loadData.day_load.map((count, hr) => {
-                  const color = getDayMarkerColor(count);
+                {seriesFor('day').map(({ count, hours }, hr) => {
+                  const color = getMarkerColor(metric === 'hours' ? hours : count, 'day');
                   return (
                     <div
                       key={hr}
@@ -219,26 +302,14 @@ export default function ScheduleTab() {
                       </div>
                       {/* Tooltip */}
                       <div className="absolute bottom-full mb-1.5 hidden group-hover:block bg-zinc-900 text-zinc-100 text-xs py-1 px-2.5 rounded shadow-lg whitespace-nowrap border border-zinc-800 z-10 font-mono">
-                        {hr.toString().padStart(2, '0')}:00 - {count} {t('backups')}
+                        {hr.toString().padStart(2, '0')}:00 - {cellDetail(count, hours)}
                       </div>
                     </div>
                   );
                 })}
               </div>
             </div>
-            <div className="flex justify-between items-center text-xs text-zinc-500 font-mono h-5">
-              <span>0 = {t('greenColor')}</span>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="number"
-                  min={1}
-                  value={dayThreshold}
-                  onChange={(e) => handleDayThresholdChange(Number(e.target.value))}
-                  className="w-12 px-1 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
-                />
-                <span>= {t('redColor')}</span>
-              </div>
-            </div>
+            {renderThresholdRow('day')}
           </div>
 
           {/* Week Load Grid (7 Days) */}
@@ -248,8 +319,8 @@ export default function ScheduleTab() {
             </div>
             <div className="flex-1 flex flex-col justify-center p-4 bg-zinc-950/50 rounded-lg border border-zinc-800/80">
               <div className="grid grid-cols-7 gap-2">
-                {loadData.week_load.map((count, idx) => {
-                  const color = getWeekMarkerColor(count);
+                {seriesFor('week').map(({ count, hours }, idx) => {
+                  const color = getMarkerColor(metric === 'hours' ? hours : count, 'week');
                   return (
                     <div key={idx} className="group relative flex flex-col items-center gap-1.5">
                       <span className="text-xs text-zinc-400 font-medium">{getDayOfWeekName(idx)}</span>
@@ -257,29 +328,17 @@ export default function ScheduleTab() {
                         className="h-20 w-full rounded-md flex items-center justify-center text-xs font-bold text-white transition-all hover:scale-105"
                         style={{ backgroundColor: color }}
                       >
-                        {count}
+                        {cellValue(count, hours)}
                       </div>
                       <div className="absolute bottom-full mb-1.5 hidden group-hover:block bg-zinc-900 text-zinc-100 text-xs py-1 px-2.5 rounded shadow-lg whitespace-nowrap border border-zinc-800 z-10 font-mono">
-                        {getDayOfWeekName(idx)}: {count} {t('backups')}
+                        {getDayOfWeekName(idx)}: {cellDetail(count, hours)}
                       </div>
                     </div>
                   );
                 })}
               </div>
             </div>
-            <div className="flex justify-between items-center text-xs text-zinc-500 font-mono h-5">
-              <span>0 = {t('greenColor')}</span>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="number"
-                  min={1}
-                  value={weekThreshold}
-                  onChange={(e) => handleWeekThresholdChange(Number(e.target.value))}
-                  className="w-12 px-1 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
-                />
-                <span>= {t('redColor')}</span>
-              </div>
-            </div>
+            {renderThresholdRow('week')}
           </div>
 
           {/* Month Load Grid (4 Weeks) */}
@@ -289,8 +348,8 @@ export default function ScheduleTab() {
             </div>
             <div className="flex-1 flex flex-col justify-center p-4 bg-zinc-950/50 rounded-lg border border-zinc-800/80">
               <div className="grid grid-cols-4 gap-3">
-                {loadData.month_load.map((count, idx) => {
-                  const color = getMonthMarkerColor(count);
+                {seriesFor('month').map(({ count, hours }, idx) => {
+                  const color = getMarkerColor(metric === 'hours' ? hours : count, 'month');
                   return (
                     <div key={idx} className="group relative flex flex-col items-center gap-1.5 w-full">
                       <span className="text-xs text-zinc-400 font-medium">W{idx + 1}</span>
@@ -298,30 +357,66 @@ export default function ScheduleTab() {
                         className="w-full h-20 rounded-md flex items-center justify-center text-xs font-bold text-white transition-all hover:scale-105"
                         style={{ backgroundColor: color }}
                       >
-                        {count}
+                        {cellValue(count, hours)}
                       </div>
                       <div className="absolute bottom-full mb-1.5 hidden group-hover:block bg-zinc-900 text-zinc-100 text-xs py-1 px-2.5 rounded shadow-lg whitespace-nowrap border border-zinc-800 z-10 font-mono">
-                        {t('weekUnit')} {idx + 1}: {count} {t('backups')}
+                        {t('weekUnit')} {idx + 1}: {cellDetail(count, hours)}
                       </div>
                     </div>
                   );
                 })}
               </div>
             </div>
-            <div className="flex justify-between items-center text-xs text-zinc-500 font-mono h-5">
-              <span>0 = {t('greenColor')}</span>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="number"
-                  min={1}
-                  value={monthThreshold}
-                  onChange={(e) => handleMonthThresholdChange(Number(e.target.value))}
-                  className="w-12 px-1 py-0.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-350 text-center focus:outline-none focus:border-indigo-500 text-[11px] font-mono"
-                />
-                <span>= {t('redColor')}</span>
-              </div>
-            </div>
+            {renderThresholdRow('month')}
           </div>
+        </div>
+
+        {/* Does each group's busiest day actually fit its execution window? */}
+        <div className="pt-4 border-t border-zinc-800 space-y-2.5">
+          <InfoLabel
+            label={t('windowFitTitle')}
+            hint={t('windowFitHint')}
+            className="block text-sm font-medium text-zinc-300 mb-1"
+          />
+
+          {loadData.group_fit.length === 0 ? (
+            <p className="text-xs text-zinc-500">{t('windowFitEmpty')}</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
+              {loadData.group_fit.map(fit => (
+                <div
+                  key={fit.group_id}
+                  className={`p-3 rounded-lg border text-xs ${
+                    fit.fits
+                      ? 'bg-zinc-950/50 border-zinc-800/80'
+                      : 'bg-rose-500/5 border-rose-500/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    {fit.fits ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                    )}
+                    <span className="text-zinc-200 truncate">{fit.group_name}</span>
+                    <span className={`ml-auto shrink-0 ${fit.fits ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {fit.fits ? t('windowFitOk') : t('windowFitOver')}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-zinc-400 leading-relaxed">
+                    {t('windowFitDetail')
+                      .replace('{est}', formatHours(fit.est_hours))
+                      .replace('{capacity}', formatHours(fit.capacity_hours))
+                      .replace('{window}', formatHours(fit.window_hours))
+                      .replace('{conc}', String(fit.concurrency))}
+                  </p>
+                  {!fit.has_estimate && (
+                    <p className="mt-1 text-[10px] text-amber-400/80">{t('windowFitNoEstimate')}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
