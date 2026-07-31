@@ -110,6 +110,15 @@ def startup_db_init():
                 db_hash.close()
             else:
                 print(f"Payload source hash unchanged ({current_hash[:8]}...). No rebuild needed.")
+        elif os.path.exists(paths.BASE_ISO_PATH):
+            # The base ISO is cached but the template was never built — e.g. an
+            # install that hit the base-download-never-triggers-a-build gap.
+            # Nothing else will build it, so kick it off now.
+            print("Base ISO cached but USB-Kiosk Client template not yet built — triggering build...")
+            db_hash = next(get_db())
+            from iso_tasks import trigger_base_iso_rebuild
+            trigger_base_iso_rebuild(db_hash)
+            db_hash.close()
         else:
             print("Compiled Offline Client ISO not yet built — skipping startup hash check.")
     except Exception as e:
