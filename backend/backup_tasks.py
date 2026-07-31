@@ -29,6 +29,31 @@ def compute_checkpoint_interval(rate_kib: Optional[int]) -> int:
     return 1800
 
 
+def resolve_behind_nat(node, group, settings) -> bool:
+    """Resolves the effective NAT setting for one node.
+
+    Most fleets are uniform, but a single orchestrator can serve sites that
+    differ, so the flag is overridable at three levels. The most specific
+    non-NULL value wins:
+
+        node.orchestrator_behind_nat        (per site)
+        -> group.orchestrator_behind_nat    (per schedule group)
+        -> settings.orchestrator_behind_nat (global default)
+
+    NULL means "inherit", which is deliberately distinct from an explicit
+    False — a node may need to opt OUT of a group that is behind NAT.
+    """
+    node_val = getattr(node, "orchestrator_behind_nat", None)
+    if node_val is not None:
+        return bool(node_val)
+
+    group_val = getattr(group, "orchestrator_behind_nat", None) if group else None
+    if group_val is not None:
+        return bool(group_val)
+
+    return bool(getattr(settings, "orchestrator_behind_nat", False))
+
+
 def resolve_borg_target(
     orchestrator_behind_nat: bool,
     direct_ip: Optional[str],
@@ -120,6 +145,30 @@ def build_borg_create_cmd(
         f"root@{node_ip}",
         inner_cmd,
     ]
+
+
+def force_cleanup_stale_repo_locks(task_id: str, repo_path: str) -> None:
+    """
+    Fallback lock cleanup: if borg break-lock fails (e.g. due to permissions or stale socket issues),
+    force-removes any stale lock.* files inside repo_path on the file system level.
+    """
+    from tasks import log_to_task
+    try:
+        if os.path.exists(repo_path):
+            removed = []
+            for root, _, files in os.walk(repo_path):
+                for fname in files:
+                    if fname.startswith("lock."):
+                        full_path = os.path.join(root, fname)
+                        try:
+                            os.remove(full_path)
+                            removed.append(os.path.relpath(full_path, repo_path))
+                        except Exception as e:
+                            log_to_task(task_id, f"[Lock cleanup] Failed to force-remove {full_path}: {e}")
+            if removed:
+                log_to_task(task_id, f"[Lock cleanup] Fallback: Force-removed stale lock files: {', '.join(set(removed))}")
+    except Exception as e:
+        log_to_task(task_id, f"[Lock cleanup] Fallback lock cleanup exception: {e}")
 
 
 def cleanup_locks_and_resolve_ip(
@@ -215,12 +264,17 @@ def cleanup_locks_and_resolve_ip(
             log_to_task(task_id, "[Lock cleanup] Repo lock check passed (no stale lock, or lock broken).")
         else:
             log_to_task(task_id, f"[Lock cleanup] WARNING: Repo break-lock failed: {res.stderr.strip()}")
+            force_cleanup_stale_repo_locks(task_id, repo_path)
     except Exception as e:
         log_to_task(task_id, f"[Lock cleanup] WARNING: Server-side lock check exception: {e}")
+        force_cleanup_stale_repo_locks(task_id, repo_path)
 
     if orchestrator_behind_nat:
         log_to_task(task_id, "Orchestrator is behind NAT — will reach it through a reverse tunnel instead of a direct IP.")
         return None
+
+    resolved_ip = None
+
 
     resolved_ip = None
     if is_reachable and test_ip:
@@ -371,6 +425,9 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
 
     log_to_task(task_id, f"Initiating Borg backup for {node.hostname}...")
 
+    # Effective NAT mode for THIS node: node override -> group -> global.
+    behind_nat = resolve_behind_nat(node, group, settings)
+
     # --- Pre-backup check: resolve orchestrator IP and clean locks ---
     orchestrator_ip = cleanup_locks_and_resolve_ip(
         task_id=task_id,
@@ -380,12 +437,12 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         borg_passphrase=os.getenv("BORG_PASSPHRASE", ""),
         configured_ip=settings.orchestrator_ip,
         borg_ssh_port=settings.borg_ssh_port,
-        orchestrator_behind_nat=settings.orchestrator_behind_nat,
+        orchestrator_behind_nat=behind_nat,
     )
 
     archive_name = f"{node.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     extra_ssh_args, borg_repo_url = resolve_borg_target(
-        orchestrator_behind_nat=settings.orchestrator_behind_nat,
+        orchestrator_behind_nat=behind_nat,
         direct_ip=orchestrator_ip,
         borg_ssh_port=settings.borg_ssh_port,
     )
@@ -430,11 +487,7 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
     exclude_str = " ".join(exclude_args)
 
     # --- Resolve resource settings (group -> global -> hardcoded fallback) ---
-    group = None
-    if node.group_id:
-        from models import BackupGroup
-        group = db.query(BackupGroup).filter(BackupGroup.id == node.group_id).first()
-
+    # `group` was already loaded above when sizing the running-lock TTL.
     compression = (
         (group.compression if group and group.compression else None)
         or getattr(settings, 'default_compression', None)
