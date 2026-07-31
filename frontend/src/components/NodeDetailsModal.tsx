@@ -6,6 +6,9 @@ import type { Language } from '../i18n/translations';
 import NodeConsoleLogs from './NodeConsoleLogs';
 import NodeBackupHistory from './NodeBackupHistory';
 import { SearchableSelect } from './SearchableSelect';
+import { InfoLabel } from './InfoLabel';
+import { natChoiceFrom, natChoiceToValue } from './BackupGroupModal';
+import type { NatChoice } from './BackupGroupModal';
 
 interface Node {
   id: number;
@@ -33,6 +36,8 @@ interface Node {
   backup_task_id?: string | null;
   last_ping_status?: boolean | null;
   last_available_at?: string | null;
+  // null = inherit from the node's group, then the global setting
+  orchestrator_behind_nat?: boolean | null;
 }
 
 interface BackupHistory {
@@ -48,6 +53,7 @@ interface BackupHistory {
 interface BackupGroup {
   id: number;
   name: string;
+  orchestrator_behind_nat?: boolean | null;
 }
 
 interface TaskLog {
@@ -72,6 +78,8 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const [groups, setGroups] = useState<BackupGroup[]>([]);
   const [notes, setNotes] = useState('');
   const [groupId, setGroupId] = useState<number>(0);
+  const [natChoice, setNatChoice] = useState<NatChoice>('inherit');
+  const [globalBehindNat, setGlobalBehindNat] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
   const [triggeringAction, setTriggeringAction] = useState(false);
@@ -91,12 +99,13 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const fetchNodeDetails = async () => {
     setLoading(true);
     try {
-      const [nRes, hRes, gRes, tlRes, haspRes] = await Promise.all([
+      const [nRes, hRes, gRes, tlRes, haspRes, sRes] = await Promise.all([
         fetch('/api/nodes'),
         fetch(`/api/nodes/${nodeId}/history`),
         fetch('/api/groups'),
         fetch(`/api/nodes/${nodeId}/task-logs`),
-        fetch(`/api/nodes/${nodeId}/hasp-status`)
+        fetch(`/api/nodes/${nodeId}/hasp-status`),
+        fetch('/api/settings')
       ]);
 
       if (nRes.ok) {
@@ -107,6 +116,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           setNode(found);
           setNotes(found.notes || '');
           setGroupId(found.group_id || 0);
+          setNatChoice(natChoiceFrom(found.orchestrator_behind_nat));
           if (found.status === 'RESTORED') {
               setSentinelExpanded(true);
               setTimeout(() => {
@@ -149,6 +159,13 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
       if (haspRes && haspRes.ok) {
         const haspData = await haspRes.json();
         setHaspStatus(haspData);
+      }
+
+      // Only used to spell out what "Inherit" currently resolves to; a user
+      // without access to settings simply sees the plain label.
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        setGlobalBehindNat(!!sData.orchestrator_behind_nat);
       }
     } catch (err) {
       console.error("Failed to load node details:", err);
@@ -205,6 +222,27 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
       console.error(err);
     } finally {
       setSavingNotes(false);
+    }
+  };
+
+  const handleNatOverride = async (choice: NatChoice) => {
+    const previous = natChoice;
+    setNatChoice(choice);
+    try {
+      const res = await fetch(`/api/nodes/${nodeId}/nat-override`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orchestrator_behind_nat: natChoiceToValue(choice) })
+      });
+      if (res.ok) {
+        onRefreshList();
+        fetchNodeDetails();
+      } else {
+        setNatChoice(previous);
+      }
+    } catch (err) {
+      console.error(err);
+      setNatChoice(previous);
     }
   };
 
@@ -433,6 +471,36 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                         </span>
                       )}
                     </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <InfoLabel
+                      label={t('natOverrideLabel')}
+                      hint={t('natOverrideNodeHint')}
+                      className="block text-xs font-semibold text-zinc-400 mb-1.5"
+                    />
+                    <SearchableSelect
+                      options={[
+                        {
+                          value: 'inherit',
+                          // Spelling out what inheriting resolves to right now
+                          // saves a trip to the group and to Settings.
+                          label: (() => {
+                            const inherited =
+                              groups.find(g => g.id === groupId)?.orchestrator_behind_nat ?? globalBehindNat;
+                            if (inherited === null || inherited === undefined) return t('natOverrideInherit');
+                            return `${t('natOverrideInherit')} (${inherited ? t('natEffectiveOn') : t('natEffectiveOff')})`;
+                          })()
+                        },
+                        { value: 'nat', label: t('natOverrideOn') },
+                        { value: 'direct', label: t('natOverrideOff') }
+                      ]}
+                      value={natChoice}
+                      onChange={(val) => handleNatOverride(val as NatChoice)}
+                      placeholder={t('natOverrideInherit')}
+                    />
                   </div>
                 </div>
 

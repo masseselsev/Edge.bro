@@ -4,6 +4,7 @@ import { Calendar, X } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import { SearchableSelect } from './SearchableSelect';
 import type { Option } from './SearchableSelect';
+import { InfoLabel } from './InfoLabel';
 
 export interface BackupGroup {
   id: number;
@@ -25,11 +26,22 @@ export interface BackupGroup {
     within_value: number;
     within_unit: string;
   } | null;
+  // null = inherit the global Settings value
+  orchestrator_behind_nat?: boolean | null;
   upload_rate_limit?: number | null;
   compression?: string | null;
   checkpoint_interval?: number | null;
   cpu_quota?: number | null;
 }
+
+/** Tri-state NAT override rendered as a select; 'inherit' maps to null. */
+export type NatChoice = 'inherit' | 'nat' | 'direct';
+
+export const natChoiceFrom = (value: boolean | null | undefined): NatChoice =>
+  value === null || value === undefined ? 'inherit' : value ? 'nat' : 'direct';
+
+export const natChoiceToValue = (choice: NatChoice): boolean | null =>
+  choice === 'inherit' ? null : choice === 'nat';
 
 interface BackupGroupModalProps {
   isOpen: boolean;
@@ -59,6 +71,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
   const [policyKeepLast, setPolicyKeepLast] = useState(5);
   const [policyWithinValue, setPolicyWithinValue] = useState(3);
   const [policyWithinUnit, setPolicyWithinUnit] = useState<'d' | 'w' | 'm' | 'y'>('m');
+  const [natChoice, setNatChoice] = useState<NatChoice>('inherit');
   const [uploadRateLimit, setUploadRateLimit] = useState<number | ''>('');
   const [compression, setCompression] = useState<string>('');
   const [checkpointInterval, setCheckpointInterval] = useState<number | ''>('');
@@ -110,6 +123,12 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
     { value: 'w', label: t('timeframeUnitWeeks') },
     { value: 'm', label: t('timeframeUnitMonths') },
     { value: 'y', label: t('timeframeUnitYears') }
+  ], [t]);
+
+  const natOptions = React.useMemo(() => [
+    { value: 'inherit', label: t('natOverrideInherit') },
+    { value: 'nat', label: t('natOverrideOn') },
+    { value: 'direct', label: t('natOverrideOff') }
   ], [t]);
 
   const compressionOptions = React.useMemo(() => [
@@ -165,6 +184,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
         setTimezone(gTz);
       }
 
+      setNatChoice(natChoiceFrom(editingGroup.orchestrator_behind_nat));
       setUploadRateLimit(editingGroup.upload_rate_limit ?? '');
       setCompression(editingGroup.compression ?? '');
       setCheckpointInterval(editingGroup.checkpoint_interval ?? '');
@@ -187,6 +207,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
       setPolicyKeepLast(5);
       setPolicyWithinValue(3);
       setPolicyWithinUnit('m');
+      setNatChoice('inherit');
       setUploadRateLimit('');
       setCompression('');
       setCheckpointInterval('');
@@ -218,6 +239,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
         within_value: policyWithinValue,
         within_unit: policyWithinUnit
       } : null,
+      orchestrator_behind_nat: natChoiceToValue(natChoice),
       upload_rate_limit: uploadRateLimit === '' ? null : Number(uploadRateLimit),
       compression: compression === '' ? null : compression,
       checkpoint_interval: checkpointInterval === '' ? null : Number(checkpointInterval),
@@ -392,6 +414,20 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                     value={concurrencyLimit}
                     onChange={(e) => setConcurrencyLimit(Number(e.target.value))}
                     className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:outline-none focus:border-indigo-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <InfoLabel
+                    label={t('natOverrideLabel')}
+                    hint={t('natOverrideGroupHint')}
+                    className="block text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1.5"
+                  />
+                  <SearchableSelect
+                    options={natOptions}
+                    value={natChoice}
+                    onChange={(val) => setNatChoice(val as NatChoice)}
+                    placeholder={t('natOverrideInherit')}
                   />
                 </div>
 
