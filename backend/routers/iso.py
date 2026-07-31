@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 
-from iso_tasks import generate_client_iso_task, download_base_iso_task, CACHE_DIR
+from iso_tasks import generate_client_iso_task, download_base_iso_task, CACHE_DIR, BASE_ISO_URL
 from models import TaskLog
 from database import SessionLocal, get_db
 from sqlalchemy.orm import Session
@@ -256,6 +256,7 @@ def get_iso_status(auth = Depends(require_admin)):
 
     return {
         "base_iso_cached": base_exists or client_exists,
+        "base_iso_official_url": BASE_ISO_URL,
         "base_iso_progress": progress,
         "base_iso_speed": speed_str,
         "client_iso_ready": client_exists,

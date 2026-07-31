@@ -6,6 +6,7 @@ import KioskManagementSection from './KioskManagementSection';
 
 interface IsoStatus {
   base_iso_cached: boolean;
+  base_iso_official_url?: string;
   client_iso_ready: boolean;
   base_iso_progress?: number;
   base_iso_speed?: string;
@@ -298,10 +299,15 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                   {isoSourceType === 'official' && (
                     <div className="flex flex-col gap-2">
                       <div className="text-[10px] text-zinc-400 font-mono">debian-live-testing-amd64-xfce.iso (4GB)</div>
+                      {status?.base_iso_official_url && (
+                        <div className="text-[9px] text-zinc-500 font-mono break-all leading-relaxed">
+                          {t('sourceLabel') || 'Source'}: {status.base_iso_official_url}
+                        </div>
+                      )}
                       <button
                         onClick={handleCacheBaseIso}
                         disabled={isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0)}
-                        className="w-full py-2 text-xs font-bold bg-zinc-855 hover:bg-zinc-800 text-zinc-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        className="w-full py-2 text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-zinc-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       >
                         {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? (t('downloadProgress') || 'Downloading...') : (t('startDownload') || 'START DOWNLOAD')}
                       </button>
@@ -320,7 +326,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                       <button
                         onClick={handleCacheBaseIso}
                         disabled={isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) || !customIsoUrl}
-                        className="w-full py-2 text-xs font-bold bg-zinc-855 hover:bg-zinc-800 text-zinc-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        className="w-full py-2 text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-zinc-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       >
                         {isDownloadingBase || (status?.base_iso_progress !== undefined && status.base_iso_progress >= 0) ? (t('downloadProgress') || 'Downloading...') : (t('downloadFromUrl') || 'DOWNLOAD FROM URL')}
                       </button>
@@ -333,12 +339,12 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                         type="file" 
                         accept=".iso"
                         ref={fileInputRef}
-                        className="w-full text-xs text-zinc-400 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-bold file:bg-zinc-855 file:text-zinc-100 hover:file:bg-zinc-800 transition-colors cursor-pointer"
+                        className="w-full text-xs text-zinc-400 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-bold file:bg-zinc-900 file:text-zinc-100 hover:file:bg-zinc-800 transition-colors cursor-pointer"
                       />
                       <button
                         onClick={handleUpload}
                         disabled={isUploading}
-                        className="w-full py-2 text-xs font-bold bg-zinc-855 hover:bg-zinc-800 text-zinc-100 rounded-md transition-colors disabled:opacity-50 cursor-pointer"
+                        className="w-full py-2 text-xs font-bold bg-zinc-900 hover:bg-zinc-800 text-zinc-100 rounded-md transition-colors disabled:opacity-50 cursor-pointer"
                       >
                         {isUploading ? `${t('uploadProgressText') || 'Uploading file...'} (${uploadProgress}%)` : (t('uploadIso') || 'UPLOAD ISO')}
                       </button>
