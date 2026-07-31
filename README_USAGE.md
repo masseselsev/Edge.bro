@@ -118,14 +118,14 @@ Then set in `.env`:
 ISO_CACHE_HOST_PATH=/mnt/hdd/iso_cache
 ```
 
-**Keeping everything on one drive.** If you have a single large volume — an NFS share attached to a small VM, for example — put the ISO cache inside the backup path so both live on it:
+**Using one drive for both.** If you have a single large volume — an NFS share attached to a small VM, for example — keep the two as sibling directories rather than nesting the cache inside the backup path, which holds borg repositories:
 
 ```env
 BORG_HOST_DATA_PATH=/mnt/nfs/edge-bro
-ISO_CACHE_HOST_PATH=/mnt/nfs/edge-bro/iso_cache
+ISO_CACHE_HOST_PATH=/mnt/nfs/iso_cache
 ```
 
-Both paths are independent bind-mounts, so the nesting is only a filesystem layout choice — spell out the full path for each. The container-side paths (`/data/borg` and `/opt/data/iso_cache`) are fixed and never need changing.
+The two are independent bind-mounts and need not share a drive at all — put the ISO cache on a separate disk if that suits the host better. The container-side paths (`/data/borg` and `/opt/data/iso_cache`) are fixed and never need changing.
 
 Apply the change — no rebuild needed, the containers just get recreated with the new mount:
 
