@@ -2,9 +2,11 @@ import hashlib
 import os
 import logging
 
+import paths
+
 logger = logging.getLogger(__name__)
 
-HASH_FILE = "/opt/data/iso_cache/payload_hash.txt"
+HASH_FILE = paths.PAYLOAD_HASH_PATH
 
 # Source paths that go INTO the Compiled Offline Client ISO.
 # IMPORTANT: Only /payload_client/ paths here — /app/ paths differ between

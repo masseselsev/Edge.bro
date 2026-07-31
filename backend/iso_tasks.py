@@ -7,15 +7,17 @@ import hashlib
 from celery_app import celery_app
 from typing import Dict, Any
 
+import paths
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MIRROR_URLS = [
     "https://cdimage.debian.org/cdimage/weekly-live-builds/amd64/iso-hybrid/debian-live-testing-amd64-xfce.iso"
 ]
 BASE_ISO_URL = DEFAULT_MIRROR_URLS[0]
-CACHE_DIR = "/opt/data/iso_cache"
-BASE_ISO_PATH = os.path.join(CACHE_DIR, "base.iso")
-BASE_ISO_PATH_TMP = BASE_ISO_PATH + ".tmp"
+CACHE_DIR = paths.ISO_CACHE_DIR
+BASE_ISO_PATH = paths.BASE_ISO_PATH
+BASE_ISO_PATH_TMP = paths.BASE_ISO_TMP_PATH
 
 @celery_app.task(bind=True)
 def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
@@ -626,7 +628,7 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
 
         history_dir = os.path.join(CACHE_DIR, "history")
         os.makedirs(history_dir, exist_ok=True)
-        server_name = settings.server_name if (settings and settings.server_name) else "Edge-B.R.O."
+        server_name = settings.server_name if (settings and settings.server_name) else "edge-bro"
         
         # Clean up any existing ISO files for this kiosk token first to ensure clean generation and save space
         for file in os.listdir(history_dir):

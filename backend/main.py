@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import get_db
 import models
+import paths
 from version import VERSION
 from tasks import ensure_orchestrator_ssh_key
 
@@ -56,9 +57,9 @@ def startup_db_init():
 
     # Clear any stale download lock file on startup. If a download was in progress, auto-resume it.
     try:
-        lock_path = "/opt/data/iso_cache/download.lock"
-        tmp_iso_path = "/opt/data/iso_cache/base.iso.tmp"
-        base_iso_path = "/opt/data/iso_cache/base.iso"
+        lock_path = paths.DOWNLOAD_LOCK_PATH
+        tmp_iso_path = paths.BASE_ISO_TMP_PATH
+        base_iso_path = paths.BASE_ISO_PATH
         
         # Clear lock first to reset any stale status
         if os.path.exists(lock_path):
