@@ -1,36 +1,28 @@
-import hashlib
+import calendar
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
-import zoneinfo
 import models
 import schemas
 from database import get_db
 from tasks import run_backup_task
 
+# Recurrence maths is shared with the scheduler so the projection below cannot
+# drift from what actually runs.
+from core.schedule_slots import (
+    deterministic_hash,
+    get_tzinfo,
+    is_scheduled_on,
+    node_slot,
+    parse_window,
+    week_of_month,
+)
+from core.schedule_estimate import DEFAULT_BACKUP_MINUTES, estimate_node_backup_minutes
+
 from routers.users import require_admin
 
 router = APIRouter(prefix="/api/groups", dependencies=[Depends(require_admin)])
-
-def deterministic_hash(value: str) -> int:
-    """
-    Computes a deterministic integer hash from a string using MD5.
-    Avoids Python's randomized built-in hash().
-    """
-    return int(hashlib.md5(value.encode('utf-8')).hexdigest(), 16)
-
-def get_tzinfo(tz_name: str, db_session: Session) -> zoneinfo.ZoneInfo:
-    if not tz_name or tz_name == 'Browser Local':
-        settings = db_session.query(models.Settings).first()
-        if settings and settings.timezone and settings.timezone != 'Browser Local':
-            tz_name = settings.timezone
-        else:
-            tz_name = 'UTC'
-    try:
-        return zoneinfo.ZoneInfo(tz_name)
-    except Exception:
-        return zoneinfo.ZoneInfo('UTC')
 
 @router.get("", response_model=List[schemas.BackupGroupResponse])
 def get_groups(db: Session = Depends(get_db)):
@@ -150,135 +142,125 @@ def trigger_group_backup(group_id: int, request: Request = None, db: Session = D
 @router.get("/scheduler-load", response_model=schemas.SchedulerLoadResponse)
 def get_scheduler_load(db: Session = Depends(get_db)):
     """
-    Computes the load distribution:
-    - day_load: 24 hourly buckets for today's backup starts
-    - week_load: 7 daily buckets for the current week's backup starts (Mon-Sun)
-    - month_load: 4 weekly buckets for the current month's backup starts (Week 1-4)
+    Projects upcoming scheduler load.
+
+    Buckets are reported both as node counts (day_load / week_load / month_load)
+    and as estimated transfer hours (day_hours / week_hours / month_hours). On
+    slow links a count says nothing useful — five nodes may be twenty minutes or
+    twenty hours of transfer — so `group_fit` additionally reports whether each
+    group's busiest day actually fits inside its execution window.
+
+    Recurrence is evaluated with core.schedule_slots, the same module the real
+    scheduler uses, so this projection cannot drift from what will actually run.
     """
-    # Load settings timezone or fallback to UTC
     target_tz = get_tzinfo('Browser Local', db)
     now_target = datetime.now(target_tz)
-    
-    # 1. Initialize empty buckets
+
     day_load = [0] * 24
     week_load = [0] * 7
     month_load = [0] * 4
-    
-    # Determine current context metrics in target timezone
-    current_day_of_week = now_target.weekday()  # Monday = 0, Sunday = 6
-    current_week_of_month = min(4, ((now_target.day - 1) // 7) + 1)
-    current_month = now_target.month
-    
+    day_hours = [0.0] * 24
+    week_hours = [0.0] * 7
+    month_hours = [0.0] * 4
+
     nodes = db.query(models.Node).filter(
         models.Node.group_id.isnot(None),
         models.Node.backup_paused == False
     ).all()
-    
-    # Pre-fetch groups
+
     groups = {g.id: g for g in db.query(models.BackupGroup).all()}
-    
+
+    today = now_target.date()
+    week_start = today - timedelta(days=today.weekday())        # Monday
+    days_in_month = calendar.monthrange(today.year, today.month)[1]
+
+    # gid -> weekday index -> [node_count, hours]
+    per_group_day: dict = {}
+
     for node in nodes:
         group = groups.get(node.group_id)
         if not group:
             continue
-            
+
         group_tz = get_tzinfo(group.timezone, db)
-        node_hash = deterministic_hash(node.hostname)
-        
-        # Day of week staggering in group's local timezone (0 to 6)
-        if group.randomize_days:
-            day_index = node_hash % 7
-        else:
-            day_index = 0  # Default to Monday if not randomized
-            
-        # Parse window hours
-        try:
-            start_h, start_m = map(int, group.start_time.split(":"))
-            end_h = int(group.end_time.split(":")[0])
-        except Exception:
-            start_h, start_m, end_h = 2, 0, 5
-            
-        window_duration_hours = end_h - start_h
-        if window_duration_hours <= 0:
-            window_duration_hours += 24
-        window_duration_hours = max(1, window_duration_hours)
-        
-        # Stagger offsets
-        hour_offset = node_hash % window_duration_hours
-        minute_offset = (node_hash // window_duration_hours) % 60
-        
-        scheduled_local_hour = (start_h + hour_offset) % 24
-        scheduled_local_minute = (start_m + minute_offset) % 60
-        
-        # Calculate when it is scheduled in target timezone
-        # Let's target this week. Find diff between scheduled local day and current local day
-        days_diff = day_index - now_target.weekday()
-        # Scheduled run time in group's local timezone
-        local_run_dt = datetime.now(group_tz).replace(
-            hour=scheduled_local_hour,
-            minute=scheduled_local_minute,
-            second=0,
-            microsecond=0
-        ) + timedelta(days=days_diff)
-        
-        # Convert local run datetime to target timezone
-        run_dt_target = local_run_dt.astimezone(target_tz)
-        target_day_index = run_dt_target.weekday()
-        target_hour = run_dt_target.hour
-        target_week_of_month = min(4, ((run_dt_target.day - 1) // 7) + 1)
-        target_month = run_dt_target.month
-        
-        # Evaluate Scheduler Recurrence Active Windows using local scheduled date context
-        is_active_this_month = False
-        if group.interval == "weekly":
-            is_active_this_month = True
-        elif group.interval == "monthly":
-            is_active_this_month = True
-        elif group.interval == "quarterly":
-            current_quarter_start = ((target_month - 1) // 3) * 3 + 1
-            if target_month == current_quarter_start:
-                is_active_this_month = True
-        elif group.interval == "yearly":
-            if target_month == 1:
-                is_active_this_month = True
-                
-        # --- 1. Month Load (Weeks 1 to 4) ---
-        for w in range(1, 5):
-            runs_in_week = False
-            if group.interval == "weekly":
-                runs_in_week = True
-            elif group.interval == "monthly" and group.target_week == w:
-                runs_in_week = True
-            elif group.interval == "quarterly" and group.target_week == w and is_active_this_month:
-                runs_in_week = True
-            elif group.interval == "yearly" and group.target_week == w and is_active_this_month:
-                runs_in_week = True
-                
-            if runs_in_week:
-                month_load[w - 1] += 1
-                
-        # --- 2. Week Load (Days 0 to 6 of current week) ---
-        runs_this_week = False
-        if group.interval == "weekly":
-            runs_this_week = True
-        elif group.interval == "monthly" and group.target_week == target_week_of_month:
-            runs_this_week = True
-        elif group.interval == "quarterly" and group.target_week == target_week_of_month and is_active_this_month:
-            runs_this_week = True
-        elif group.interval == "yearly" and group.target_week == target_week_of_month and is_active_this_month:
-            runs_this_week = True
-            
-        if runs_this_week:
-            # We must verify if the target day is within the current week scope
-            # Simple check: we index by target_day_index (0 to 6)
-            week_load[target_day_index] += 1
-            
-            # --- 3. Day Load (Hours 0 to 23 of today) ---
-            if target_day_index == current_day_of_week:
-                day_load[target_hour] += 1
-                
+        window = parse_window(group.start_time, group.end_time)
+        slot = node_slot(group, node.hostname, window)
+        start_h, start_m = divmod(window.start_mins, 60)
+
+        est_minutes = estimate_node_backup_minutes(db, node.id, group.upload_rate_limit)
+        est_h = (est_minutes if est_minutes is not None else DEFAULT_BACKUP_MINUTES) / 60.0
+
+        bucket = per_group_day.setdefault(group.id, {})
+
+        # --- current week (Mon..Sun), evaluated on the group's own calendar ---
+        for i in range(7):
+            d = week_start + timedelta(days=i)
+            window_start_local = datetime(d.year, d.month, d.day, start_h, start_m, tzinfo=group_tz)
+            if not is_scheduled_on(group, node.hostname, window_start_local, window):
+                continue
+
+            week_load[i] += 1
+            week_hours[i] += est_h
+            slot_counts = bucket.setdefault(i, [0, 0.0])
+            slot_counts[0] += 1
+            slot_counts[1] += est_h
+
+            # --- today's hourly distribution, shown in the dashboard timezone ---
+            if d == today:
+                run_local = window_start_local + timedelta(minutes=slot.stagger_offset_mins)
+                run_target = run_local.astimezone(target_tz)
+                day_load[run_target.hour] += 1
+                day_hours[run_target.hour] += est_h
+
+        # --- current month, bucketed into weeks 1-4 ---
+        for day_num in range(1, days_in_month + 1):
+            window_start_local = datetime(today.year, today.month, day_num, start_h, start_m, tzinfo=group_tz)
+            if not is_scheduled_on(group, node.hostname, window_start_local, window):
+                continue
+            w = week_of_month(day_num)
+            month_load[w - 1] += 1
+            month_hours[w - 1] += est_h
+
+    # --- per-group verdict: does the busiest day fit the window? ---
+    group_fit = []
+    for gid, bucket in per_group_day.items():
+        group = groups[gid]
+        window = parse_window(group.start_time, group.end_time)
+        window_hours = window.duration_minutes / 60.0
+
+        concurrency = group.concurrency_limit or 5
+        if group.upload_rate_limit:
+            concurrency = min(concurrency, max(1, group.upload_rate_limit // 2048))
+
+        busiest_count, busiest_hours = 0, 0.0
+        for count, hours in bucket.values():
+            if hours > busiest_hours:
+                busiest_count, busiest_hours = count, hours
+
+        capacity_hours = window_hours * concurrency
+        has_estimate = bool(group.upload_rate_limit)
+
+        group_fit.append({
+            "group_id": gid,
+            "group_name": group.name,
+            "nodes_per_run": busiest_count,
+            "est_hours": round(busiest_hours, 2),
+            "window_hours": round(window_hours, 2),
+            "concurrency": concurrency,
+            "capacity_hours": round(capacity_hours, 2),
+            "fits": busiest_hours <= capacity_hours,
+            "rate_limit_kib": group.upload_rate_limit,
+            "has_estimate": has_estimate,
+        })
+
+    group_fit.sort(key=lambda g: g["group_name"])
+
     return {
         "day_load": day_load,
         "week_load": week_load,
-        "month_load": month_load
+        "month_load": month_load,
+        "day_hours": [round(h, 2) for h in day_hours],
+        "week_hours": [round(h, 2) for h in week_hours],
+        "month_hours": [round(h, 2) for h in month_hours],
+        "group_fit": group_fit,
     }

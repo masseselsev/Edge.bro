@@ -16,24 +16,45 @@ logger = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 redis_client = redis.Redis.from_url(REDIS_URL)
 
-def deterministic_hash(value: str) -> int:
-    """
-    Computes a deterministic integer hash from a string using MD5.
-    Avoids Python's randomized built-in hash().
-    """
-    return int(hashlib.md5(value.encode('utf-8')).hexdigest(), 16)
+from core.schedule_estimate import backup_lock_ttl_seconds, estimate_group_backup_minutes
+from core.schedule_slots import (  # noqa: F401  (re-exported for existing importers)
+    deterministic_hash,
+    get_tzinfo,
+    is_scheduled_on,
+    node_slot,
+    parse_window,
+    TEST_INTERVALS,
+    week_of_month,
+)
 
-def get_tzinfo(tz_name: str, db: Session) -> zoneinfo.ZoneInfo:
-    if not tz_name or tz_name == 'Browser Local':
-        settings = db.query(models.Settings).first()
-        if settings and settings.timezone and settings.timezone != 'Browser Local':
-            tz_name = settings.timezone
-        else:
-            tz_name = 'UTC'
+
+def is_backup_lock_live(node_id: int) -> bool:
+    """Whether a backup is genuinely still running for this node.
+
+    The redis key alone is not enough: if a worker dies the key lingers until
+    it expires, blocking the node for hours. The key carries the Celery task
+    id, so ask Celery whether that task actually finished and clear the stale
+    key if so.
+    """
+    raw = redis_client.get(f"backup_running:{node_id}")
+    if not raw:
+        return False
+
+    value = raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
+    task_id = value.split(":", 1)[1] if ":" in value else None
+    if not task_id:
+        return True  # legacy value without a task id — assume live
+
     try:
-        return zoneinfo.ZoneInfo(tz_name)
-    except Exception:
-        return zoneinfo.ZoneInfo('UTC')
+        from celery_app import celery_app
+        if celery_app.AsyncResult(task_id).ready():
+            logger.info(f"Clearing stale backup lock for node {node_id}: task {task_id} already finished.")
+            redis_client.delete(f"backup_running:{node_id}")
+            return False
+    except Exception as e:
+        logger.warning(f"Could not verify backup task state for node {node_id}: {e}")
+
+    return True
 
 def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
     """
@@ -72,47 +93,21 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
     for gid, group in groups.items():
         # Determine group timezone
         group_tz = get_tzinfo(group.timezone, db)
-        
+
         # Current local time for the group
         now_local = now.replace(tzinfo=timezone.utc).astimezone(group_tz)
-        local_hour = now_local.hour
-        local_minute = now_local.minute
-        local_mins = local_hour * 60 + local_minute
+        local_mins = now_local.hour * 60 + now_local.minute
 
-        # Parse group time window (e.g. "02:00" -> hour=2, minute=0)
-        try:
-            start_h, start_m = map(int, group.start_time.split(":"))
-            end_h, end_m = map(int, group.end_time.split(":"))
-        except Exception:
-            logger.error(f"Invalid window start/end time for group {group.name}: {group.start_time} - {group.end_time}")
-            start_h, start_m = 2, 0
-            end_h, end_m = 5, 0
+        window = parse_window(group.start_time, group.end_time)
+        in_window = window.contains(local_mins)
 
-        # Determine if current time falls within group's execution window
-        start_mins = start_h * 60 + start_m
-        end_mins = end_h * 60 + end_m
+        start_h, start_m = divmod(window.start_mins, 60)
+        window_start_local = now_local.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+        # A window that crosses midnight and is currently in its "after midnight"
+        # half actually started yesterday.
+        if window.start_mins > window.end_mins and local_mins < window.end_mins:
+            window_start_local -= timedelta(days=1)
 
-        if start_mins < end_mins:
-            in_window = (start_mins <= local_mins < end_mins)
-            window_start_local = now_local.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
-            window_duration_minutes = end_mins - start_mins
-        elif start_mins > end_mins:
-            in_window = (local_mins >= start_mins or local_mins < end_mins)
-            if local_mins >= start_mins:
-                window_start_local = now_local.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
-            else:
-                window_start_local = now_local.replace(hour=start_h, minute=start_m, second=0, microsecond=0) - timedelta(days=1)
-            window_duration_minutes = (1440 - start_mins) + end_mins
-        else:
-            in_window = True
-            window_start_local = now_local.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
-            window_duration_minutes = 1440
-
-        # Extract calendar logic relative to window start date to handle crossing midnight correctly
-        local_day_of_week = window_start_local.weekday()
-        local_week_of_month = min(4, ((window_start_local.day - 1) // 7) + 1)
-        local_month = window_start_local.month
-        
         # 10min / 30min test intervals override window start & durations
         if group.interval == "10min":
             window_start_dt = now - timedelta(minutes=10)
@@ -124,35 +119,33 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
         # Base concurrency limit (default to 5 if not set or 0)
         base_concurrency = group.concurrency_limit or 5
 
-        # Capping concurrency based on upload rate limit (assume 2 MiB/s = 2048 KiB/s per stream)
+        # Hard ceiling derived from the group's upload rate limit (assume a
+        # single stream can use ~2 MiB/s). Kept SEPARATE from base_concurrency:
+        # the dynamic "finish before the window closes" logic below may raise
+        # concurrency above the configured limit, but it must never raise it
+        # above what the link can physically carry.
+        bandwidth_cap = None
         if group.upload_rate_limit:
-            bandwidth_concurrency = max(1, group.upload_rate_limit // 2048)
-            base_concurrency = min(base_concurrency, bandwidth_concurrency)
+            bandwidth_cap = max(1, group.upload_rate_limit // 2048)
 
         # Calculate remaining time in current window
         if in_window:
             elapsed_minutes = (now_local - window_start_local).total_seconds() / 60
-            remaining_minutes = max(1.0, window_duration_minutes - elapsed_minutes)
+            remaining_minutes = max(1.0, window.duration_minutes - elapsed_minutes)
         else:
             remaining_minutes = 0.0
 
         group_cache[gid] = {
             "group": group,
             "now_local": now_local,
+            "local_mins": local_mins,
             "in_window": in_window,
+            "window": window,
             "window_start_local": window_start_local,
             "window_start_dt": window_start_dt,
-            "start_h": start_h,
-            "start_m": start_m,
-            "end_h": end_h,
-            "start_mins": start_mins,
-            "end_mins": end_mins,
-            "local_day_of_week": local_day_of_week,
-            "local_week_of_month": local_week_of_month,
-            "local_month": local_month,
             "base_concurrency": base_concurrency,
+            "bandwidth_cap": bandwidth_cap,
             "remaining_minutes": remaining_minutes,
-            "window_duration_minutes": window_duration_minutes
         }
 
     # Group nodes by group_id for queue and batch processing
@@ -168,56 +161,22 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
 
         group = g_data["group"]
         now_local = g_data["now_local"]
+        local_mins = g_data["local_mins"]
         in_window = g_data["in_window"]
+        window = g_data["window"]
         window_start_local = g_data["window_start_local"]
         window_start_dt = g_data["window_start_dt"]
-        start_h = g_data["start_h"]
-        start_m = g_data["start_m"]
-        end_h = g_data["end_h"]
-        start_mins = g_data["start_mins"]
-        end_mins = g_data["end_mins"]
-        local_day_of_week = g_data["local_day_of_week"]
-        local_week_of_month = g_data["local_week_of_month"]
-        local_month = g_data["local_month"]
         base_concurrency = g_data["base_concurrency"]
+        bandwidth_cap = g_data["bandwidth_cap"]
         remaining_minutes = g_data["remaining_minutes"]
-        window_duration_minutes = g_data["window_duration_minutes"]
-
-        # Calculate duration window hours
-        window_duration_hours = max(1, window_duration_minutes // 60)
 
         # 1. Out of Window marking
         if not in_window:
+            # Judged against THIS group's own local clock — see local_mins above.
+            is_past_window = window.is_past(local_mins)
             for node in group_nodes:
-                node_hash = deterministic_hash(node.hostname)
-                if group.randomize_days:
-                    day_index = node_hash % 7
-                else:
-                    day_index = 0
-
-                is_scheduled_today = False
-                if group.interval in ("10min", "30min"):
-                    is_scheduled_today = True
-                elif group.interval == "weekly":
-                    is_scheduled_today = (day_index == local_day_of_week)
-                elif group.interval == "monthly":
-                    is_scheduled_today = (local_week_of_month == group.target_week and day_index == local_day_of_week)
-                elif group.interval == "quarterly":
-                    current_quarter_start = ((local_month - 1) // 3) * 3 + 1
-                    target_month = current_quarter_start + (node_hash % 3)
-                    target_week = ((node_hash // 3) % 4) + 1
-                    target_day = (node_hash // 12) % 7 if group.randomize_days else day_index
-                    is_scheduled_today = (local_month == target_month and local_week_of_month == target_week and local_day_of_week == target_day)
-                elif group.interval == "yearly":
-                    is_scheduled_today = (local_month == 1 and local_week_of_month == group.target_week and day_index == local_day_of_week)
-
+                is_scheduled_today = is_scheduled_on(group, node.hostname, window_start_local, window)
                 was_supposed_to_run = is_scheduled_today or node.backup_today
-                
-                is_past_window = False
-                if start_mins < end_mins:
-                    is_past_window = (local_mins >= end_mins)
-                elif start_mins > end_mins:
-                    is_past_window = (local_mins >= end_mins and local_mins < start_mins)
 
                 if is_past_window and was_supposed_to_run:
                     # If currently executing, allow completion; do not mark missed yet!
@@ -242,35 +201,8 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
         # 2. Inside Window: Filter pending nodes and sort by stagger offset to build the queue
         pending_nodes_stagger = []
         for node in group_nodes:
-            # Check if already completed successfully in this window
-            node_hash = deterministic_hash(node.hostname)
-            if group.randomize_days:
-                day_index = node_hash % 7
-            else:
-                day_index = 0
-
-            is_scheduled_today = False
-            if group.interval in ("10min", "30min"):
-                is_scheduled_today = True
-                stagger_offset_mins = 0
-            else:
-                if group.interval == "weekly":
-                    is_scheduled_today = (day_index == local_day_of_week)
-                elif group.interval == "monthly":
-                    is_scheduled_today = (local_week_of_month == group.target_week and day_index == local_day_of_week)
-                elif group.interval == "quarterly":
-                    current_quarter_start = ((local_month - 1) // 3) * 3 + 1
-                    target_month = current_quarter_start + (node_hash % 3)
-                    target_week = ((node_hash // 3) % 4) + 1
-                    target_day = (node_hash // 12) % 7 if group.randomize_days else day_index
-                    is_scheduled_today = (local_month == target_month and local_week_of_month == target_week and local_day_of_week == target_day)
-                elif group.interval == "yearly":
-                    is_scheduled_today = (local_month == 1 and local_week_of_month == group.target_week and day_index == local_day_of_week)
-
-                # Stagger offset for scheduling queue ordering
-                hour_offset = node_hash % window_duration_hours
-                minute_offset = (node_hash // window_duration_hours) % 60
-                stagger_offset_mins = hour_offset * 60 + minute_offset
+            is_scheduled_today = is_scheduled_on(group, node.hostname, window_start_local, window)
+            stagger_offset_mins = node_slot(group, node.hostname, window).stagger_offset_mins
 
             # Node needs to run inside the window?
             needs_to_run = is_scheduled_today or node.backup_today or node.missed_window
@@ -294,19 +226,36 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
                     db.commit()
                 continue
 
+            # Don't burn a concurrency slot and a retry cooldown on a node that
+            # the last ping says is down — common on sites with unstable power.
+            # None means "never pinged", which we treat as worth attempting.
+            if node.last_ping_status is False:
+                logger.info(f"Skipping {node.hostname}: last ping failed, node appears offline.")
+                continue
+
             # If not running yet, add to pending list with stagger offset for sorting
-            if not redis_client.get(f"backup_running:{node.id}"):
+            if not is_backup_lock_live(node.id):
                 pending_nodes_stagger.append((node, stagger_offset_mins))
 
         # If no pending nodes, we are done with this group
         if not pending_nodes_stagger:
             continue
 
-        # Dynamic Concurrency: adjust concurrency to guarantee completion before window end.
-        # Assume an average backup takes 30 minutes to complete.
+        # Dynamic Concurrency: raise parallelism when the remaining window is
+        # too short to finish the queue sequentially.
         pending_count = len(pending_nodes_stagger)
-        required_concurrency = math.ceil(pending_count * 30 / remaining_minutes)
+        avg_backup_minutes = estimate_group_backup_minutes(db, group, [n for n, _ in pending_nodes_stagger])
+        required_concurrency = math.ceil(pending_count * avg_backup_minutes / remaining_minutes)
         effective_concurrency = max(base_concurrency, required_concurrency)
+
+        # The link's carrying capacity is an absolute ceiling: finishing "on
+        # time" is worthless if every stream is too slow to complete at all.
+        if bandwidth_cap is not None and effective_concurrency > bandwidth_cap:
+            logger.info(
+                f"Group {group.name}: capping concurrency {effective_concurrency} -> {bandwidth_cap} "
+                f"to stay within the configured {group.upload_rate_limit} KiB/s upload limit."
+            )
+            effective_concurrency = bandwidth_cap
 
         # Sort queue sequentially by stagger offset (earlier staggered nodes first)
         pending_nodes_stagger.sort(key=lambda x: x[1])
@@ -363,6 +312,9 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
             
             # Set redis lock to mark running (this is released by the Celery task on completion)
             # Store the current timestamp and task ID in the lock value.
-            redis_client.setex(f"backup_running:{node.id}", 86400, f"{int(time.time())}:{task.id}")
+            # TTL is sized from the node's own history so a slow backup cannot
+            # outlive its lock and get killed by its own replacement.
+            lock_ttl = backup_lock_ttl_seconds(db, node.id, group.upload_rate_limit)
+            redis_client.setex(f"backup_running:{node.id}", lock_ttl, f"{int(time.time())}:{task.id}")
             group_running_counts[gid] += 1
             triggered_count += 1
