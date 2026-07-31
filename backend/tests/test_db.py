@@ -487,10 +487,13 @@ def test_settings_server_name_validation():
     from pydantic import ValidationError
 
     # Valid server names
-    valid_names = ["orchestrator", "edge-server", "main_server_01", "Edge-Server-99"]
+    valid_names = ["orchestrator", "edge-server", "main_server_01", "edge-server-99"]
     for name in valid_names:
         s = SettingsBase(server_name=name)
         assert s.server_name == name
+
+    # Uppercase is accepted but normalised, since the name becomes a filename prefix
+    assert SettingsBase(server_name="Edge-Server-99").server_name == "edge-server-99"
 
     # Invalid server names (spaces, special characters)
     invalid_names = ["orchestrator ", "edge server", "main@server", "edge.server"]

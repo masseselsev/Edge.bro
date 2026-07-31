@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from database import Base
 import models
 import main
+import schemas
 
 
 @pytest.fixture
@@ -65,3 +66,33 @@ def test_upgrade_does_not_overwrite_user_configured_ip(db_session, monkeypatch):
     main.upgrade_settings(db_session)
 
     assert settings.orchestrator_ip == "192.168.5.5"
+
+
+def test_model_default_server_name_passes_schema_validation(db_session):
+    """The seeded default must survive response serialisation.
+
+    GET /api/settings returns SettingsResponse, so a model default the
+    validator rejects makes the endpoint 500 on every fresh install.
+    """
+    settings = models.Settings()
+    db_session.add(settings)
+    db_session.commit()
+
+    schemas.SettingsResponse.model_validate(settings)
+
+
+@pytest.mark.parametrize("name", ["edge-bro", "orchestrator", "main_server_01", "edge-bro-2"])
+def test_server_name_accepts_valid_names(name):
+    assert schemas.SettingsBase(server_name=name).server_name == name
+
+
+@pytest.mark.parametrize("given,expected", [("Edge-BRO", "edge-bro"), ("ORCHESTRATOR", "orchestrator")])
+def test_server_name_is_normalised_to_lowercase(given, expected):
+    assert schemas.SettingsBase(server_name=given).server_name == expected
+
+
+@pytest.mark.parametrize("name", ["edge bro", "edge/bro", "edge.bro", ".hidden", "-leading", ""])
+def test_server_name_rejects_unsafe_names(name):
+    """The name is used as an ISO filename prefix, so it must stay path-safe."""
+    with pytest.raises(ValueError):
+        schemas.SettingsBase(server_name=name)

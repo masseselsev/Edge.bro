@@ -603,7 +603,7 @@ def download_kiosk_iso(id: int, request: Request = None, db: Session = Depends(g
         raise HTTPException(status_code=400, detail="Kiosk does not have a dynamic auth token")
         
     settings = db.query(models.Settings).first()
-    server_name = settings.server_name if (settings and settings.server_name) else "Edge-B.R.O."
+    server_name = settings.server_name if (settings and settings.server_name) else "edge-bro"
 
     from iso_tasks import CACHE_DIR
     filename = None
