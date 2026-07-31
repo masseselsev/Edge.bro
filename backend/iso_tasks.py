@@ -10,8 +10,6 @@ from typing import Dict, Any
 logger = logging.getLogger(__name__)
 
 DEFAULT_MIRROR_URLS = [
-    "https://mirror.yandex.ru/debian-cd/current-live/amd64/iso-hybrid/debian-live-13.5.0-amd64-xfce.iso",
-    "https://mirrors.edge.kernel.org/debian-cd/current-live/amd64/iso-hybrid/debian-live-13.5.0-amd64-xfce.iso",
     "https://cdimage.debian.org/cdimage/weekly-live-builds/amd64/iso-hybrid/debian-live-testing-amd64-xfce.iso"
 ]
 BASE_ISO_URL = DEFAULT_MIRROR_URLS[0]
