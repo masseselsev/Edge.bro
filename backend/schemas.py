@@ -192,6 +192,25 @@ class PaginatedBackupHistoryResponse(BaseModel):
     limit: int
     pages: int
 
+class ArchiveFileInfo(BaseModel):
+    path: str
+    size: int
+    mtime: Optional[str] = None
+    mode: Optional[str] = None
+    is_dir: bool = False
+
+class ArchiveFileListResponse(BaseModel):
+    archive_name: str
+    files: List[ArchiveFileInfo]
+
+class ArchiveFileContentResponse(BaseModel):
+    path: str
+    is_text: bool
+    size: int
+    content: Optional[str] = None
+    message: Optional[str] = None
+
+
 class BackupTriggerRequest(BaseModel):
     comment: Optional[str] = None
 

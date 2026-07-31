@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Database, TrendingDown, ArrowDownCircle, RefreshCw, Trash2, AlertTriangle, Loader2, ChevronRight, ChevronDown, Search, Folder, FolderOpen, Cpu, HardDrive, Download, CheckSquare, Square, CheckCircle, Globe2 } from 'lucide-react';
+import { Database, TrendingDown, ArrowDownCircle, RefreshCw, Trash2, AlertTriangle, Loader2, ChevronRight, ChevronDown, Search, Folder, FolderOpen, Cpu, HardDrive, Download, CheckSquare, Square, CheckCircle, Globe2, FileText } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
+import ArchiveFilesModal from './ArchiveFilesModal';
 
 interface Stats {
   total_nodes: number;
@@ -54,6 +55,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
   const [grouping, setGrouping] = useState<'flat' | 'hostname' | 'prefix' | 'subnet'>('hostname');
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [selectedArchiveForFiles, setSelectedArchiveForFiles] = useState<{ id: number; name: string } | null>(null);
 
   // Pagination & Sorting states
   const [page, setPage] = useState(1);
@@ -546,6 +548,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                 {renderSortIndicator('status')}
               </button>
             </th>
+            <th className="px-6 py-3 text-right text-zinc-500 font-semibold">{t('actions')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-800/50">
@@ -608,6 +611,18 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{t('statusSuccess') || 'Success'}</span>
                   ) : (
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">{t('statusFailed') || 'Failed'}</span>
+                  )}
+                </td>
+                <td className="px-6 py-3.5 text-right">
+                  {h.status === 'SUCCESS' && (
+                    <button
+                      onClick={() => setSelectedArchiveForFiles({ id: h.id, name: h.archive_name })}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                      title={t('viewArchiveFiles')}
+                    >
+                      <FileText size={13} />
+                      <span>{t('viewArchiveFiles')}</span>
+                    </button>
                   )}
                 </td>
               </tr>
@@ -1144,6 +1159,14 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
             nodeId={selectedNodeId}
             onClose={() => setSelectedNodeId(null)}
             onRefreshList={fetchStats}
+          />
+        )}
+
+        {selectedArchiveForFiles !== null && (
+          <ArchiveFilesModal
+            historyId={selectedArchiveForFiles.id}
+            archiveName={selectedArchiveForFiles.name}
+            onClose={() => setSelectedArchiveForFiles(null)}
           />
         )}
       </div>

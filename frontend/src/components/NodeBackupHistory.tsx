@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { History, ChevronLeft, ChevronRight } from 'lucide-react';
+import { History, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import ArchiveFilesModal from './ArchiveFilesModal';
 
 interface BackupHistory {
   id: number;
@@ -26,6 +27,7 @@ export default function NodeBackupHistory({
 }: NodeBackupHistoryProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [selectedArchive, setSelectedArchive] = useState<{ id: number; name: string } | null>(null);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -52,6 +54,7 @@ export default function NodeBackupHistory({
               <th className="p-3">{t('dedupSizeColumn') || 'Deduplicated Size'}</th>
               <th className="p-3">{t('statusColumn') || 'Status'}</th>
               <th className="p-3">{t('commentColumn') || 'Comment'}</th>
+              <th className="p-3 text-right">{t('actions') || 'Actions'}</th>
             </tr>
           </thead>
           <tbody>
@@ -79,11 +82,23 @@ export default function NodeBackupHistory({
                 <td className="p-3 max-w-[200px] truncate text-zinc-400" title={row.comment || ''}>
                   {row.comment || '-'}
                 </td>
+                <td className="p-3 text-right">
+                  {row.status === 'SUCCESS' && (
+                    <button
+                      onClick={() => setSelectedArchive({ id: row.id, name: row.archive_name })}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/10 transition"
+                      title={t('viewArchiveFiles') || 'View Files'}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      <span>{t('viewArchiveFiles') || 'Files'}</span>
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
             {history.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-zinc-500">
+                <td colSpan={7} className="p-6 text-center text-zinc-500">
                   {t('noBackupSnapshots') || 'No backup snapshots executed yet.'}
                 </td>
               </tr>
@@ -135,6 +150,15 @@ export default function NodeBackupHistory({
           </div>
         </div>
       )}
+
+      {selectedArchive !== null && (
+        <ArchiveFilesModal
+          historyId={selectedArchive.id}
+          archiveName={selectedArchive.name}
+          onClose={() => setSelectedArchive(null)}
+        />
+      )}
     </div>
   );
 }
+

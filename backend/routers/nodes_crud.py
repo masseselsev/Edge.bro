@@ -362,6 +362,131 @@ def get_node_history(node_id: int, db: Session = Depends(get_db), current_user =
     return db.query(models.BackupHistory).filter(models.BackupHistory.node_id == node_id).all()
 
 
+@router.get("/history/{history_id}/files", response_model=schemas.ArchiveFileListResponse)
+def get_archive_files(history_id: int, db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
+    """
+    Retrieves the list of files and directories contained inside a specific backup archive.
+    """
+    history = db.query(models.BackupHistory).filter(models.BackupHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup history record not found.")
+
+    repo_path = "/data/borg/fleet"
+    if not os.path.exists(repo_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Borg repository does not exist.")
+
+    env = os.environ.copy()
+    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+
+    try:
+        cmd = ["borg", "list", "--json", f"{repo_path}::{history.archive_name}"]
+        res = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=30)
+        if res.returncode != 0:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Borg list failed: {res.stderr.strip()}")
+
+        data = json.loads(res.stdout)
+        file_items = []
+        for item in data.get("files", []):
+            path = item.get("path", "")
+            mode = item.get("mode", "")
+            is_dir = mode.startswith("d") if mode else False
+            file_items.append(schemas.ArchiveFileInfo(
+                path=path,
+                size=item.get("size", 0),
+                mtime=item.get("mtime"),
+                mode=mode,
+                is_dir=is_dir
+            ))
+
+        return schemas.ArchiveFileListResponse(
+            archive_name=history.archive_name,
+            files=file_items
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Listing archive files timed out.")
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/history/{history_id}/file-content", response_model=schemas.ArchiveFileContentResponse)
+def get_archive_file_content(history_id: int, path: str, db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
+    """
+    Safely extracts and reads text content of a specific file inside a backup archive.
+    """
+    history = db.query(models.BackupHistory).filter(models.BackupHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup history record not found.")
+
+    clean_path = path.strip().lstrip("/")
+    if not clean_path:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file path.")
+
+    repo_path = "/data/borg/fleet"
+    if not os.path.exists(repo_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Borg repository does not exist.")
+
+    env = os.environ.copy()
+    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+
+    try:
+        cmd = ["borg", "extract", "--stdout", f"{repo_path}::{history.archive_name}", clean_path]
+        proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        max_bytes = 500 * 1024
+        raw_bytes = proc.stdout.read(max_bytes + 1)
+        proc.stdout.close()
+        proc.stderr.close()
+        proc.wait(timeout=10)
+
+        if len(raw_bytes) > max_bytes:
+            return schemas.ArchiveFileContentResponse(
+                path=clean_path,
+                is_text=False,
+                size=len(raw_bytes),
+                content=None,
+                message="File exceeds maximum preview size of 500 KB."
+            )
+
+        if b"\x00" in raw_bytes:
+            return schemas.ArchiveFileContentResponse(
+                path=clean_path,
+                is_text=False,
+                size=len(raw_bytes),
+                content=None,
+                message="Binary file cannot be displayed as text."
+            )
+
+        try:
+            text_content = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                text_content = raw_bytes.decode("latin-1")
+            except Exception:
+                return schemas.ArchiveFileContentResponse(
+                    path=clean_path,
+                    is_text=False,
+                    size=len(raw_bytes),
+                    content=None,
+                    message="File encoding is not readable as text."
+                )
+
+        return schemas.ArchiveFileContentResponse(
+            path=clean_path,
+            is_text=True,
+            size=len(raw_bytes),
+            content=text_content
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Extracting file content timed out.")
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+
 @router.delete("/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_node(node_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
