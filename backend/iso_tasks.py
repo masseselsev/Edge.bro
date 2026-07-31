@@ -134,6 +134,20 @@ def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
             logger.info("Custom ISO URL provided. Skipping SHA512 validation.")
             
         os.rename(BASE_ISO_PATH_TMP, BASE_ISO_PATH)
+
+        # The base image just changed, so the compiled USB-Kiosk Client template
+        # is now stale — or, on a fresh install, was never built at all. Nothing
+        # else triggers that first build, so it must happen here.
+        try:
+            from database import SessionLocal
+            trigger_db = SessionLocal()
+            try:
+                trigger_base_iso_rebuild(trigger_db)
+            finally:
+                trigger_db.close()
+        except Exception as trigger_err:
+            logger.error(f"Failed to trigger client template rebuild after base ISO download: {trigger_err}")
+
         return {"status": "SUCCESS", "message": "Base ISO downloaded successfully."}
     except Exception as e:
         logger.error(f"Download or validation failed: {e}")
