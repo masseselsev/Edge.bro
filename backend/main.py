@@ -134,8 +134,8 @@ def startup_db_init():
 def seed_superadmin(db: Session):
     """
     Seeds the initial super administrator account if none exists,
-    repairs invalid empty superadmin accounts, and synchronizes password
-    from ADMIN_PASSWORD environment variable if configured.
+    and repairs invalid empty seeded superadmin accounts.
+    If RESET_SUPERADMIN_PASSWORD=true is set in env, updates superadmin password.
     """
     import bcrypt
     
@@ -162,18 +162,21 @@ def seed_superadmin(db: Session):
         updated = False
         pwd_bytes = password.encode('utf-8')
         
-        if not superadmin.username or superadmin.username.strip() == "" or (os.getenv("SUPERADMIN_USERNAME") and superadmin.username != username):
+        if not superadmin.username or superadmin.username.strip() == "":
             superadmin.username = username
             updated = True
 
-        if os.getenv("ADMIN_PASSWORD") and not bcrypt.checkpw(pwd_bytes, superadmin.hashed_password.encode('utf-8')):
-            salt = bcrypt.gensalt()
-            superadmin.hashed_password = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
-            updated = True
+        if os.getenv("RESET_SUPERADMIN_PASSWORD", "").lower() in ("true", "1", "yes"):
+            if not bcrypt.checkpw(pwd_bytes, superadmin.hashed_password.encode('utf-8')):
+                salt = bcrypt.gensalt()
+                superadmin.hashed_password = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+                superadmin.username = username
+                updated = True
+                print(f"Superadmin credentials for '{username}' reset via RESET_SUPERADMIN_PASSWORD environment variable.")
 
         if updated:
             db.commit()
-            print(f"Superadmin credentials for '{username}' synchronized from environment variables.")
+
 
 
 
