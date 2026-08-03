@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, FileText, Folder, File, Copy, Check, Loader2, AlertCircle, HardDrive, Maximize2, Minimize2 } from 'lucide-react';
+import { X, Search, FileText, Folder, FolderOpen, File, Copy, Check, Loader2, AlertCircle, HardDrive, Maximize2, Minimize2, ChevronRight, ChevronDown } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 
 interface ArchiveFileInfo {
@@ -9,6 +9,16 @@ interface ArchiveFileInfo {
   mtime?: string | null;
   mode?: string | null;
   is_dir: boolean;
+}
+
+interface TreeNode {
+  name: string;
+  full_path: string;
+  is_dir: boolean;
+  size: number;
+  mtime?: string | null;
+  mode?: string | null;
+  children: TreeNode[];
 }
 
 interface ArchiveFilesModalProps {
@@ -24,6 +34,7 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
 
   const [selectedFile, setSelectedFile] = useState<ArchiveFileInfo | null>(null);
   const [contentLoading, setContentLoading] = useState<boolean>(false);
@@ -39,6 +50,7 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
     setError(null);
     setSelectedFile(null);
     setFileContent(null);
+    setExpandedPaths(new Set());
 
     fetch(`/api/nodes/history/${historyId}/files`)
       .then(async (res) => {
@@ -106,15 +118,136 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const filteredFiles = useMemo(() => {
-    if (!searchQuery.trim()) return files;
-    const q = searchQuery.toLowerCase();
-    return files.filter((f) => f.path.toLowerCase().includes(q));
-  }, [files, searchQuery]);
+  const toggleExpand = (path: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  };
+
+  // Build tree hierarchy and compute cumulative directory sizes
+  const { treeRoots, pathToNodeMap } = useMemo(() => {
+    const nodeMap = new Map<string, TreeNode>();
+    const roots: TreeNode[] = [];
+
+    const getOrCreateNode = (
+      path: string,
+      is_dir: boolean,
+      size: number = 0,
+      mtime: string | null = null,
+      mode: string | null = null
+    ): TreeNode => {
+      const cleanPath = path.replace(/\/$/, '');
+      if (nodeMap.has(cleanPath)) {
+        const existing = nodeMap.get(cleanPath)!;
+        if (!existing.is_dir && is_dir) existing.is_dir = true;
+        if (size > 0 && !existing.is_dir) existing.size = size;
+        return existing;
+      }
+
+      const parts = cleanPath.split('/');
+      const name = parts[parts.length - 1];
+
+      const newNode: TreeNode = {
+        name,
+        full_path: cleanPath,
+        is_dir,
+        size: is_dir ? 0 : size,
+        mtime,
+        mode,
+        children: [],
+      };
+      nodeMap.set(cleanPath, newNode);
+
+      if (parts.length === 1) {
+        roots.push(newNode);
+      } else {
+        const parentPath = parts.slice(0, -1).join('/');
+        const parentNode = getOrCreateNode(parentPath, true);
+        parentNode.children.push(newNode);
+      }
+
+      return newNode;
+    };
+
+    files.forEach((f) => {
+      getOrCreateNode(f.path, f.is_dir, f.size || 0, f.mtime || null, f.mode || null);
+    });
+
+    // Calculate cumulative folder sizes recursively
+    const calcCumulativeSize = (node: TreeNode): number => {
+      if (!node.is_dir) {
+        return node.size;
+      }
+      let total = 0;
+      for (const child of node.children) {
+        total += calcCumulativeSize(child);
+      }
+      node.size = total;
+      return total;
+    };
+
+    roots.forEach((root) => calcCumulativeSize(root));
+
+    // Sort: directories first, then files alphabetically
+    const sortNodes = (nodes: TreeNode[]) => {
+      nodes.sort((a, b) => {
+        if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      nodes.forEach((n) => {
+        if (n.children.length > 0) sortNodes(n.children);
+      });
+    };
+
+    sortNodes(roots);
+
+    return { treeRoots: roots, pathToNodeMap: nodeMap };
+  }, [files]);
+
+  // Flatten visible nodes for rendering
+  const visibleTreeNodes = useMemo(() => {
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matches: { node: TreeNode; depth: number }[] = [];
+      files.forEach((f) => {
+        if (f.path.toLowerCase().includes(q)) {
+          const clean = f.path.replace(/\/$/, '');
+          const node = pathToNodeMap.get(clean) || {
+            name: clean.split('/').pop() || clean,
+            full_path: clean,
+            is_dir: f.is_dir,
+            size: f.size || 0,
+            children: [],
+          };
+          matches.push({ node, depth: 0 });
+        }
+      });
+      return matches;
+    }
+
+    const result: { node: TreeNode; depth: number }[] = [];
+    const traverse = (nodes: TreeNode[], depth: number) => {
+      for (const node of nodes) {
+        result.push({ node, depth });
+        if (node.is_dir && expandedPaths.has(node.full_path)) {
+          traverse(node.children, depth + 1);
+        }
+      }
+    };
+
+    traverse(treeRoots, 0);
+    return result;
+  }, [treeRoots, expandedPaths, searchQuery, files, pathToNodeMap]);
 
   const displayedFiles = useMemo(() => {
-    return filteredFiles.slice(0, 300);
-  }, [filteredFiles]);
+    return visibleTreeNodes.slice(0, 400);
+  }, [visibleTreeNodes]);
 
   if (!historyId) return null;
 
@@ -173,9 +306,9 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                   className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50"
                 />
               </div>
-              {filteredFiles.length > 300 && (
+              {visibleTreeNodes.length > 400 && (
                 <span className="text-[10px] text-slate-500 font-mono shrink-0">
-                  Showing 300 of {filteredFiles.length}
+                  Showing 400 of {visibleTreeNodes.length}
                 </span>
               )}
             </div>
@@ -192,46 +325,75 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{error}</span>
                 </div>
-              ) : filteredFiles.length === 0 ? (
+              ) : visibleTreeNodes.length === 0 ? (
                 <div className="text-center py-12 text-xs text-slate-500">
                   {t('noFilesFound')}
                 </div>
               ) : (
                 <>
-                  {displayedFiles.map((file, idx) => {
-                    const isSelected = selectedFile?.path === file.path;
+                  {displayedFiles.map(({ node, depth }, idx) => {
+                    const isExpanded = expandedPaths.has(node.full_path);
+                    const isSelected = selectedFile?.path === node.full_path;
+
                     return (
                       <div
-                        key={idx}
-                        onClick={() => handleSelectFile(file)}
-                        title={file.path}
-                        className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
-                          file.is_dir
-                            ? 'text-slate-400 cursor-default hover:bg-slate-900/50'
+                        key={node.full_path || idx}
+                        onClick={() => {
+                          if (node.is_dir) {
+                            toggleExpand(node.full_path);
+                          } else {
+                            handleSelectFile({
+                              path: node.full_path,
+                              size: node.size,
+                              is_dir: false,
+                              mtime: node.mtime,
+                              mode: node.mode,
+                            });
+                          }
+                        }}
+                        title={node.full_path}
+                        style={{ paddingLeft: searchQuery.trim() ? '0.75rem' : `${depth * 1.25 + 0.75}rem` }}
+                        className={`flex items-center justify-between pr-3 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer select-none ${
+                          node.is_dir
+                            ? 'text-slate-200 hover:bg-slate-800/80 font-semibold'
                             : isSelected
-                            ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 font-medium cursor-pointer'
-                            : 'text-slate-300 hover:bg-slate-800/60 cursor-pointer'
+                            ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 font-medium'
+                            : 'text-slate-300 hover:bg-slate-800/60'
                         }`}
                       >
-                        <div className="flex items-center space-x-2 truncate pr-2 min-w-0 flex-1">
-                          {file.is_dir ? (
-                            <Folder className="w-4 h-4 text-amber-400 shrink-0" />
+                        <div className="flex items-center space-x-1.5 truncate pr-2 min-w-0 flex-1">
+                          {node.is_dir ? (
+                            <>
+                              {isExpanded ? (
+                                <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              )}
+                              {isExpanded ? (
+                                <FolderOpen className="w-4 h-4 text-amber-400 shrink-0" />
+                              ) : (
+                                <Folder className="w-4 h-4 text-amber-400 shrink-0" />
+                              )}
+                            </>
                           ) : (
-                            <File className="w-4 h-4 text-slate-400 shrink-0" />
+                            <>
+                              <span className="w-3.5 shrink-0" />
+                              <File className="w-4 h-4 text-slate-400 shrink-0" />
+                            </>
                           )}
-                          <span className="truncate" title={file.path}>{file.path}</span>
-                        </div>
-                        {!file.is_dir && (
-                          <span className="text-[11px] text-slate-500 shrink-0">
-                            {formatSize(file.size)}
+                          <span className="truncate" title={node.full_path}>
+                            {searchQuery.trim() ? node.full_path : node.name}
                           </span>
-                        )}
+                        </div>
+                        <span className="text-[11px] text-slate-500 shrink-0 font-normal">
+                          {formatSize(node.size)}
+                        </span>
                       </div>
                     );
                   })}
-                  {filteredFiles.length > 300 && (
+                  {visibleTreeNodes.length > 400 && (
                     <div className="text-center py-3 text-[11px] text-amber-400/80 font-mono bg-amber-500/5 border border-amber-500/10 rounded-lg my-1">
-                      Showing first 300 matching items. Refine search to see more.
+                      Showing first 400 matching items. Expand folders or refine search to see more.
                     </div>
                   )}
                 </>
