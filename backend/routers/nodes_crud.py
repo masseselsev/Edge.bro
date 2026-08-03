@@ -524,7 +524,14 @@ def download_archive_file(
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
     if is_dir:
-        temp_dir = tempfile.mkdtemp()
+        # Scratch space lives next to the repository itself rather than the
+        # container's own /tmp: extracting a whole folder can be as large as
+        # the folder in the backup, and repository storage is what deployments
+        # size for that — /tmp is typically the small root disk.
+        tmp_root = os.path.join(os.path.dirname(repo_path), "tmp")
+        os.makedirs(tmp_root, exist_ok=True)
+        os.chmod(tmp_root, 0o755)  # traversable regardless of which uid borg_kwargs picks below
+        temp_dir = tempfile.mkdtemp(dir=tmp_root)
         zip_path = os.path.join(temp_dir, "archive.zip")
         # borg extracts into its working directory, so hand the temp dir to
         # whichever identity we are about to run it as.

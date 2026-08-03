@@ -240,7 +240,12 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
                 "-f", "-L", "-o", BASE_ISO_PATH, download_url
             ])
 
-    work_dir = f"/tmp/iso_gen_{task_id}"
+    # Scratch space lives under CACHE_DIR rather than the container's own
+    # /tmp: unpacking an ISO takes several times its compressed size, and
+    # ISO_CACHE_HOST_PATH exists specifically so deployments with a small
+    # root disk can point ISO storage at a larger drive or NFS mount. Using
+    # /tmp here would fill the root disk regardless of that setting.
+    work_dir = os.path.join(CACHE_DIR, "tmp", f"iso_gen_{task_id}")
     iso_unpacked = os.path.join(work_dir, "iso_unpacked")
     payload_dir = os.path.join(work_dir, "payload_initrd")
     
@@ -656,7 +661,9 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
         created_date = datetime.now().strftime("%Y%m%d")
         output_kiosk_iso = os.path.join(history_dir, f"{server_name}-kiosk-{created_date}-{kiosk.auth_token}.iso")
 
-        work_dir = f"/tmp/repack_{kiosk_id}_{task_id}"
+        # Same reasoning as generate_client_iso_task: keep multi-GB scratch
+        # space off the root disk and on the configured ISO storage.
+        work_dir = os.path.join(CACHE_DIR, "tmp", f"repack_{kiosk_id}_{task_id}")
         iso_unpacked = os.path.join(work_dir, "iso_unpacked")
         payload_unpacked = os.path.join(work_dir, "payload_unpacked")
         os.makedirs(work_dir, exist_ok=True)
