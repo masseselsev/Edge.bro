@@ -354,47 +354,49 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                   {language === 'ru' ? 'Общие настройки' : language === 'uk' ? 'Загальні налаштування' : 'General & Connection'}
                 </h3>
 
-                <div className="grid grid-cols-1 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('serverNameLabel') || 'Server Name'}</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
+                  <div className="col-span-full">
+                    <div className="flex items-center justify-between min-h-[20px] mb-1.5">
+                      <label className="block text-xs font-semibold text-zinc-400">{t('serverNameLabel') || 'Server Name'}</label>
+                    </div>
                     <input
                       type="text"
                       required
                       value={serverName}
                       onChange={(e) => setServerName(e.target.value)}
                       placeholder={t('serverNamePlaceholder') || 'e.g. main-server'}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                      className="w-full h-10 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('borgSshPort')}</label>
+                    <div className="flex items-center justify-between min-h-[20px] mb-1.5">
+                      <label className="block text-xs font-semibold text-zinc-400">{t('borgSshPort')}</label>
+                    </div>
                     <input
                       type="number"
                       required
                       value={sshPort}
                       onChange={(e) => setSshPort(parseInt(e.target.value))}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                      className="w-full h-10 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
-                  {/* Storage location is not editable here: the paths are bind-mounts
-                      resolved by Docker at container start, so changing them means
-                      editing .env and recreating the containers. */}
+
                   <div>
-                    <InfoLabel label={t('storageLocation')} hint={t('storageLocationHint')} />
-                    <div className="px-3 py-2 bg-zinc-950/60 border border-zinc-800 border-dashed rounded-lg">
-                      <p className="text-[11px] text-zinc-400 font-mono break-all">
+                    <div className="flex items-center justify-between min-h-[20px] mb-1.5">
+                      <InfoLabel label={t('storageLocation')} hint={t('storageLocationHint')} className="block text-xs font-semibold text-zinc-400" />
+                    </div>
+                    <div className="w-full h-10 px-3 py-2 bg-zinc-950/60 border border-zinc-800 border-dashed rounded-lg flex items-center">
+                      <p className="text-[11px] text-zinc-400 font-mono break-all truncate">
                         {t('storageLocationBackups')}: <span className="text-zinc-200">{hostDataPath || 'borg-data'}</span>
                       </p>
                     </div>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('compressionMode')}</label>
+                    <div className="flex items-center justify-between min-h-[20px] mb-1.5">
+                      <label className="block text-xs font-semibold text-zinc-400">{t('compressionMode')}</label>
+                    </div>
                     <SearchableSelect
                       options={compressionOptions}
                       value={defaultCompression}
@@ -402,23 +404,24 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                       placeholder={t('selectCompressionPlaceholder')}
                     />
                   </div>
+
                   <div>
-                    <InfoLabel label={t('cpuQuota')} hint={t('cpuQuotaHint')} />
+                    <div className="flex items-center justify-between min-h-[20px] mb-1.5">
+                      <InfoLabel label={t('cpuQuota')} hint={t('cpuQuotaHint')} className="block text-xs font-semibold text-zinc-400" />
+                    </div>
                     <input
                       type="number"
                       min={0}
                       max={400}
                       value={defaultCpuQuota}
                       onChange={(e) => setDefaultCpuQuota(e.target.value === '' ? '' : Number(e.target.value))}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none font-mono"
+                      className="w-full h-10 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none font-mono"
                       placeholder="e.g. 50"
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 mb-1.5 min-h-[16px]">
+                    <div className="flex items-center justify-between min-h-[20px] mb-1.5">
                       <label className="block text-xs font-semibold text-zinc-400">{t('systemTimezone')}</label>
                       <div className="flex items-center gap-1.5">
                         <input
@@ -452,28 +455,33 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                       placeholder={t('selectTimezone')}
                     />
                   </div>
+
                   <div>
-                    <InfoLabel
-                      label={t('maxKioskIsosLabel') || 'Max Kiosk ISOs in Repository'}
-                      hint={t('maxKioskIsosSub') || 'Maximum number of issued kiosk ISOs to keep in history before automatic pruning.'}
-                    />
+                    <div className="flex items-center justify-between min-h-[20px] mb-1.5">
+                      <InfoLabel
+                        label={t('maxKioskIsosLabel') || 'Max Kiosk ISOs in Repository'}
+                        hint={t('maxKioskIsosSub') || 'Maximum number of issued kiosk ISOs to keep in history before automatic pruning.'}
+                        className="block text-xs font-semibold text-zinc-400"
+                      />
+                    </div>
                     <input
                       type="number"
                       min={1}
                       required
                       value={maxKioskIsos}
                       onChange={(e) => setMaxKioskIsos(parseInt(e.target.value) || 5)}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                      className="w-full h-10 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
-                    <InfoLabel
-                      label={t('serverNetCapacityLabel') || 'Server Network Capacity (Mbps)'}
-                      hint={t('serverNetCapacityHelp') || 'Used as the 100% capacity limit when rendering network load percentages in the header.'}
-                    />
+                    <div className="flex items-center justify-between min-h-[20px] mb-1.5">
+                      <InfoLabel
+                        label={t('serverNetCapacityLabel') || 'Server Network Capacity (Mbps)'}
+                        hint={t('serverNetCapacityHelp') || 'Used as the 100% capacity limit when rendering network load percentages in the header.'}
+                        className="block text-xs font-semibold text-zinc-400"
+                      />
+                    </div>
                     <input
                       type="number"
                       min={1}
@@ -483,7 +491,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                         const val = e.target.value;
                         setServerNetCapacityMbps(val === '' ? '' : parseInt(val, 10) || 0);
                       }}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                      className="w-full h-10 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                     />
                   </div>
                 </div>
