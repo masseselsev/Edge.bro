@@ -182,20 +182,19 @@ def ensure_orchestrator_ssh_key() -> str:
         raise e
 
 def fix_repo_permissions(repo_path: str) -> None:
-    """Ensures repository files and their parent directories are owned by user borg (1000:1000)."""
+    """Ensures repository files and their parent directories are readable/writable by all container users (chmod 777)."""
     parent_dir = os.path.dirname(repo_path)
     if os.path.exists(parent_dir):
         try:
-            subprocess.run(["chown", "1000:1000", parent_dir], check=False)
-            subprocess.run(["chmod", "755", parent_dir], check=False)
+            subprocess.run(["chmod", "777", parent_dir], check=False)
         except Exception as e:
-            logger.warning(f"Could not chown parent directory {parent_dir}: {str(e)}")
+            logger.warning(f"Could not chmod parent directory {parent_dir}: {str(e)}")
             
     if os.path.exists(repo_path):
         try:
-            subprocess.run(["chown", "-R", "1000:1000", repo_path], check=True)
+            subprocess.run(["chmod", "-R", "777", repo_path], check=False)
         except Exception as e:
-            logger.error(f"Failed to chown repo {repo_path}: {str(e)}")
+            logger.error(f"Failed to chmod repo {repo_path}: {str(e)}")
 
 
 

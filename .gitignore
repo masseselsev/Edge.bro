@@ -36,6 +36,7 @@ docker-data/
 
 # AI Config
 GEMINI.md
+AGENTS.md
 
 # Superpowers
 .superpowers/
