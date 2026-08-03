@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, FileText, Folder, File, Copy, Check, Loader2, AlertCircle, HardDrive, Maximize2, Minimize2 } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
@@ -106,20 +106,26 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const filteredFiles = files.filter((f) =>
-    f.path.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredFiles = useMemo(() => {
+    if (!searchQuery.trim()) return files;
+    const q = searchQuery.toLowerCase();
+    return files.filter((f) => f.path.toLowerCase().includes(q));
+  }, [files, searchQuery]);
+
+  const displayedFiles = useMemo(() => {
+    return filteredFiles.slice(0, 300);
+  }, [filteredFiles]);
 
   if (!historyId) return null;
 
   return createPortal(
-    <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md animate-fade-in ${isMaximized ? 'p-0' : 'p-4'}`}>
-      <div className={`bg-slate-900 border border-slate-800 shadow-2xl flex flex-col overflow-hidden transition-all duration-200 ${
+    <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/85 animate-fade-in ${isMaximized ? 'p-0' : 'p-4'}`}>
+      <div className={`bg-slate-900 border border-slate-800 shadow-2xl flex flex-col overflow-hidden ${
         isMaximized ? 'w-full h-full rounded-none' : 'w-full max-w-6xl h-[85vh] rounded-xl animate-modal-in'
       }`}>
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-indigo-400">
               <HardDrive className="w-5 h-5" />
@@ -156,8 +162,8 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
           {/* Left Pane: File Tree / Search List */}
           <div className="w-1/2 border-r border-slate-800 flex flex-col bg-slate-950/40">
             {/* Search Input */}
-            <div className="p-3 border-b border-slate-800">
-              <div className="relative">
+            <div className="p-3 border-b border-slate-800 flex items-center justify-between gap-2">
+              <div className="relative flex-1">
                 <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                 <input
                   type="text"
@@ -167,6 +173,11 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                   className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50"
                 />
               </div>
+              {filteredFiles.length > 300 && (
+                <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                  Showing 300 of {filteredFiles.length}
+                </span>
+              )}
             </div>
 
             {/* File List */}
@@ -186,37 +197,44 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                   {t('noFilesFound')}
                 </div>
               ) : (
-                filteredFiles.map((file, idx) => {
-                  const isSelected = selectedFile?.path === file.path;
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => handleSelectFile(file)}
-                      title={file.path}
-                      className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
-                        file.is_dir
-                          ? 'text-slate-400 cursor-default hover:bg-slate-900/50'
-                          : isSelected
-                          ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 font-medium cursor-pointer'
-                          : 'text-slate-300 hover:bg-slate-800/60 cursor-pointer'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2 truncate pr-2 min-w-0 flex-1">
-                        {file.is_dir ? (
-                          <Folder className="w-4 h-4 text-amber-400 shrink-0" />
-                        ) : (
-                          <File className="w-4 h-4 text-slate-400 shrink-0" />
+                <>
+                  {displayedFiles.map((file, idx) => {
+                    const isSelected = selectedFile?.path === file.path;
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => handleSelectFile(file)}
+                        title={file.path}
+                        className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
+                          file.is_dir
+                            ? 'text-slate-400 cursor-default hover:bg-slate-900/50'
+                            : isSelected
+                            ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 font-medium cursor-pointer'
+                            : 'text-slate-300 hover:bg-slate-800/60 cursor-pointer'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2 truncate pr-2 min-w-0 flex-1">
+                          {file.is_dir ? (
+                            <Folder className="w-4 h-4 text-amber-400 shrink-0" />
+                          ) : (
+                            <File className="w-4 h-4 text-slate-400 shrink-0" />
+                          )}
+                          <span className="truncate" title={file.path}>{file.path}</span>
+                        </div>
+                        {!file.is_dir && (
+                          <span className="text-[11px] text-slate-500 shrink-0">
+                            {formatSize(file.size)}
+                          </span>
                         )}
-                        <span className="truncate" title={file.path}>{file.path}</span>
                       </div>
-                      {!file.is_dir && (
-                        <span className="text-[11px] text-slate-500 shrink-0">
-                          {formatSize(file.size)}
-                        </span>
-                      )}
+                    );
+                  })}
+                  {filteredFiles.length > 300 && (
+                    <div className="text-center py-3 text-[11px] text-amber-400/80 font-mono bg-amber-500/5 border border-amber-500/10 rounded-lg my-1">
+                      Showing first 300 matching items. Refine search to see more.
                     </div>
-                  );
-                })
+                  )}
+                </>
               )}
             </div>
           </div>
