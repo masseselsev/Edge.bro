@@ -59,7 +59,7 @@ def test_get_archive_files_endpoint(mock_run, mock_exists, client, test_db):
 
     mock_run.return_value = MagicMock(
         returncode=0,
-        stdout='{"files": [{"path": "etc/fstab", "size": 256, "mode": "-rw-r--r--", "mtime": "2026-08-01T00:00:00"}]}'
+        stdout='{"path": "etc/fstab", "size": 256, "mode": "-rw-r--r--", "mtime": "2026-08-01T00:00:00"}\n'
     )
 
     headers = {"X-Kiosk-Secret": "kiosk-secret"}

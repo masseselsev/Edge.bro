@@ -379,24 +379,30 @@ def get_archive_files(history_id: int, db: Session = Depends(get_db), current_us
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
     try:
-        cmd = ["borg", "list", "--json", f"{repo_path}::{history.archive_name}"]
+        cmd = ["borg", "list", "--json-lines", f"{repo_path}::{history.archive_name}"]
         res = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=30)
         if res.returncode != 0:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Borg list failed: {res.stderr.strip()}")
 
-        data = json.loads(res.stdout)
         file_items = []
-        for item in data.get("files", []):
-            path = item.get("path", "")
-            mode = item.get("mode", "")
-            is_dir = mode.startswith("d") if mode else False
-            file_items.append(schemas.ArchiveFileInfo(
-                path=path,
-                size=item.get("size", 0),
-                mtime=item.get("mtime"),
-                mode=mode,
-                is_dir=is_dir
-            ))
+        for line in res.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+                path = item.get("path", "")
+                mode = item.get("mode", "")
+                is_dir = mode.startswith("d") if mode else False
+                file_items.append(schemas.ArchiveFileInfo(
+                    path=path,
+                    size=item.get("size", 0),
+                    mtime=item.get("mtime"),
+                    mode=mode,
+                    is_dir=is_dir
+                ))
+            except json.JSONDecodeError:
+                continue
 
         return schemas.ArchiveFileListResponse(
             archive_name=history.archive_name,

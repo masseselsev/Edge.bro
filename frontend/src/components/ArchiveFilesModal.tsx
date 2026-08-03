@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Search, FileText, Folder, File, Copy, Check, Loader2, AlertCircle, HardDrive } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 
@@ -110,7 +111,7 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
 
   if (!historyId) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-fade-in">
       <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden animate-modal-in">
         
@@ -274,6 +275,7 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
