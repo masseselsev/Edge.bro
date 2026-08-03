@@ -15,6 +15,7 @@ from models import TaskLog
 from database import SessionLocal, get_db
 from sqlalchemy.orm import Session
 from routers.users import require_admin, require_kiosk_or_admin
+from core.borg_local import borg_kwargs
 import models
 import schemas
 
@@ -370,6 +371,7 @@ def download_repo(
             env=env,
             capture_output=True,
             text=True,
+            **borg_kwargs(shared_repo, env),
             check=True
         )
         all_archives = json.loads(list_res.stdout).get("archives", [])
@@ -412,13 +414,19 @@ def download_repo(
     download_kiosk_packages(node.os_version, packages_dir)
 
     # Transfer only the node's archives from shared repository to temporary repository
+    # Only the export side reads the fleet repository, so only it needs that
+    # repository's identity; the temporary repository was created by this
+    # process and stays owned by it.
+    export_env = env.copy()
+    export_kwargs = borg_kwargs(shared_repo, export_env)
     try:
         for archive in node_archives:
             export_proc = subprocess.Popen(
                 ["borg", "export-tar", f"{shared_repo}::{archive}", "-"],
-                env=env,
+                env=export_env,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
+                **export_kwargs
             )
             import_proc = subprocess.Popen(
                 ["borg", "import-tar", f"{temp_repo_dir}::{archive}", "-"],

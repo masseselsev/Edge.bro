@@ -15,6 +15,7 @@ from database import get_db
 import models
 import schemas
 from tasks import run_bootstrap_task, purge_node_archives
+from core.borg_local import borg_kwargs, grant_workdir
 from routers.users import require_admin, require_kiosk_or_admin
 
 router = APIRouter(prefix="/api/nodes", tags=["Nodes"])
@@ -384,7 +385,7 @@ def get_archive_files(history_id: int, db: Session = Depends(get_db), current_us
 
     try:
         cmd = ["borg", "list", "--bypass-lock", "--json-lines", f"{repo_path}::{history.archive_name}"]
-        res = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=30)
+        res = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=30, **borg_kwargs(repo_path, env))
         if res.returncode != 0:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Borg list failed: {res.stderr.strip()}")
 
@@ -442,8 +443,8 @@ def get_archive_file_content(history_id: int, path: str, db: Session = Depends(g
 
     try:
         cmd = ["borg", "extract", "--bypass-lock", "--stdout", f"{repo_path}::{history.archive_name}", clean_path]
-        proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
+        proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **borg_kwargs(repo_path, env))
+
         max_bytes = 500 * 1024
         raw_bytes = proc.stdout.read(max_bytes + 1)
         proc.stdout.close()
@@ -525,10 +526,13 @@ def download_archive_file(
     if is_dir:
         temp_dir = tempfile.mkdtemp()
         zip_path = os.path.join(temp_dir, "archive.zip")
+        # borg extracts into its working directory, so hand the temp dir to
+        # whichever identity we are about to run it as.
+        grant_workdir(temp_dir, repo_path)
 
         try:
             cmd = ["borg", "extract", "--bypass-lock", f"{repo_path}::{history.archive_name}", clean_path]
-            res = subprocess.run(cmd, env=env, cwd=temp_dir, capture_output=True, text=True, timeout=180)
+            res = subprocess.run(cmd, env=env, cwd=temp_dir, capture_output=True, text=True, timeout=180, **borg_kwargs(repo_path, env))
             if res.returncode != 0:
                 shutil.rmtree(temp_dir, ignore_errors=True)
                 raise HTTPException(
@@ -576,7 +580,7 @@ def download_archive_file(
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     cmd = ["borg", "extract", "--bypass-lock", "--stdout", f"{repo_path}::{history.archive_name}", clean_path]
-    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **borg_kwargs(repo_path, env))
 
     def iterfile():
         try:
@@ -622,8 +626,8 @@ def delete_node(node_id: int, request: Request = None, db: Session = Depends(get
             env = os.environ.copy()
             env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
             cmd = ["borg", "delete", "--glob-archives", f"{node.hostname}-*", repo_path]
-            subprocess.run(cmd, env=env, capture_output=True, text=True)
-            
+            subprocess.run(cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
+
             from tasks import fix_repo_permissions
             fix_repo_permissions(repo_path)
         except Exception as e:

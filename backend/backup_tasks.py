@@ -10,6 +10,7 @@ from celery_app import celery_app
 from database import SessionLocal
 from models import Node, TaskLog, BackupHistory, Settings, BackupGroup
 from ansible_utils import run_ansible_playbook
+from core.borg_local import borg_kwargs
 
 # Re-use logging configuration from tasks
 logger = logging.getLogger(__name__)
@@ -259,6 +260,7 @@ def cleanup_locks_and_resolve_ip(
             env=env,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, timeout=30,
+            **borg_kwargs(repo_path, env),
         )
         if res.returncode == 0:
             log_to_task(task_id, "[Lock cleanup] Repo lock check passed (no stale lock, or lock broken).")
@@ -665,7 +667,7 @@ def global_daily_prune() -> Dict[str, Any]:
 
         try:
             logger.info(f"Executing Borg prune for node {node.hostname}...")
-            res_prune = subprocess.run(prune_cmd, env=env, capture_output=True, text=True)
+            res_prune = subprocess.run(prune_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
             if res_prune.returncode == 0:
                 results["prunes"][node.hostname] = "SUCCESS"
             else:
@@ -679,7 +681,7 @@ def global_daily_prune() -> Dict[str, Any]:
     try:
         logger.info("Starting Borg repository compaction after daily prunes...")
         compact_cmd = ["borg", "compact", repo_path]
-        res_compact = subprocess.run(compact_cmd, env=env, capture_output=True, text=True)
+        res_compact = subprocess.run(compact_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
         if res_compact.returncode == 0:
             logger.info("Successfully compacted Borg repository.")
             results["compact"] = "SUCCESS"
@@ -694,7 +696,7 @@ def global_daily_prune() -> Dict[str, Any]:
     try:
         logger.info("Synchronizing backup history database records with active archives...")
         list_cmd = ["borg", "list", "--json", repo_path]
-        res_list = subprocess.run(list_cmd, env=env, capture_output=True, text=True)
+        res_list = subprocess.run(list_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
         if res_list.returncode == 0:
             import json
             active_archives = {a["name"] for a in json.loads(res_list.stdout).get("archives", [])}

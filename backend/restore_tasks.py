@@ -8,6 +8,7 @@ from celery_app import celery_app
 from database import SessionLocal
 from models import Node, TaskLog, BackupHistory
 from restore_logic import execute_restore
+from core.borg_local import borg_kwargs
 
 @celery_app.task(bind=True)
 def flash_restore_device(self, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = False) -> Dict[str, Any]:
@@ -60,7 +61,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
 
         # List all archives in the repository
         list_cmd = ["borg", "list", "--json", repo_path]
-        list_res = subprocess.run(list_cmd, env=env, capture_output=True, text=True)
+        list_res = subprocess.run(list_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
 
         if list_res.returncode != 0:
             log_to_task(task_id, f"Failed to list archives: {list_res.stderr}", status="FAILED")
@@ -87,7 +88,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
         for archive in archives:
             name = archive["name"]
             del_cmd = ["borg", "delete", f"{repo_path}::{name}"]
-            del_res = subprocess.run(del_cmd, env=env, capture_output=True, text=True)
+            del_res = subprocess.run(del_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
             if del_res.returncode == 0:
                 deleted_count += 1
                 log_to_task(task_id, f"Deleted archive: {name}")
@@ -98,7 +99,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
         if deleted_count > 0:
             log_to_task(task_id, "Compacting Borg repository to reclaim disk space...")
             compact_cmd = ["borg", "compact", repo_path]
-            compact_res = subprocess.run(compact_cmd, env=env, capture_output=True, text=True)
+            compact_res = subprocess.run(compact_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
             if compact_res.returncode == 0:
                 log_to_task(task_id, "Repository compaction completed successfully.")
             else:
