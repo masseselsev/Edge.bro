@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, FileText, Folder, File, Copy, Check, Loader2, AlertCircle, HardDrive } from 'lucide-react';
+import { X, Search, FileText, Folder, File, Copy, Check, Loader2, AlertCircle, HardDrive, Maximize2, Minimize2 } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 
 interface ArchiveFileInfo {
@@ -23,6 +23,7 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isMaximized, setIsMaximized] = useState<boolean>(false);
 
   const [selectedFile, setSelectedFile] = useState<ArchiveFileInfo | null>(null);
   const [contentLoading, setContentLoading] = useState<boolean>(false);
@@ -112,8 +113,10 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
   if (!historyId) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-fade-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden animate-modal-in">
+    <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md animate-fade-in ${isMaximized ? 'p-0' : 'p-4'}`}>
+      <div className={`bg-slate-900 border border-slate-800 shadow-2xl flex flex-col overflow-hidden transition-all duration-200 ${
+        isMaximized ? 'w-full h-full rounded-none' : 'w-full max-w-6xl h-[85vh] rounded-xl animate-modal-in'
+      }`}>
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
@@ -125,16 +128,26 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
               <h2 className="text-lg font-semibold text-slate-100 flex items-center space-x-2">
                 <span>{t('viewArchiveFiles')}</span>
               </h2>
-              <p className="text-xs text-slate-400 font-mono mt-0.5">{archiveName}</p>
+              <p className="text-xs text-slate-400 font-mono mt-0.5" title={archiveName}>{archiveName}</p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-1.5">
+            <button
+              onClick={() => setIsMaximized(!isMaximized)}
+              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
+              title={isMaximized ? "Restore window" : "Maximize to fullscreen"}
+            >
+              {isMaximized ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
+              title="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Content Body */}
@@ -179,6 +192,7 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                     <div
                       key={idx}
                       onClick={() => handleSelectFile(file)}
+                      title={file.path}
                       className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
                         file.is_dir
                           ? 'text-slate-400 cursor-default hover:bg-slate-900/50'
@@ -187,13 +201,13 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                           : 'text-slate-300 hover:bg-slate-800/60 cursor-pointer'
                       }`}
                     >
-                      <div className="flex items-center space-x-2 truncate pr-2">
+                      <div className="flex items-center space-x-2 truncate pr-2 min-w-0 flex-1">
                         {file.is_dir ? (
                           <Folder className="w-4 h-4 text-amber-400 shrink-0" />
                         ) : (
                           <File className="w-4 h-4 text-slate-400 shrink-0" />
                         )}
-                        <span className="truncate">{file.path}</span>
+                        <span className="truncate" title={file.path}>{file.path}</span>
                       </div>
                       {!file.is_dir && (
                         <span className="text-[11px] text-slate-500 shrink-0">
@@ -215,7 +229,7 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                 <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
                   <div className="flex items-center space-x-2 truncate">
                     <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
-                    <span className="text-xs font-mono font-medium text-slate-200 truncate">
+                    <span className="text-xs font-mono font-medium text-slate-200 truncate" title={selectedFile.path}>
                       {selectedFile.path}
                     </span>
                     <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
