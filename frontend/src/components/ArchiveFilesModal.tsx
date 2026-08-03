@@ -39,9 +39,10 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
     setFileContent(null);
 
     fetch(`/api/nodes/history/${historyId}/files`)
-      .then((res) => {
+      .then(async (res) => {
         if (!res.ok) {
-          throw new Error(`Server returned ${res.status}`);
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `Server returned ${res.status}`);
         }
         return res.json();
       })
@@ -66,9 +67,10 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
 
     const encodedPath = encodeURIComponent(file.path);
     fetch(`/api/nodes/history/${historyId}/file-content?path=${encodedPath}`)
-      .then((res) => {
+      .then(async (res) => {
         if (!res.ok) {
-          throw new Error(`Server returned ${res.status}`);
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `Server returned ${res.status}`);
         }
         return res.json();
       })
@@ -109,7 +111,7 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
   if (!historyId) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-fade-in">
       <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden animate-modal-in">
         
         {/* Header */}
