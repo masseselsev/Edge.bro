@@ -4,8 +4,12 @@ import ipaddress
 import redis
 import json
 import datetime
+import tempfile
+import shutil
+import zipfile
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db
 import models
@@ -490,6 +494,113 @@ def get_archive_file_content(history_id: int, path: str, db: Session = Depends(g
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/history/{history_id}/download-file")
+def download_archive_file(
+    history_id: int,
+    path: str,
+    is_dir: bool = False,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_kiosk_or_admin)
+):
+    """
+    Streams and downloads a single file or packages an entire folder into a ZIP archive for client download.
+    """
+    history = db.query(models.BackupHistory).filter(models.BackupHistory.id == history_id).first()
+    if not history:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup history record not found.")
+
+    clean_path = path.strip().lstrip("/")
+    if not clean_path:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file path.")
+
+    repo_path = "/data/borg/fleet"
+    if not os.path.exists(repo_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Borg repository does not exist.")
+
+    env = os.environ.copy()
+    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
+
+    if is_dir:
+        temp_dir = tempfile.mkdtemp()
+        zip_path = os.path.join(temp_dir, "archive.zip")
+
+        try:
+            cmd = ["borg", "extract", f"{repo_path}::{history.archive_name}", clean_path]
+            res = subprocess.run(cmd, env=env, cwd=temp_dir, capture_output=True, text=True, timeout=180)
+            if res.returncode != 0:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Borg folder extraction failed: {res.stderr.strip()}"
+                )
+
+            extracted_target = os.path.join(temp_dir, clean_path)
+            folder_name = os.path.basename(clean_path.rstrip("/")) or "folder"
+
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                if os.path.exists(extracted_target):
+                    if os.path.isdir(extracted_target):
+                        for root, _, files in os.walk(extracted_target):
+                            for file in files:
+                                full_file_path = os.path.join(root, file)
+                                arcname = os.path.relpath(full_file_path, os.path.dirname(extracted_target))
+                                zf.write(full_file_path, arcname)
+                    else:
+                        zf.write(extracted_target, os.path.basename(extracted_target))
+
+            def iter_zip():
+                try:
+                    with open(zip_path, "rb") as f:
+                        while True:
+                            chunk = f.read(64 * 1024)
+                            if not chunk:
+                                break
+                            yield chunk
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+
+            encoded_filename = f"{folder_name}.zip".replace('"', '\\"')
+            return StreamingResponse(
+                iter_zip(),
+                media_type="application/zip",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{encoded_filename}"'
+                }
+            )
+        except Exception as e:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            if isinstance(e, HTTPException):
+                raise e
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    cmd = ["borg", "extract", "--stdout", f"{repo_path}::{history.archive_name}", clean_path]
+    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def iterfile():
+        try:
+            while True:
+                chunk = proc.stdout.read(64 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            proc.stdout.close()
+            proc.stderr.close()
+            proc.wait()
+
+    filename = os.path.basename(clean_path) or "download"
+    encoded_filename = filename.replace('"', '\\"')
+
+    return StreamingResponse(
+        iterfile(),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{encoded_filename}"'
+        }
+    )
+
 
 
 

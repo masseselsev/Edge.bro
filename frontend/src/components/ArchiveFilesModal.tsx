@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, FileText, Folder, FolderOpen, File, Copy, Check, Loader2, AlertCircle, HardDrive, Maximize2, Minimize2, ChevronRight, ChevronDown } from 'lucide-react';
+import { X, Search, FileText, Folder, FolderOpen, File, Copy, Check, Loader2, AlertCircle, HardDrive, Maximize2, Minimize2, ChevronRight, ChevronDown, Download } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 
 interface ArchiveFileInfo {
@@ -101,6 +101,19 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
         setContentMessage(err.message || 'Failed to extract file content');
         setContentLoading(false);
       });
+  };
+
+  const handleDownload = (filePath: string, isDir: boolean = false) => {
+    if (!historyId || !filePath) return;
+    const encodedPath = encodeURIComponent(filePath);
+    const downloadUrl = `/api/nodes/history/${historyId}/download-file?path=${encodedPath}&is_dir=${isDir}`;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    const defaultName = filePath.split('/').pop() || (isDir ? 'folder' : 'file');
+    link.download = isDir ? `${defaultName}.zip` : defaultName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const formatSize = (bytes: number) => {
@@ -353,7 +366,7 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                         }}
                         title={node.full_path}
                         style={{ paddingLeft: searchQuery.trim() ? '0.75rem' : `${depth * 1.25 + 0.75}rem` }}
-                        className={`flex items-center justify-between pr-3 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer select-none ${
+                        className={`group flex items-center justify-between pr-3 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer select-none ${
                           node.is_dir
                             ? 'text-slate-200 hover:bg-slate-800/80 font-semibold'
                             : isSelected
@@ -385,9 +398,21 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                             {searchQuery.trim() ? node.full_path : node.name}
                           </span>
                         </div>
-                        <span className="text-[11px] text-slate-500 shrink-0 font-normal">
-                          {formatSize(node.size)}
-                        </span>
+                        <div className="flex items-center space-x-2 shrink-0">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownload(node.full_path, node.is_dir);
+                            }}
+                            className="p-1 text-slate-400 hover:text-indigo-300 hover:bg-slate-800 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                            title={node.is_dir ? "Download Folder as ZIP" : "Download File"}
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="text-[11px] text-slate-500 font-normal">
+                            {formatSize(node.size)}
+                          </span>
+                        </div>
                       </div>
                     );
                   })}
@@ -417,24 +442,35 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                     </span>
                   </div>
 
-                  {isText && fileContent !== null && (
+                  <div className="flex items-center space-x-2">
                     <button
-                      onClick={handleCopy}
-                      className="flex items-center space-x-1.5 px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md transition-colors border border-slate-700"
+                      onClick={() => handleDownload(selectedFile.path)}
+                      className="flex items-center space-x-1.5 px-2.5 py-1 text-xs bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 rounded-md transition-colors border border-indigo-500/30"
+                      title="Download File"
                     >
-                      {copied ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-emerald-400">{t('copied')}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>{t('copyContent')}</span>
-                        </>
-                      )}
+                      <Download className="w-3.5 h-3.5" />
+                      <span>{t('download') || 'Download'}</span>
                     </button>
-                  )}
+
+                    {isText && fileContent !== null && (
+                      <button
+                        onClick={handleCopy}
+                        className="flex items-center space-x-1.5 px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md transition-colors border border-slate-700"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-emerald-400">{t('copied')}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>{t('copyContent')}</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Reader Body */}
@@ -450,6 +486,13 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                       <p className="text-xs text-slate-300 max-w-sm">
                         {contentMessage || t('binaryFileWarning')}
                       </p>
+                      <button
+                        onClick={() => handleDownload(selectedFile.path)}
+                        className="flex items-center space-x-2 px-4 py-2 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg shadow-lg transition-colors cursor-pointer"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>{t('downloadFile') || 'Download File'}</span>
+                      </button>
                     </div>
                   ) : (
                     <pre className="whitespace-pre-wrap break-words leading-relaxed text-slate-300 font-mono text-[11px]">

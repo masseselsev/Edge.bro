@@ -1,3 +1,4 @@
+import os
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
@@ -103,3 +104,81 @@ def test_get_archive_file_content_endpoint(mock_popen, mock_exists, client, test
     assert data["path"] == "etc/fstab"
     assert data["is_text"] is True
     assert "UUID=1234" in data["content"]
+
+
+@patch("routers.nodes_crud.os.path.exists")
+@patch("routers.nodes_crud.subprocess.Popen")
+def test_download_archive_file_endpoint(mock_popen, mock_exists, client, test_db):
+    mock_exists.return_value = True
+    node = models.Node(hostname="node-dl", ip_address="192.168.1.102")
+    test_db.add(node)
+    test_db.commit()
+
+    history = models.BackupHistory(
+        node_id=node.id,
+        archive_name="node-dl-20260801000000",
+        original_size=1000,
+        deduplicated_size=500,
+        status="SUCCESS"
+    )
+    test_db.add(history)
+    test_db.commit()
+
+    mock_proc = MagicMock()
+    mock_proc.stdout.read.side_effect = [b"binary file stream content", b""]
+    mock_proc.stderr.read.return_value = b""
+    mock_proc.wait.return_value = 0
+    mock_popen.return_value = mock_proc
+
+    headers = {"X-Kiosk-Secret": "kiosk-secret"}
+    response = client.get(f"/api/nodes/history/{history.id}/download-file?path=var/log/syslog", headers=headers)
+    assert response.status_code == 200
+    assert response.content == b"binary file stream content"
+    assert "syslog" in response.headers.get("content-disposition", "")
+
+
+@patch("routers.nodes_crud.subprocess.run")
+def test_download_archive_directory_as_zip_endpoint(mock_run, client, test_db):
+    node = models.Node(hostname="node-zip", ip_address="192.168.1.103")
+    test_db.add(node)
+    test_db.commit()
+
+    history = models.BackupHistory(
+        node_id=node.id,
+        archive_name="node-zip-20260801000000",
+        original_size=2000,
+        deduplicated_size=1000,
+        status="SUCCESS"
+    )
+    test_db.add(history)
+    test_db.commit()
+
+    def fake_run(cmd, **kwargs):
+        cwd = kwargs.get("cwd")
+        if cwd:
+            target = os.path.join(cwd, "var/log")
+            os.makedirs(target, exist_ok=True)
+            with open(os.path.join(target, "test.log"), "w") as f:
+                f.write("test log content")
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_res.stdout = ""
+        mock_res.stderr = ""
+        return mock_res
+
+    mock_run.side_effect = fake_run
+
+    real_exists = os.path.exists
+    def fake_exists(path):
+        if path == "/data/borg/fleet":
+            return True
+        return real_exists(path)
+
+    with patch("routers.nodes_crud.os.path.exists", side_effect=fake_exists):
+        headers = {"X-Kiosk-Secret": "kiosk-secret"}
+        response = client.get(f"/api/nodes/history/{history.id}/download-file?path=var/log&is_dir=true", headers=headers)
+        assert response.status_code == 200
+        assert "application/zip" in response.headers.get("content-type", "")
+        assert "log.zip" in response.headers.get("content-disposition", "")
+
+
