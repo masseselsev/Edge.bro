@@ -383,7 +383,7 @@ def get_archive_files(history_id: int, db: Session = Depends(get_db), current_us
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
     try:
-        cmd = ["borg", "list", "--json-lines", f"{repo_path}::{history.archive_name}"]
+        cmd = ["borg", "list", "--bypass-lock", "--json-lines", f"{repo_path}::{history.archive_name}"]
         res = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=30)
         if res.returncode != 0:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Borg list failed: {res.stderr.strip()}")
@@ -441,7 +441,7 @@ def get_archive_file_content(history_id: int, path: str, db: Session = Depends(g
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
     try:
-        cmd = ["borg", "extract", "--stdout", f"{repo_path}::{history.archive_name}", clean_path]
+        cmd = ["borg", "extract", "--bypass-lock", "--stdout", f"{repo_path}::{history.archive_name}", clean_path]
         proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
         max_bytes = 500 * 1024
@@ -527,7 +527,7 @@ def download_archive_file(
         zip_path = os.path.join(temp_dir, "archive.zip")
 
         try:
-            cmd = ["borg", "extract", f"{repo_path}::{history.archive_name}", clean_path]
+            cmd = ["borg", "extract", "--bypass-lock", f"{repo_path}::{history.archive_name}", clean_path]
             res = subprocess.run(cmd, env=env, cwd=temp_dir, capture_output=True, text=True, timeout=180)
             if res.returncode != 0:
                 shutil.rmtree(temp_dir, ignore_errors=True)
@@ -575,7 +575,7 @@ def download_archive_file(
                 raise e
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-    cmd = ["borg", "extract", "--stdout", f"{repo_path}::{history.archive_name}", clean_path]
+    cmd = ["borg", "extract", "--bypass-lock", "--stdout", f"{repo_path}::{history.archive_name}", clean_path]
     proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def iterfile():
