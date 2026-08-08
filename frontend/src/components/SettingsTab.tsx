@@ -6,6 +6,7 @@ import { useTranslation } from '../context/TranslationContext';
 import type { Language } from '../i18n/translations';
 import AdminsTab from './AdminsTab';
 import AuditLogsTab from './AuditLogsTab';
+import SshKeysTab from './SshKeysTab';
 import { CredentialsModal } from './CredentialsModal';
 import { InfoLabel } from './InfoLabel';
 
@@ -16,7 +17,7 @@ interface SettingsTabProps {
 
 export default function SettingsTab({ onSettingsUpdated, currentUser }: SettingsTabProps) {
   const { t, setLanguage } = useTranslation();
-  const [activeSubTab, setActiveSubTab] = useState<'general' | 'admins' | 'audit' | 'kiosk_logs'>('general');
+  const [activeSubTab, setActiveSubTab] = useState<'general' | 'admins' | 'audit' | 'kiosk_logs' | 'ssh_keys'>('general');
   const [sshPort, setSshPort] = useState(12345);
   const [repoPath, setRepoPath] = useState('/data/borg');
   const [policyType, setPolicyType] = useState<'interval' | 'count' | 'timeframe'>('interval');
@@ -308,6 +309,17 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           </button>
           <button
             type="button"
+            onClick={() => setActiveSubTab('ssh_keys')}
+            className={`pb-2 border-b-2 px-1 transition-all cursor-pointer outline-none ${
+              activeSubTab === 'ssh_keys'
+                ? 'border-indigo-500 text-zinc-150'
+                : 'border-transparent text-zinc-450 hover:text-zinc-300'
+            }`}
+          >
+            {t('tabSshKeys')}
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveSubTab('kiosk_logs')}
             className={`pb-2 border-b-2 px-1 transition-all cursor-pointer outline-none ${
               activeSubTab === 'kiosk_logs'
@@ -324,6 +336,8 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         <AdminsTab currentUser={currentUser} />
       ) : activeSubTab === 'audit' && (currentUser?.is_superadmin || currentUser?.is_admin_plus) ? (
         <AuditLogsTab timezone={timezone} type="admin" />
+      ) : activeSubTab === 'ssh_keys' && (currentUser?.is_superadmin || currentUser?.is_admin_plus) ? (
+        <SshKeysTab />
       ) : activeSubTab === 'kiosk_logs' && (currentUser?.is_superadmin || currentUser?.is_admin_plus) ? (
         <AuditLogsTab timezone={timezone} type="kiosk" />
       ) : (
