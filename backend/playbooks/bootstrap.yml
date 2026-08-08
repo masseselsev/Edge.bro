@@ -161,14 +161,41 @@
 
     - name: Authorize orchestrator SSH public key on edge node
       raw: |
-        if [ -n "{{ orchestrator_ssh_pub_key | default('') }}" ]; then
-          mkdir -p /root/.ssh
-          chmod 700 /root/.ssh
-          if ! grep -qF "{{ orchestrator_ssh_pub_key }}" /root/.ssh/authorized_keys 2>/dev/null; then
-            echo "{{ orchestrator_ssh_pub_key }}" >> /root/.ssh/authorized_keys
-          fi
-          chmod 600 /root/.ssh/authorized_keys
+        PUBKEY='{{ orchestrator_ssh_pub_key }}'
+        TAG='edge-bro-orchestrator'
+        AUTH=/root/.ssh/authorized_keys
+        KEYTYPE=$(echo "$PUBKEY" | awk '{print $1}')
+        BLOB=$(echo "$PUBKEY" | awk '{print $2}')
+        mkdir -p /root/.ssh
+        chmod 700 /root/.ssh
+        touch "$AUTH"
+        cp "$AUTH" "$AUTH.bak.$(date +%s)" 2>/dev/null || true
+        if awk -v blob="$BLOB" -v tag="$TAG" '
+             { n = split($0, f, /[ \t]+/)
+               hasblob = 0
+               for (i = 1; i <= n; i++) if (f[i] == blob) hasblob = 1
+               if (n >= 2 && f[n] == tag) {
+                 if (!hasblob) print "EDGEBRO: removed stale orchestrator key " f[2] > "/dev/stderr"
+                 next
+               }
+               if (hasblob && f[1] ~ /^(ssh-|ecdsa-|sk-)/) {
+                 print "EDGEBRO: re-tagging existing key" > "/dev/stderr"
+                 next
+               }
+               print $0
+             }
+           ' "$AUTH" > "$AUTH.new" 2>/tmp/edgebro_ak.log; then
+          mv "$AUTH.new" "$AUTH"
+        else
+          rm -f "$AUTH.new"
+          echo "EDGEBRO: could not parse authorized_keys; leaving it untouched"
         fi
+        echo "$KEYTYPE $BLOB $TAG" >> "$AUTH"
+        chmod 600 "$AUTH"
+        cat /tmp/edgebro_ak.log 2>/dev/null
+        rm -f /tmp/edgebro_ak.log
+        echo "EDGEBRO: authorized orchestrator key $TAG"
+        awk 'NF && substr($1,1,1) != "#" { print "NODE_AUTHKEY: " $0 }' "$AUTH"
       when: orchestrator_ssh_pub_key is defined and orchestrator_ssh_pub_key | length > 0
 
     - name: Configure SSH to allow root login with keys
