@@ -379,3 +379,52 @@ def test_node_without_a_cached_inventory_is_skipped(db, monkeypatch):
         ssh_audit, "orchestrator_fingerprint", lambda: ssh_keys.fingerprint(KEY_A)
     )
     assert ssh_audit.scan_nodes_from_cache(db) == []
+
+
+def test_audit_task_records_an_audit_log_row_for_each_prune(db, tmp_path, monkeypatch):
+    """An unattended deletion must still be attributable in the audit log."""
+    from tasks import ssh_audit as ssh_audit_task
+
+    path = _write_auth(tmp_path, f"{ssh_keys.BORG_SERVE_OPTIONS} {KEY_A} {ssh_keys.node_tag(1)}")
+    monkeypatch.setattr(ssh_keys, "ORCHESTRATOR_AUTHORIZED_KEYS", path)
+
+    ssh_audit_task.run_audit(db, include_nodes=False)
+    for finding in db.query(models.SshKeyFinding):
+        finding.orphan_since = datetime.utcnow() - timedelta(hours=13)
+    db.commit()
+
+    summary = ssh_audit_task.run_audit(db, include_nodes=False)
+
+    assert summary["pruned"] == 1
+    entries = db.query(models.AuditLog).filter(
+        models.AuditLog.action == "SSH Key Auto-Prune"
+    ).all()
+    assert len(entries) == 1
+    assert entries[0].username == "system"
+    assert ssh_keys.fingerprint(KEY_A) in entries[0].details
+
+
+def test_audit_task_logs_an_abort(db, tmp_path, monkeypatch):
+    from core import ssh_audit
+    from tasks import ssh_audit as ssh_audit_task
+
+    lines = [
+        f"{ssh_keys.BORG_SERVE_OPTIONS} {k} {ssh_keys.node_tag(i)}"
+        for i, k in enumerate([KEY_A, KEY_B, KEY_C], start=1)
+    ]
+    path = _write_auth(tmp_path, *lines)
+    monkeypatch.setattr(ssh_keys, "ORCHESTRATOR_AUTHORIZED_KEYS", path)
+    monkeypatch.setattr(ssh_audit, "PRUNE_MAX_ABSOLUTE", 2)
+
+    ssh_audit_task.run_audit(db, include_nodes=False)
+    for finding in db.query(models.SshKeyFinding):
+        finding.orphan_since = datetime.utcnow() - timedelta(hours=13)
+    db.commit()
+    summary = ssh_audit_task.run_audit(db, include_nodes=False)
+
+    assert summary["aborted"] is True
+    assert summary["pruned"] == 0
+    aborts = db.query(models.AuditLog).filter(
+        models.AuditLog.action == "SSH Key Prune Aborted"
+    ).all()
+    assert len(aborts) == 1
