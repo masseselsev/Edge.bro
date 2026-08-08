@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean, UniqueConstraint
 from sqlalchemy.sql import func
 from database import Base
 
@@ -123,6 +123,9 @@ class Node(Base):
     hasp_runtime_version = Column(String, nullable=True)
     hasp_license_v2c = Column(Text, nullable=True)
 
+    # authorized_keys inventory reported by the node at its last bootstrap.
+    node_authorized_keys = Column(JSON, nullable=True)
+
     # availability fields
     last_ping_status = Column(Boolean, nullable=True)
     last_available_at = Column(DateTime, nullable=True)
@@ -230,5 +233,43 @@ class User(Base):
     comment = Column(Text, nullable=True)
     is_superadmin = Column(Boolean, default=False, nullable=False)
     is_admin_plus = Column(Boolean, default=False, nullable=False)
+
+
+class SshKeyFinding(Base):
+    """One authorized_keys entry as seen by the most recent audit scan.
+
+    Rows are upserted rather than replaced, so `first_seen` records how long a
+    stray has been present and pruned entries stay on the record afterwards.
+    """
+    __tablename__ = 'ssh_key_findings'
+    __table_args__ = (
+        UniqueConstraint('location', 'host', 'fingerprint', name='uq_ssh_finding'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    # ORCHESTRATOR or NODE
+    location = Column(String, nullable=False)
+    # Node hostname, or the '__orchestrator__' sentinel. Not nullable: Postgres
+    # treats NULLs as distinct, which would defeat the unique constraint above.
+    host = Column(String, nullable=False)
+    node_id = Column(Integer, ForeignKey('nodes.id', ondelete='SET NULL'), nullable=True)
+
+    fingerprint = Column(String, nullable=False, index=True)
+    key_type = Column(String, nullable=True)
+    comment = Column(Text, nullable=True)
+    options = Column(Text, nullable=True)
+
+    classification = Column(String, nullable=False)
+    reason = Column(Text, nullable=True)
+
+    first_seen = Column(DateTime, default=func.now(), nullable=False)
+    last_seen = Column(DateTime, default=func.now(), nullable=False)
+    resolved_at = Column(DateTime, nullable=True)
+
+    # Two-strike state. Cleared whenever the entry stops being orphaned.
+    orphan_since = Column(DateTime, nullable=True)
+    orphan_scan_count = Column(Integer, default=0, nullable=False)
+
+    pruned_at = Column(DateTime, nullable=True)
 
 
