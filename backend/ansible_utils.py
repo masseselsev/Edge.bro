@@ -1,11 +1,15 @@
 import os
 import subprocess
 import tempfile
+import logging
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import TaskLog, Settings
+from core import ssh_keys
 import re
+
+logger = logging.getLogger(__name__)
 
 def clean_cpu_info(cpu: str) -> str:
     if not cpu:
@@ -128,7 +132,7 @@ def run_ansible_playbook(
             env=env
         )
 
-        parsed_data: Dict[str, str] = {}
+        parsed_data: Dict[str, Any] = {}
         log_accumulator = []
 
         is_bootstrap = "bootstrap" in playbook_name
@@ -269,8 +273,19 @@ def run_ansible_playbook(
                 if percent is not None and desc is not None:
                     log_accumulator.append(f"[PROGRESS] {percent}:{desc}\n")
                 # Parse custom output lines
+                if "NODE_AUTHKEY:" in line:
+                    entry_line = line.split("NODE_AUTHKEY:", 1)[1].strip().strip('"').rstrip(",")
+                    parsed_data.setdefault("node_authorized_keys", []).append(entry_line)
+                    continue
                 if "SSH_KEY:" in line:
-                    parsed_data["ssh_pub_key"] = line.split("SSH_KEY:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                    raw_key = line.split("SSH_KEY:")[1].strip().strip('"').rstrip(",").strip()
+                    parsed_key = ssh_keys.parse_line(raw_key)
+                    if parsed_key is not None:
+                        # Store the key without its comment; we set our own tag
+                        # when writing it into authorized_keys.
+                        parsed_data["ssh_pub_key"] = f"{parsed_key.keytype} {parsed_key.blob}"
+                    else:
+                        logger.warning("Unparseable SSH_KEY line from node: %r", raw_key)
                 if "DISK_TYPE:" in line:
                     parsed_data["disk_type"] = line.split("DISK_TYPE:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
                 if "EFI_UUID:" in line:

@@ -5,7 +5,53 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 from models import Node, TaskLog, Settings
 from celery_app import celery_app
+from core import ssh_keys
 import tasks
+
+
+def sync_node_key(task_id: str, node, new_pubkey: str) -> None:
+    """Point the orchestrator's authorized_keys at the node's current key.
+
+    A node that was re-imaged presents a new key; the grant for its previous
+    key is revoked first, so a re-image cannot leave a live entry behind.
+    """
+    if not new_pubkey:
+        tasks.log_to_task(
+            task_id, "WARNING: node returned no SSH public key; nothing to authorize"
+        )
+        return
+
+    new_fp = ssh_keys.fingerprint(new_pubkey)
+    old_pubkey = node.ssh_pub_key
+
+    if old_pubkey:
+        try:
+            if ssh_keys.fingerprint(old_pubkey) != new_fp:
+                action = ssh_keys.revoke(ssh_keys.ORCHESTRATOR_AUTHORIZED_KEYS, old_pubkey)
+                tasks.log_to_task(
+                    task_id,
+                    f"Node presented a new SSH key; previous grant {action.value} "
+                    f"({ssh_keys.fingerprint(old_pubkey)})",
+                )
+        except ValueError:
+            tasks.log_to_task(
+                task_id, "WARNING: stored SSH key is unparseable; skipping revoke"
+            )
+
+    action = ssh_keys.authorize(
+        ssh_keys.ORCHESTRATOR_AUTHORIZED_KEYS,
+        new_pubkey,
+        options=ssh_keys.BORG_SERVE_OPTIONS,
+        tag=ssh_keys.node_tag(node.id),
+    )
+    tasks.fix_ssh_permissions()
+    tasks.log_to_task(
+        task_id,
+        f"Borg access for {node.hostname}: {action.value} {new_fp} "
+        f"tag={ssh_keys.node_tag(node.id)}",
+        status="SUCCESS",
+    )
+
 
 @celery_app.task(bind=True, name="tasks.run_bootstrap_task")
 def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: str, force_orchestrator_proxy: bool = False) -> Dict[str, Any]:
@@ -25,6 +71,12 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
     tasks.log_to_task(task_id, f"Starting bootstrap for {node.hostname} ({node.ip_address})")
     try:
         orchestrator_pub_key = tasks.ensure_orchestrator_ssh_key()
+        parsed_orch = ssh_keys.parse_line(orchestrator_pub_key)
+        if parsed_orch is None:
+            raise ValueError("orchestrator public key is unparseable")
+        # Pass the key already normalized so the playbook's raw shell block
+        # never has to cope with a comment containing shell metacharacters.
+        orchestrator_pub_key = f"{parsed_orch.keytype} {parsed_orch.blob}"
     except Exception as e:
         tasks.log_to_task(task_id, f"WARNING: Failed to ensure orchestrator SSH key: {str(e)}")
         orchestrator_pub_key = ""
@@ -56,8 +108,15 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
 
     if res["status"] == "SUCCESS":
         ssh_pub_key = res["parsed_data"].get("ssh_pub_key")
+        try:
+            sync_node_key(task_id, node, ssh_pub_key)
+        except Exception as e:
+            tasks.log_to_task(
+                task_id, f"WARNING: Failed to sync node SSH key: {str(e)}", status="FAILED"
+            )
         node.ssh_pub_key = ssh_pub_key
-        
+
+
         # Save os_version and hardware details
         os_ver = res["parsed_data"].get("os_version")
         if os_ver:
@@ -105,31 +164,6 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
         db.commit()
         tasks.log_to_task(task_id, f"Bootstrap completed. {'Already prepared.' if is_prep else 'Key fetched.'}")
 
-        # Append key to Borg Server authorized_keys
-        try:
-            authorized_keys_path = "/root/.ssh/authorized_keys"
-            os.makedirs(os.path.dirname(authorized_keys_path), exist_ok=True)
-            command_restriction = (
-                f'command="borg serve --restrict-to-path /data/borg/fleet",'
-                f'no-port-forwarding,no-X11-forwarding,no-pty '
-            )
-            entry = f"{command_restriction}{ssh_pub_key}\n"
-            
-            # Prevent duplicate key entries
-            if os.path.exists(authorized_keys_path):
-                with open(authorized_keys_path, "r") as f:
-                    content = f.read()
-            else:
-                content = ""
-                
-            if ssh_pub_key not in content:
-                with open(authorized_keys_path, "a") as f:
-                    f.write(entry)
-                    
-            tasks.fix_ssh_permissions()
-            tasks.log_to_task(task_id, "Borg SSH authorized_keys updated with forced command restriction.", status="SUCCESS")
-        except Exception as e:
-            tasks.log_to_task(task_id, f"WARNING: Failed to append key to authorized_keys: {str(e)}", status="FAILED")
     else:
         is_offline = False
         task_log_obj = db.query(TaskLog).filter(TaskLog.id == task_id).first()
@@ -192,3 +226,52 @@ def auto_retry_bootstrap_task() -> Dict[str, Any]:
         return {"status": "FAILED", "error": str(e)}
     finally:
         db.close()
+
+
+@celery_app.task(bind=True, name="tasks.revoke_node_access_task")
+def revoke_node_access_task(self, hostname: str, ip_address: str, ssh_port: int) -> Dict[str, Any]:
+    """Best-effort removal of the orchestrator's key from a deleted node.
+
+    A decommissioned box is often already switched off, so an unreachable host
+    is a logged outcome, not an error.
+    """
+    task_id = self.request.id
+    db: Session = tasks.SessionLocal()
+    try:
+        task_log = TaskLog(
+            id=task_id, task_type="REVOKE_ACCESS", status="RUNNING", log_output=""
+        )
+        db.add(task_log)
+        db.commit()
+    finally:
+        db.close()
+
+    tasks.log_to_task(task_id, f"Revoking orchestrator access from {hostname} ({ip_address})")
+    try:
+        res = tasks.run_ansible_playbook(
+            task_id=task_id,
+            playbook_name="revoke_access.yml",
+            host_ip=ip_address,
+            ssh_port=ssh_port,
+            extra_vars={},
+            ssh_key_path="/root/.ssh/id_ed25519",
+        )
+    except Exception as e:
+        tasks.log_to_task(
+            task_id,
+            f"Could not reach {hostname}; orchestrator key may remain on that host: {str(e)}",
+            status="FAILED",
+        )
+        return {"status": "FAILED", "error": str(e)}
+
+    if res["status"] == "SUCCESS":
+        tasks.log_to_task(
+            task_id, f"Orchestrator access revoked from {hostname}", status="SUCCESS"
+        )
+    else:
+        tasks.log_to_task(
+            task_id,
+            f"Host {hostname} unreachable; orchestrator key may remain on it",
+            status="FAILED",
+        )
+    return res

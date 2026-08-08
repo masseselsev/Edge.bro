@@ -190,7 +190,7 @@ def fix_repo_permissions(repo_path: str) -> None:
 
 
 # Expose task endpoints directly from tasks
-from tasks.bootstrap import run_bootstrap_task, auto_retry_bootstrap_task
+from tasks.bootstrap import run_bootstrap_task, auto_retry_bootstrap_task, revoke_node_access_task
 from tasks.ping import ping_all_nodes_task, async_ping_ip
 from tasks.scheduler import scheduler_tick
 from tasks.cleanup import docker_system_cleanup_task, db_task_log_prune_task
