@@ -7,6 +7,7 @@ import datetime
 import tempfile
 import shutil
 import zipfile
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import StreamingResponse
@@ -15,8 +16,12 @@ from database import get_db
 import models
 import schemas
 from tasks import run_bootstrap_task, purge_node_archives
+from tasks.bootstrap import revoke_node_access_task
+from core import ssh_keys
 from core.borg_local import borg_kwargs, grant_workdir
 from routers.users import require_admin, require_kiosk_or_admin
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/nodes", tags=["Nodes"])
 
@@ -640,22 +645,34 @@ def delete_node(node_id: int, request: Request = None, db: Session = Depends(get
         except Exception as e:
             print(f"WARNING: Failed to delete archives for {node.hostname} from shared repo: {str(e)}")
 
-    # 2. Clean up SSH authorized_keys entry safely
-    authorized_keys_path = "/root/.ssh/authorized_keys"
-    if os.path.exists(authorized_keys_path) and node.ssh_pub_key:
+    # 2. Withdraw the node's borg grant, and ask the node to drop ours.
+    snapshot = {
+        "hostname": node.hostname,
+        "ip_address": node.ip_address,
+        "ssh_port": node.ssh_port,
+    }
+    if node.ssh_pub_key:
         try:
-            with open(authorized_keys_path, "r") as f:
-                lines = f.readlines()
-            
-            new_lines = [line for line in lines if node.ssh_pub_key not in line]
-            
-            with open(authorized_keys_path, "w") as f:
-                f.writelines(new_lines)
-                
+            action = ssh_keys.revoke(ssh_keys.ORCHESTRATOR_AUTHORIZED_KEYS, node.ssh_pub_key)
             from tasks import fix_ssh_permissions
             fix_ssh_permissions()
+            logger.info("Borg grant for %s: %s", node.hostname, action.value)
         except Exception as e:
-            print(f"WARNING: Failed to clean up SSH authorized_keys for {node.hostname}: {str(e)}")
+            logger.warning("Failed to revoke borg grant for %s: %s", node.hostname, str(e))
+
+    try:
+        # retry=False so an unreachable broker fails immediately instead of
+        # blocking this request; deletion must not depend on the queue.
+        revoke_node_access_task.apply_async(
+            args=[snapshot["hostname"], snapshot["ip_address"], snapshot["ssh_port"]],
+            retry=False,
+        )
+        logger.info("Dispatched access revocation for %s", snapshot["hostname"])
+    except Exception as e:
+        logger.warning(
+            "Could not dispatch access revocation for %s; the orchestrator key may "
+            "remain on that host: %s", snapshot["hostname"], str(e)
+        )
 
     # 3. Delete related backup histories first to prevent foreign key errors
     db.query(models.BackupHistory).filter(models.BackupHistory.node_id == node_id).delete()

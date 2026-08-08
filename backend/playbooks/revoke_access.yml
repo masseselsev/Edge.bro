@@ -1,0 +1,33 @@
+---
+- name: Revoke orchestrator SSH access from a decommissioned node
+  hosts: all
+  gather_facts: no
+  become: no
+  tasks:
+    - name: Remove edge-bro tagged keys from the node authorized_keys
+      raw: |
+        AUTH=/root/.ssh/authorized_keys
+        if [ ! -f "$AUTH" ]; then
+          echo "REVOKE_RESULT: no authorized_keys file"
+          exit 0
+        fi
+        cp "$AUTH" "$AUTH.bak.$(date +%s)" 2>/dev/null || true
+        if awk '
+             { n = split($0, f, /[ \t]+/)
+               if (n >= 2 && f[n] ~ /^edge-bro-/) {
+                 print "REVOKE_REMOVED: " f[n] > "/dev/stderr"
+                 next
+               }
+               print $0
+             }
+           ' "$AUTH" > "$AUTH.new" 2>/tmp/edgebro_revoke.log; then
+          mv "$AUTH.new" "$AUTH"
+          chmod 600 "$AUTH"
+          cat /tmp/edgebro_revoke.log 2>/dev/null
+          rm -f /tmp/edgebro_revoke.log
+          echo "REVOKE_RESULT: ok"
+        else
+          rm -f "$AUTH.new"
+          echo "REVOKE_RESULT: parse failed, file left untouched"
+        fi
+      changed_when: false
