@@ -116,6 +116,14 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
             )
         node.ssh_pub_key = ssh_pub_key
 
+        node_keys = res["parsed_data"].get("node_authorized_keys")
+        if node_keys:
+            node.node_authorized_keys = node_keys
+            tasks.log_to_task(
+                task_id,
+                f"Recorded {len(node_keys)} authorized_keys entrie(s) from the node",
+            )
+
 
         # Save os_version and hardware details
         os_ver = res["parsed_data"].get("os_version")

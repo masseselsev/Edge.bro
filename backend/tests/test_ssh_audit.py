@@ -342,3 +342,40 @@ def test_prune_writes_a_backup(db, tmp_path, monkeypatch):
 
     backups = [n for n in os.listdir(tmp_path) if n.startswith("authorized_keys.bak.")]
     assert backups
+
+
+def test_node_cache_classifies_stale_orchestrator_keys(db, monkeypatch):
+    from core import ssh_audit
+
+    node = models.Node(
+        hostname="n1", ip_address="10.0.0.1", ssh_port=22,
+        node_authorized_keys=[
+            f"{KEY_A} edge-bro-orchestrator",   # current
+            f"{KEY_B} edge-bro-orchestrator",   # rotation leftover
+            f"{KEY_C} admin@laptop",            # foreign
+        ],
+    )
+    db.add(node)
+    db.commit()
+
+    monkeypatch.setattr(
+        ssh_audit, "orchestrator_fingerprint", lambda: ssh_keys.fingerprint(KEY_A)
+    )
+    findings = ssh_audit.scan_nodes_from_cache(db)
+
+    by_fp = {f.fingerprint: f for f in findings}
+    assert by_fp[ssh_keys.fingerprint(KEY_A)].classification == "OURS_MATCHED"
+    assert by_fp[ssh_keys.fingerprint(KEY_B)].classification == "OURS_ORPHANED"
+    assert by_fp[ssh_keys.fingerprint(KEY_C)].classification == "UNKNOWN"
+    assert all(f.location == "NODE" and f.host == "n1" for f in findings)
+
+
+def test_node_without_a_cached_inventory_is_skipped(db, monkeypatch):
+    from core import ssh_audit
+
+    db.add(models.Node(hostname="n2", ip_address="10.0.0.2", ssh_port=22))
+    db.commit()
+    monkeypatch.setattr(
+        ssh_audit, "orchestrator_fingerprint", lambda: ssh_keys.fingerprint(KEY_A)
+    )
+    assert ssh_audit.scan_nodes_from_cache(db) == []

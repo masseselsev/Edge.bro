@@ -283,3 +283,44 @@ def prune(db, path: str, decision: PruneDecision) -> list:
             )
     db.commit()
     return pruned
+
+
+def scan_nodes_from_cache(db) -> list[models.SshKeyFinding]:
+    """Classify each node's authorized_keys as captured at its last bootstrap.
+
+    The cached inventory is only as fresh as that bootstrap, which is enough:
+    node-side leaks are created during bootstrap and fixed there too. An
+    on-demand scan covers anything added out of band.
+    """
+    current = orchestrator_fingerprint()
+    if current is None:
+        logger.warning("Orchestrator public key unavailable; skipping node audit")
+        return []
+
+    known = {current}
+    findings = []
+    nodes = db.query(models.Node).filter(models.Node.node_authorized_keys.isnot(None))
+    for node in nodes:
+        seen = set()
+        for line in node.node_authorized_keys or []:
+            entry = ssh_keys.parse_line(line)
+            if entry is None:
+                continue
+            classification, reason = ssh_keys.classify(entry, known)
+            findings.append(
+                upsert_finding(
+                    db,
+                    location="NODE",
+                    host=node.hostname,
+                    node_id=node.id,
+                    entry=entry,
+                    classification=classification,
+                    reason=reason,
+                )
+            )
+            seen.add(entry.fingerprint)
+        _resolve_absent(db, "NODE", node.hostname, seen)
+
+    db.commit()
+    logger.info("SSH audit scanned cached inventories for %d entries", len(findings))
+    return findings
