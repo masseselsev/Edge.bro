@@ -447,6 +447,28 @@ class AuditLogResponse(BaseModel):
         from_attributes = True
 
 
+class SshKeyFindingResponse(BaseModel):
+    id: int
+    location: str
+    host: str
+    node_id: Optional[int] = None
+    fingerprint: str
+    key_type: Optional[str] = None
+    comment: Optional[str] = None
+    options: Optional[str] = None
+    classification: str
+    reason: Optional[str] = None
+    first_seen: datetime
+    last_seen: datetime
+    resolved_at: Optional[datetime] = None
+    orphan_since: Optional[datetime] = None
+    orphan_scan_count: int
+    pruned_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class HaspFeatureResponse(BaseModel):
     id: str
     name: Optional[str] = None

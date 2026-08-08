@@ -20,6 +20,7 @@ from routers import groups as groups_router
 from routers import kiosks as kiosks_router
 from routers import users as users_router
 from routers import health as health_router
+from routers import ssh_keys as ssh_keys_router
 
 app = FastAPI(title="Edge-B.R.O. API", version=VERSION)
 
@@ -254,3 +255,4 @@ app.include_router(groups_router.router)
 app.include_router(kiosks_router.router)
 app.include_router(users_router.router)
 app.include_router(health_router.router)
+app.include_router(ssh_keys_router.router)
