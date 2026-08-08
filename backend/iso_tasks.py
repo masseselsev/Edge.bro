@@ -5,6 +5,7 @@ import json
 import logging
 import hashlib
 from celery_app import celery_app
+from core import ssh_keys
 from typing import Dict, Any
 
 import paths
@@ -429,25 +430,17 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         from tasks import ensure_orchestrator_ssh_key, fix_ssh_permissions
         try:
             orch_pub_key = ensure_orchestrator_ssh_key()
-            authorized_keys_path = "/root/.ssh/authorized_keys"
-            
-            # Append to authorized_keys of the borg-server if not present
-            if os.path.exists(authorized_keys_path):
-                with open(authorized_keys_path, "r") as f:
-                    auth_content = f.read()
-            else:
-                auth_content = ""
-                
-            if orch_pub_key not in auth_content:
-                command_restriction = (
-                    f'command="borg serve --restrict-to-path /data/borg/fleet",'
-                    f'no-port-forwarding,no-X11-forwarding,no-pty '
-                )
-                entry = f"{command_restriction}{orch_pub_key}\n"
-                with open(authorized_keys_path, "a") as f:
-                    f.write(entry)
-                fix_ssh_permissions()
-                logger.info("Orchestrator SSH public key appended to authorized_keys for kiosk access.")
+            action = ssh_keys.authorize(
+                ssh_keys.ORCHESTRATOR_AUTHORIZED_KEYS,
+                orch_pub_key,
+                options=ssh_keys.BORG_SERVE_OPTIONS,
+                tag=ssh_keys.SELFGRANT_TAG,
+            )
+            fix_ssh_permissions()
+            logger.info(
+                "Orchestrator self-grant for kiosk access: %s (%s)",
+                action.value, ssh_keys.fingerprint(orch_pub_key),
+            )
         except Exception as ke:
             logger.error(f"Failed to setup SSH authorized_keys for kiosk: {ke}")
 

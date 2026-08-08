@@ -9,6 +9,7 @@ from typing import List
 from database import get_db
 import models
 import schemas
+from core import ssh_keys
 from routers.users import require_admin
 
 logger = logging.getLogger(__name__)
@@ -219,7 +220,7 @@ def handshake(req: schemas.HandshakeRequest, request: Request = None, db: Sessio
 
     # Authorize SSH key
     try:
-        authorize_ssh_key(req.ssh_pub_key)
+        authorize_ssh_key(req.ssh_pub_key, kiosk_id=kiosk.kiosk_id)
     except Exception as e:
         logger.error(f"Failed to authorize kiosk SSH key during handshake: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to authorize SSH key: {str(e)}")
@@ -240,43 +241,32 @@ def handshake(req: schemas.HandshakeRequest, request: Request = None, db: Sessio
         "orchestrator_ssh_pub_key": orch_pub_key
     }
 
-def authorize_ssh_key(pub_key: str):
-    path = "/root/.ssh/authorized_keys"
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    
-    restriction = 'command="borg serve --restrict-to-path /data/borg/fleet",no-port-forwarding,no-X11-forwarding,no-pty '
-    entry = f"{restriction}{pub_key.strip()}\n"
-    
-    content = ""
-    if os.path.exists(path):
-        with open(path, "r") as f:
-            content = f.read()
-            
-    if pub_key.strip() not in content:
-        with open(path, "a") as f:
-            f.write(entry)
-            
-    # Fix permissions
+def authorize_ssh_key(pub_key: str, kiosk_id: str = None):
+    """Grant a kiosk restricted borg access on the orchestrator."""
     from tasks import fix_ssh_permissions
+
+    tag = ssh_keys.kiosk_tag(kiosk_id) if kiosk_id else None
+    action = ssh_keys.authorize(
+        ssh_keys.ORCHESTRATOR_AUTHORIZED_KEYS,
+        pub_key,
+        options=ssh_keys.BORG_SERVE_OPTIONS,
+        tag=tag,
+    )
+    logger.info(
+        "Kiosk %s SSH access: %s (%s)",
+        kiosk_id, action.value, ssh_keys.fingerprint(pub_key),
+    )
     try:
         fix_ssh_permissions()
     except Exception as e:
         logger.error(f"Failed to fix SSH permissions: {e}")
 
 def revoke_ssh_key(pub_key: str):
-    path = "/root/.ssh/authorized_keys"
-    if not os.path.exists(path):
-        return
-        
-    with open(path, "r") as f:
-        lines = f.readlines()
-    
-    # Keep lines that do not contain the target public key
-    new_lines = [l for l in lines if pub_key.strip() not in l]
-    with open(path, "w") as f:
-        f.writelines(new_lines)
-        
+    """Withdraw a kiosk's borg access."""
     from tasks import fix_ssh_permissions
+
+    action = ssh_keys.revoke(ssh_keys.ORCHESTRATOR_AUTHORIZED_KEYS, pub_key)
+    logger.info("Kiosk SSH access: %s (%s)", action.value, ssh_keys.fingerprint(pub_key))
     try:
         fix_ssh_permissions()
     except Exception as e:
@@ -350,7 +340,7 @@ def toggle_kiosk_active(id: int, request: Request = None, db: Session = Depends(
         kiosk.approved_at = datetime.utcnow()
         if kiosk.ssh_pub_key:
             try:
-                authorize_ssh_key(kiosk.ssh_pub_key)
+                authorize_ssh_key(kiosk.ssh_pub_key, kiosk_id=kiosk.kiosk_id)
             except Exception as e:
                 logger.error(f"Failed to authorize kiosk SSH key during approval: {e}")
                 raise HTTPException(status_code=500, detail=f"Failed to authorize SSH key: {str(e)}")
@@ -443,7 +433,7 @@ def auto_handshake(req: schemas.AutoHandshakeRequest, request: Request = None, d
         # Authorize SSH key
         try:
             from routers.kiosks import authorize_ssh_key
-            authorize_ssh_key(req.ssh_pub_key)
+            authorize_ssh_key(req.ssh_pub_key, kiosk_id=kiosk.kiosk_id)
         except Exception as e:
             logger.error(f"Failed to authorize kiosk SSH key during auto-handshake: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to authorize SSH key: {str(e)}")

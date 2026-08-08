@@ -113,7 +113,7 @@ def test_kiosks_crud_and_handshake(mock_revoke, mock_authorize, db_session):
     assert kiosk_record.ssh_pub_key == fake_ssh_pub
     assert kiosk_record.auth_token == hs_data["auth_token"]
     
-    mock_authorize.assert_called_once_with(fake_ssh_pub)
+    mock_authorize.assert_called_once_with(fake_ssh_pub, kiosk_id=kiosk_record.kiosk_id)
     
     # Duplicate handshake should fail (since status is no longer PENDING)
     with pytest.raises(HTTPException) as exc_info:
@@ -497,3 +497,24 @@ def test_repack_kiosk_iso_task_updates_timestamp(db_session):
 
 
 
+
+
+def test_kiosk_key_is_tagged_and_revocable(tmp_path, monkeypatch):
+    from core import ssh_keys
+    from routers import kiosks
+
+    path = str(tmp_path / "authorized_keys")
+    open(path, "w").close()
+    monkeypatch.setattr(ssh_keys, "ORCHESTRATOR_AUTHORIZED_KEYS", path)
+    monkeypatch.setattr("tasks.fix_ssh_permissions", lambda: None)
+
+    key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBP7VZ2m3vI0k1V3sK1vJ8xk5cQ0hE9jL2mN4pR6tU8w"
+    kiosks.authorize_ssh_key(key, kiosk_id="kiosk-42")
+
+    entries = ssh_keys.list_entries(path)
+    assert len(entries) == 1
+    assert entries[0].tag == "edge-bro-kiosk-kiosk-42"
+    assert entries[0].options == ssh_keys.BORG_SERVE_OPTIONS
+
+    kiosks.revoke_ssh_key(key)
+    assert ssh_keys.list_entries(path) == []
