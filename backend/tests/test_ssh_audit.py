@@ -176,3 +176,169 @@ def test_disappeared_entry_is_marked_resolved(db, tmp_path, monkeypatch):
 
     finding = db.query(models.SshKeyFinding).one()
     assert finding.resolved_at is not None
+
+
+from datetime import datetime, timedelta
+
+
+def _orphan(fingerprint, *, scans=2, age_hours=13, classification="OURS_ORPHANED"):
+    return models.SshKeyFinding(
+        location="ORCHESTRATOR", host="__orchestrator__",
+        fingerprint=fingerprint, classification=classification,
+        orphan_since=datetime.utcnow() - timedelta(hours=age_hours),
+        orphan_scan_count=scans,
+    )
+
+
+def _matched(fingerprint):
+    return models.SshKeyFinding(
+        location="ORCHESTRATOR", host="__orchestrator__",
+        fingerprint=fingerprint, classification="OURS_MATCHED",
+    )
+
+
+def test_first_sighting_is_never_pruned():
+    from core import ssh_audit
+    decision = ssh_audit.select_prune_candidates([_orphan("SHA256:a", scans=1)])
+    assert decision.candidates == []
+
+
+def test_second_sighting_within_twelve_hours_is_not_pruned():
+    from core import ssh_audit
+    decision = ssh_audit.select_prune_candidates([_orphan("SHA256:a", scans=2, age_hours=3)])
+    assert decision.candidates == []
+
+
+def test_second_sighting_after_twelve_hours_is_pruned():
+    from core import ssh_audit
+    decision = ssh_audit.select_prune_candidates([_orphan("SHA256:a")])
+    assert [c.fingerprint for c in decision.candidates] == ["SHA256:a"]
+    assert not decision.aborted
+
+
+@pytest.mark.parametrize("classification", ["OURS_LEGACY", "UNKNOWN", "OURS_MATCHED"])
+def test_only_tagged_orphans_are_ever_candidates(classification):
+    """The guarantee the whole design rests on."""
+    from core import ssh_audit
+    decision = ssh_audit.select_prune_candidates(
+        [_orphan("SHA256:a", classification=classification)]
+    )
+    assert decision.candidates == []
+
+
+def test_absolute_cap_aborts_the_whole_run():
+    from core import ssh_audit
+    findings = [_orphan(f"SHA256:{i}") for i in range(6)]
+    decision = ssh_audit.select_prune_candidates(findings)
+    assert decision.aborted
+    assert decision.candidates == []
+    assert "6" in decision.abort_reason
+
+
+def test_five_candidates_are_allowed():
+    from core import ssh_audit
+    findings = [_orphan(f"SHA256:{i}") for i in range(5)]
+    decision = ssh_audit.select_prune_candidates(findings)
+    assert not decision.aborted
+    assert len(decision.candidates) == 5
+
+
+def test_fraction_cap_ignored_on_small_files():
+    """Three of four is 75%, but four entries is too few for a fraction to
+    mean anything; the absolute cap governs. Without this, a small install
+    could never clean up at all."""
+    from core import ssh_audit
+    findings = [_orphan(f"SHA256:{i}") for i in range(3)] + [_matched("SHA256:m")]
+    decision = ssh_audit.select_prune_candidates(findings)
+    assert not decision.aborted
+    assert len(decision.candidates) == 3
+
+
+def test_fraction_cap_aborts_once_the_file_is_large_enough():
+    from core import ssh_audit
+    findings = [_orphan(f"SHA256:{i}") for i in range(4)] + [
+        _matched(f"SHA256:m{i}") for i in range(6)
+    ]
+    # 4 of 10 tagged entries = 40% > 25%, and 10 >= the fraction floor.
+    decision = ssh_audit.select_prune_candidates(findings)
+    assert decision.aborted
+    assert "%" in decision.abort_reason
+
+
+def test_three_of_forty_proceeds():
+    from core import ssh_audit
+    findings = [_orphan(f"SHA256:{i}") for i in range(3)] + [
+        _matched(f"SHA256:m{i}") for i in range(37)
+    ]
+    decision = ssh_audit.select_prune_candidates(findings)
+    assert not decision.aborted
+    assert len(decision.candidates) == 3
+
+
+def test_total_database_loss_leaves_the_file_untouched(db, tmp_path, monkeypatch):
+    """Every tagged entry orphans at once. The cap must catch it."""
+    from core import ssh_audit
+
+    lines = [
+        f"{ssh_keys.BORG_SERVE_OPTIONS} {key} {ssh_keys.node_tag(i)}"
+        for i, key in enumerate([KEY_A, KEY_B, KEY_C], start=1)
+    ]
+    path = _write_auth(tmp_path, *lines)
+    monkeypatch.setattr(ssh_keys, "ORCHESTRATOR_AUTHORIZED_KEYS", path)
+    monkeypatch.setattr(ssh_audit, "PRUNE_MAX_ABSOLUTE", 2)
+    before = open(path).read()
+
+    ssh_audit.scan_orchestrator(db)
+    for finding in db.query(models.SshKeyFinding):
+        finding.orphan_since = datetime.utcnow() - timedelta(hours=13)
+    db.commit()
+    findings = ssh_audit.scan_orchestrator(db)
+
+    decision = ssh_audit.select_prune_candidates(findings)
+    pruned = ssh_audit.prune(db, path, decision)
+
+    assert pruned == []
+    assert open(path).read() == before
+
+
+def test_prune_removes_the_entry_and_records_it(db, tmp_path, monkeypatch):
+    from core import ssh_audit
+
+    path = _write_auth(
+        tmp_path,
+        f"{ssh_keys.BORG_SERVE_OPTIONS} {KEY_A} {ssh_keys.node_tag(1)}",
+        f"{KEY_B} admin@laptop",
+    )
+    monkeypatch.setattr(ssh_keys, "ORCHESTRATOR_AUTHORIZED_KEYS", path)
+
+    ssh_audit.scan_orchestrator(db)
+    for finding in db.query(models.SshKeyFinding):
+        finding.orphan_since = datetime.utcnow() - timedelta(hours=13)
+    db.commit()
+    findings = ssh_audit.scan_orchestrator(db)
+
+    decision = ssh_audit.select_prune_candidates(findings)
+    pruned = ssh_audit.prune(db, path, decision)
+
+    assert len(pruned) == 1
+    assert pruned[0].pruned_at is not None
+    remaining = ssh_keys.list_entries(path)
+    assert len(remaining) == 1
+    assert remaining[0].comment == "admin@laptop"
+
+
+def test_prune_writes_a_backup(db, tmp_path, monkeypatch):
+    from core import ssh_audit
+
+    path = _write_auth(tmp_path, f"{KEY_A} {ssh_keys.node_tag(1)}")
+    monkeypatch.setattr(ssh_keys, "ORCHESTRATOR_AUTHORIZED_KEYS", path)
+
+    ssh_audit.scan_orchestrator(db)
+    for finding in db.query(models.SshKeyFinding):
+        finding.orphan_since = datetime.utcnow() - timedelta(hours=13)
+    db.commit()
+    findings = ssh_audit.scan_orchestrator(db)
+    ssh_audit.prune(db, path, ssh_audit.select_prune_candidates(findings))
+
+    backups = [n for n in os.listdir(tmp_path) if n.startswith("authorized_keys.bak.")]
+    assert backups

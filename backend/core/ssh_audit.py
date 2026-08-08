@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Optional
 
 import models
@@ -13,6 +14,20 @@ logger = logging.getLogger(__name__)
 #: Stands in for the orchestrator in SshKeyFinding.host, which is NOT NULL so
 #: that the (location, host, fingerprint) unique constraint behaves.
 ORCHESTRATOR_HOST = "__orchestrator__"
+
+#: An orphan must be seen this many times, spanning at least PRUNE_MIN_AGE,
+#: before it is removed. A transient database failure cannot satisfy both.
+PRUNE_MIN_SCANS = 2
+PRUNE_MIN_AGE = timedelta(hours=12)
+
+#: Blast-radius caps. Mass orphaning is the signature of a broken database
+#: rather than real drift, so a run that looks like one is abandoned whole.
+PRUNE_MAX_ABSOLUTE = 5
+PRUNE_MAX_FRACTION = 0.25
+#: The fraction cap only applies once a file has enough tagged entries for a
+#: fraction to be meaningful. Below this the absolute cap governs; otherwise a
+#: small installation could never clean up a single legitimate orphan.
+PRUNE_FRACTION_FLOOR = 8
 
 
 def orchestrator_fingerprint() -> Optional[str]:
@@ -175,3 +190,96 @@ def scan_orchestrator(db) -> list[models.SshKeyFinding]:
         ) or "empty",
     )
     return findings
+
+
+@dataclass
+class PruneDecision:
+    candidates: list = field(default_factory=list)
+    aborted: bool = False
+    abort_reason: Optional[str] = None
+    tagged_total: int = 0
+
+
+def select_prune_candidates(findings) -> PruneDecision:
+    """Choose which findings may be deleted, or abandon the run.
+
+    Only OURS_ORPHANED is ever eligible: the tag proves edge-bro wrote the
+    entry. Everything else is reported and left alone.
+
+    Callers must pass the findings for one file, since the fraction cap is
+    computed against the total handed in.
+    """
+    now = datetime.utcnow()
+    tagged_total = sum(
+        1 for f in findings
+        if f.classification in (
+            ssh_keys.Classification.OURS_MATCHED.value,
+            ssh_keys.Classification.OURS_ORPHANED.value,
+        )
+    )
+
+    eligible = []
+    for finding in findings:
+        if finding.classification != ssh_keys.Classification.OURS_ORPHANED.value:
+            continue
+        if (finding.orphan_scan_count or 0) < PRUNE_MIN_SCANS:
+            continue
+        if finding.orphan_since is None or now - finding.orphan_since < PRUNE_MIN_AGE:
+            continue
+        eligible.append(finding)
+
+    decision = PruneDecision(tagged_total=tagged_total)
+
+    if len(eligible) > PRUNE_MAX_ABSOLUTE:
+        decision.aborted = True
+        decision.abort_reason = (
+            f"{len(eligible)} entries eligible, above the absolute cap of "
+            f"{PRUNE_MAX_ABSOLUTE}; refusing to prune"
+        )
+        decision.candidates = []
+        return decision
+
+    if tagged_total >= PRUNE_FRACTION_FLOOR and eligible:
+        fraction = len(eligible) / tagged_total
+        if fraction > PRUNE_MAX_FRACTION:
+            decision.aborted = True
+            decision.abort_reason = (
+                f"{len(eligible)} of {tagged_total} tagged entries "
+                f"({fraction:.0%}) eligible, above the {PRUNE_MAX_FRACTION:.0%} "
+                f"cap; refusing to prune"
+            )
+            decision.candidates = []
+            return decision
+
+    decision.candidates = eligible
+    return decision
+
+
+def prune(db, path: str, decision: PruneDecision) -> list:
+    """Delete the chosen entries. Returns the findings actually removed."""
+    if decision.aborted:
+        logger.warning(
+            "SSH audit prune aborted for %s: %s", path, decision.abort_reason
+        )
+        return []
+
+    now = datetime.utcnow()
+    pruned = []
+    for finding in decision.candidates:
+        action = ssh_keys.revoke(path, finding.fingerprint)
+        if action is ssh_keys.Action.REMOVED:
+            age = now - finding.orphan_since if finding.orphan_since else None
+            finding.pruned_at = now
+            finding.resolved_at = now
+            pruned.append(finding)
+            logger.info(
+                "SSH audit pruned %s from %s (tag=%s, orphaned for %s)",
+                finding.fingerprint, path, finding.comment, age,
+            )
+        else:
+            logger.warning(
+                "SSH audit could not remove %s from %s: %s",
+                finding.fingerprint, path, action.value,
+            )
+    db.commit()
+    return pruned
