@@ -11,6 +11,7 @@ from tasks import ensure_orchestrator_ssh_key
 # Import routers
 from routers import settings as settings_router
 from routers import nodes as nodes_router
+from routers import history as history_router
 from routers import tasks as tasks_router
 from routers import restore as restore_router
 from routers import stats as stats_router
@@ -245,6 +246,9 @@ def upgrade_settings(db: Session):
 
 # Include routers
 app.include_router(settings_router.router)
+# Ahead of the nodes router so the literal /history paths are matched before
+# the /{node_id} patterns that share their prefix.
+app.include_router(history_router.router)
 app.include_router(nodes_router.router)
 app.include_router(tasks_router.router)
 app.include_router(restore_router.router)

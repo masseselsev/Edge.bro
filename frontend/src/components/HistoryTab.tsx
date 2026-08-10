@@ -1,14 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Database, TrendingDown, ArrowDownCircle, RefreshCw, Trash2, AlertTriangle, Loader2, ChevronRight, ChevronDown, Search, Folder, FolderOpen, Cpu, HardDrive, Download, CheckSquare, Square, CheckCircle, Globe2, FileText } from 'lucide-react';
+import { RefreshCw, Trash2, AlertTriangle, Loader2, ChevronRight, ChevronDown, Search, Folder, FolderOpen, Cpu, HardDrive, Download, CheckSquare, Square, CheckCircle, Globe2, FileText, Eraser } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import ArchiveFilesModal from './ArchiveFilesModal';
-
-interface Stats {
-  total_nodes: number;
-  total_original_size_bytes: number;
-  total_deduplicated_size_bytes: number;
-  deduplication_ratio: number;
-}
+import ArchiveStatsPanel from './ArchiveStatsPanel';
 
 interface BackupHistory {
   id: number;
@@ -45,12 +39,21 @@ interface HistoryTabProps {
 
 export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: HistoryTabProps) {
   const { t } = useTranslation();
-  const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<BackupHistory[]>([]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [loading, setLoading] = useState(true);
   const [purgeTarget, setPurgeTarget] = useState<Node | null>(null);
   const [purging, setPurging] = useState<Record<number, boolean>>({});
+
+  // Bumped whenever something the statistics depend on changes, so the panel
+  // refetches instead of showing figures that include records just deleted.
+  const [statsReload, setStatsReload] = useState(0);
+  const refreshStatsPanel = () => setStatsReload(v => v + 1);
+
+  // Removing failed records: one row, or every failure on a node.
+  const [deletingRecord, setDeletingRecord] = useState<Record<number, boolean>>({});
+  const [purgeFailedTarget, setPurgeFailedTarget] = useState<{ node: Node; count: number } | null>(null);
+  const [purgingFailed, setPurgingFailed] = useState(false);
   
   // Search & Grouping state
   const [searchQuery, setSearchQuery] = useState('');
@@ -243,12 +246,6 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
 
   const fetchStats = useCallback(async () => {
     try {
-      const statsRes = await fetch('/api/stats');
-      if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        setStats(statsData);
-      }
-
       const nodesRes = await fetch('/api/nodes');
       if (nodesRes.ok) {
         const nodesData = await nodesRes.json();
@@ -374,18 +371,60 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
     }
   };
 
+  /** Drop one failed record. Successful archives are refused by the API. */
+  const handleDeleteRecord = async (record: BackupHistory) => {
+    if (!window.confirm(t('deleteFailedConfirmText', { name: record.archive_name }))) return;
+
+    setDeletingRecord(prev => ({ ...prev, [record.id]: true }));
+    try {
+      const res = await fetch(`/api/nodes/history/${record.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setHistory(prev => prev.filter(h => h.id !== record.id));
+        refreshStatsPanel();
+        fetchStats();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Failed to delete the record.');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setDeletingRecord(prev => ({ ...prev, [record.id]: false }));
+    }
+  };
+
+  /** Clear every failed record for one node — the "controlled test runs" case. */
+  const handlePurgeFailed = async (node: Node) => {
+    setPurgingFailed(true);
+    try {
+      const res = await fetch('/api/nodes/history/purge-failed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ node_id: node.id })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPurgeFailedTarget(null);
+        refreshStatsPanel();
+        await fetchStats();
+        if (data.deleted === 0) alert(t('purgeFailedNothing'));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Failed to purge records.');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setPurgingFailed(false);
+    }
+  };
+
   const getFormatSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-  };
-
-  const getSavedSpace = () => {
-    if (!stats) return '0 B';
-    const diff = stats.total_original_size_bytes - stats.total_deduplicated_size_bytes;
-    return getFormatSize(Math.max(0, diff));
   };
 
   // Node lookup
@@ -630,7 +669,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                   )}
                 </td>
                 <td className="px-6 py-3.5 text-right">
-                  {h.status === 'SUCCESS' && (
+                  {h.status === 'SUCCESS' ? (
                     <button
                       onClick={() => setSelectedArchiveForFiles({ id: h.id, name: h.archive_name })}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/10 transition-colors"
@@ -638,6 +677,18 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                     >
                       <FileText size={13} />
                       <span>{t('viewArchiveFiles')}</span>
+                    </button>
+                  ) : !isKiosk && (
+                    <button
+                      onClick={() => handleDeleteRecord(h)}
+                      disabled={!!deletingRecord[h.id]}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition-colors disabled:opacity-40"
+                      title={t('deleteFailedTooltip')}
+                    >
+                      {deletingRecord[h.id]
+                        ? <Loader2 size={13} className="animate-spin" />
+                        : <Trash2 size={13} />}
+                      <span>{t('deleteFailedRecord')}</span>
                     </button>
                   )}
                 </td>
@@ -677,9 +728,21 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
             {success > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{success} ok</span>}
             {failed > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">{failed} {t('failed').toLowerCase()}</span>}
           </div>
-          <div onClick={(e) => { e.stopPropagation(); setPurgeTarget(node); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition-colors">
-            {purging[node.id] ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-            {purging[node.id] ? t('saving') : t('purgeArchives')}
+          <div className="flex items-center gap-2">
+            {failed > 0 && !isKiosk && (
+              <div
+                onClick={(e) => { e.stopPropagation(); setPurgeFailedTarget({ node, count: failed }); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-amber-500/20 text-amber-400 hover:bg-amber-500/10 transition-colors"
+                title={t('purgeFailedTooltip')}
+              >
+                <Eraser size={13} />
+                {t('purgeFailedForNode')}
+              </div>
+            )}
+            <div onClick={(e) => { e.stopPropagation(); setPurgeTarget(node); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 transition-colors">
+              {purging[node.id] ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              {purging[node.id] ? t('saving') : t('purgeArchives')}
+            </div>
           </div>
         </button>
         {isExpanded && renderArchiveTable(groupedByNode[node.id] || [])}
@@ -830,6 +893,44 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
         </div>
       )}
 
+      {/* Clearing failed records — separate from the archive purge above
+          because it touches no restorable data. */}
+      {purgeFailedTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-xl animate-modal-in">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-amber-500/10 rounded-xl border border-amber-500/20">
+                <Eraser className="text-amber-400" size={22} />
+              </div>
+              <h3 className="text-lg font-bold text-zinc-50">{t('purgeFailedConfirmTitle')}</h3>
+            </div>
+            <p className="text-sm text-zinc-300 mb-6">
+              {t('purgeFailedConfirmText', {
+                count: purgeFailedTarget.count,
+                target: purgeFailedTarget.node.hostname
+              })}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setPurgeFailedTarget(null)}
+                disabled={purgingFailed}
+                className="px-4 py-2 text-sm rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-40"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                onClick={() => handlePurgeFailed(purgeFailedTarget.node)}
+                disabled={purgingFailed}
+                className="px-4 py-2 text-sm rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold transition-colors disabled:opacity-40 inline-flex items-center gap-2"
+              >
+                {purgingFailed && <Loader2 size={14} className="animate-spin" />}
+                {t('purgeFailedForNode')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Kiosk Mode Toggle */}
       {isKiosk && (
         <div className="flex bg-zinc-950 p-1.5 gap-1.5 border border-zinc-800 rounded-xl max-w-md mb-6 shadow-lg">
@@ -937,48 +1038,10 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
         </div>
       )}
 
-      {/* Metric Cards (Reduced vertical height by 50% as requested) */}
-      {(!isKiosk || viewMode === 'remote') && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center gap-3">
-            <div className="p-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg border border-indigo-500/20">
-              <Database size={16} />
-            </div>
-            <div>
-              <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">{t('dedupSizeColumn') || 'Deduplicated Size'}</p>
-              <h4 className="text-base font-bold text-zinc-50 mt-0.5">
-                {stats ? getFormatSize(stats.total_deduplicated_size_bytes) : '0 B'}
-              </h4>
-              <p className="text-[9px] text-zinc-500">{t('physicalSizeCentral') || 'Physical size on central storage'}</p>
-            </div>
-          </div>
-
-          <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center gap-3">
-            <div className="p-1.5 bg-emerald-500/10 text-emerald-400 rounded-lg border border-emerald-500/20">
-              <ArrowDownCircle size={16} />
-            </div>
-            <div>
-              <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">{t('originalSizeColumn') || 'Original Size'}</p>
-              <h4 className="text-base font-bold text-zinc-50 mt-0.5">
-                {stats ? getFormatSize(stats.total_original_size_bytes) : '0 B'}
-              </h4>
-              <p className="text-[9px] text-emerald-400">{t('sizeBeforeDedup') || 'Total size before deduplication'}</p>
-            </div>
-          </div>
-
-          <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center gap-3">
-            <div className="p-1.5 bg-purple-500/10 text-purple-400 rounded-lg border border-purple-500/20">
-              <TrendingDown size={16} />
-            </div>
-            <div>
-              <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">{t('localBackupStorage')}</p>
-              <h4 className="text-base font-bold text-zinc-50 mt-0.5">{getSavedSpace()}</h4>
-              <p className="text-[9px] text-purple-400">
-                {t('dedupRatio')} {stats ? stats.deduplication_ratio : '1.0'}x
-              </p>
-            </div>
-          </div>
-        </div>
+      {/* Admin-only: /api/stats rejects a kiosk token, so in kiosk mode these
+          cards only ever showed zeros. */}
+      {!isKiosk && (
+        <ArchiveStatsPanel reloadSignal={statsReload} onSelectNode={setSelectedNodeId} />
       )}
 
       {/* Execution History */}

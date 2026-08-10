@@ -13,7 +13,7 @@ from database import SessionLocal
 from models import Node, TaskLog, BackupHistory, Settings, BackupGroup
 from ansible_utils import run_ansible_playbook
 from core.borg_local import borg_kwargs
-from core import transfer_speed
+from core import backup_stats, transfer_speed
 
 # Re-use logging configuration from tasks
 logger = logging.getLogger(__name__)
@@ -643,6 +643,7 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
                 comment=comment,
                 avg_speed_mbps=avg_mbps,
                 max_speed_mbps=max_mbps,
+                duration_seconds=duration,
             )
             db.add(history)
             node.last_backup = datetime.utcnow()
@@ -651,14 +652,22 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
             log_to_task(task_id, "Backup completed successfully.", status="SUCCESS")
             return {"status": "SUCCESS", "archive": archive_name}
         else:
+            # Classified here rather than when the Archives page asks, so the
+            # reliability panel never has to read a fleet's worth of logs.
+            combined_log = stdout + "\n" + stderr
+            category = backup_stats.classify_failure(combined_log)
+            log_to_task(task_id, f"Failure category: {category}")
+
             history = BackupHistory(
                 node_id=node.id,
                 archive_name=archive_name,
                 original_size=0,
                 deduplicated_size=0,
                 status="FAILED",
-                log_output=stdout + "\n" + stderr,
-                comment=comment
+                log_output=combined_log,
+                comment=comment,
+                duration_seconds=wall_seconds,
+                error_category=category,
             )
             db.add(history)
             db.commit()

@@ -156,6 +156,15 @@ class BackupHistory(Base):
     avg_speed_mbps = Column(Float, nullable=True)
     max_speed_mbps = Column(Float, nullable=True)
 
+    # How long the run took. Needed to tell whether a node still fits inside its
+    # group's backup window. NULL on rows written before this was recorded.
+    duration_seconds = Column(Float, nullable=True)
+
+    # One of core.backup_stats.FailureCategory, derived from log_output when the
+    # run fails. Stored rather than derived on read so the reliability panel does
+    # not have to pull every failed log out of the database.
+    error_category = Column(String, nullable=True)
+
 
 class TaskLog(Base):
     """
