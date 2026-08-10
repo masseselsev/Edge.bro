@@ -528,6 +528,13 @@ class GlobalStatsResponse(BaseModel):
 
     total_original_size_bytes: int
     total_deduplicated_size_bytes: int
+
+    # The saving across nodes, measured on each node's base backup only. A node
+    # re-backing up unchanged data is not deduplication, and counting it would
+    # inflate the ratio into meaninglessness.
+    base_original_size_bytes: int = 0
+    base_deduplicated_size_bytes: int = 0
+    base_nodes: int = 0
     saved_space_bytes: int
     deduplication_ratio: Optional[float] = None
 

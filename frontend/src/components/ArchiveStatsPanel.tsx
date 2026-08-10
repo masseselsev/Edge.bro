@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Activity, AlertTriangle, CheckCircle2, Clock, Database, Gauge,
+  Activity, AlertTriangle, CheckCircle2, ChevronRight, Clock, Database, Gauge,
   HardDrive, Loader2, TrendingDown, TrendingUp
 } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
@@ -27,6 +27,9 @@ interface GlobalStats {
   success_rate: number | null;
   total_original_size_bytes: number;
   total_deduplicated_size_bytes: number;
+  base_original_size_bytes: number;
+  base_deduplicated_size_bytes: number;
+  base_nodes: number;
   saved_space_bytes: number;
   deduplication_ratio: number | null;
   repo_size_bytes: number | null;
@@ -125,6 +128,9 @@ interface Props {
 
 const WINDOW_OPTIONS = [7, 30, 90];
 
+/** Beyond this the capacity forecast says nothing except "not soon". */
+const FORECAST_HORIZON_DAYS = 3650;
+
 function formatSize(bytes: number | null | undefined): string {
   if (bytes === null || bytes === undefined) return '—';
   if (bytes === 0) return '0 B';
@@ -160,17 +166,27 @@ export default function ArchiveStatsPanel({ reloadSignal = 0, onSelectNode }: Pr
   const [stats, setStats] = useState<GlobalStats | null>(null);
   const [insights, setInsights] = useState<Insights | null>(null);
   const [windowDays, setWindowDays] = useState(30);
-  const [loading, setLoading] = useState(true);
+  const [customDays, setCustomDays] = useState('');
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const load = useCallback(async () => {
+  // The header is cheap and always shown. The analysis underneath scans a
+  // window of history for every node, so it is only fetched once somebody
+  // opens it — at a thousand nodes that is not a query to run on every visit.
+  const loadStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/stats');
+      setStats(res.ok ? await res.json() : null);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const loadInsights = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsRes, insightsRes] = await Promise.all([
-        fetch('/api/stats'),
-        fetch(`/api/stats/insights?days=${windowDays}`),
-      ]);
-      setStats(statsRes.ok ? await statsRes.json() : null);
-      setInsights(insightsRes.ok ? await insightsRes.json() : null);
+      const res = await fetch(`/api/stats/insights?days=${windowDays}`);
+      setInsights(res.ok ? await res.json() : null);
     } catch (e) {
       console.error(e);
     } finally {
@@ -179,8 +195,21 @@ export default function ArchiveStatsPanel({ reloadSignal = 0, onSelectNode }: Pr
   }, [windowDays]);
 
   useEffect(() => {
-    load();
-  }, [load, reloadSignal]);
+    loadStats();
+  }, [loadStats, reloadSignal]);
+
+  useEffect(() => {
+    if (expanded) loadInsights();
+  }, [expanded, loadInsights, reloadSignal]);
+
+  const applyCustomWindow = () => {
+    const days = parseInt(customDays, 10);
+    if (Number.isFinite(days) && days >= 1 && days <= 365) {
+      setWindowDays(days);
+    } else {
+      setCustomDays('');
+    }
+  };
 
   const nodeLink = (nodeId: number, hostname: string) => (
     <span
@@ -193,11 +222,11 @@ export default function ArchiveStatsPanel({ reloadSignal = 0, onSelectNode }: Pr
 
   return (
     <div className="space-y-3">
-      {/* Headline figures. Physical size and the sums are shown side by side
-          but never mixed: they measure different things. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+      {/* Headline figures. Physical size and the logical sums sit side by side
+          but are never mixed: they measure different things. */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
         <Card
-          icon={<HardDrive size={16} />}
+          icon={<HardDrive size={14} />}
           tone="indigo"
           label={t('statsStoredOnDisk')}
           value={formatSize(stats?.repo_size_bytes)}
@@ -211,27 +240,30 @@ export default function ArchiveStatsPanel({ reloadSignal = 0, onSelectNode }: Pr
           }
         />
         <Card
-          icon={<Database size={16} />}
+          icon={<Database size={14} />}
           tone="emerald"
           label={t('statsSourceData')}
           value={formatSize(stats?.total_original_size_bytes)}
           note={t('statsSourceDataSub')}
         />
         <Card
-          icon={<TrendingDown size={16} />}
+          icon={<TrendingDown size={14} />}
           tone="purple"
-          label={t('statsSpaceSaved')}
+          label={t('statsCrossNodeSaving')}
           value={formatSize(stats?.saved_space_bytes)}
           note={
             stats?.deduplication_ratio
-              ? t('statsDedupRatioShort', { ratio: stats.deduplication_ratio })
+              ? t('statsCrossNodeSavingSub', {
+                  ratio: stats.deduplication_ratio,
+                  nodes: stats.base_nodes,
+                })
               : t('statsNoData')
           }
         />
         <Card
           icon={stats && stats.success_rate !== null && stats.success_rate < 80
-            ? <AlertTriangle size={16} />
-            : <CheckCircle2 size={16} />}
+            ? <AlertTriangle size={14} />
+            : <CheckCircle2 size={14} />}
           tone={stats && stats.success_rate !== null && stats.success_rate < 80 ? 'rose' : 'emerald'}
           label={t('statsSuccessRate')}
           value={stats?.success_rate === null || stats === null ? '—' : `${stats.success_rate}%`}
@@ -245,35 +277,64 @@ export default function ArchiveStatsPanel({ reloadSignal = 0, onSelectNode }: Pr
 
       <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div>
-            <h3 className="text-sm font-bold text-zinc-50 flex items-center gap-2">
-              <Activity size={15} className="text-indigo-400" />
-              {t('statsInsightsTitle')}
-            </h3>
-            <p className="text-[11px] text-zinc-500 mt-0.5">{t('statsInsightsSub')}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">
-              {t('statsWindowLabel')}
-            </span>
-            <div className="inline-flex rounded-lg border border-zinc-800 p-0.5 bg-zinc-950">
-              {WINDOW_OPTIONS.map(days => (
-                <button
-                  key={days}
-                  onClick={() => setWindowDays(days)}
-                  className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-                    windowDays === days ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50'
-                  }`}
-                >
-                  {t(`statsWindow${days}`)}
-                </button>
-              ))}
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="flex items-center gap-2 text-left cursor-pointer group"
+          >
+            <ChevronRight
+              size={15}
+              className={`text-zinc-500 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+            />
+            <div>
+              <h3 className="text-sm font-bold text-zinc-50 flex items-center gap-2 group-hover:text-white">
+                <Activity size={15} className="text-indigo-400" />
+                {t('statsInsightsTitle')}
+              </h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5">{t('statsInsightsSub')}</p>
             </div>
-            {loading && <Loader2 size={14} className="animate-spin text-zinc-500" />}
-          </div>
+          </button>
+
+          {expanded && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">
+                {t('statsWindowLabel')}
+              </span>
+              <div className="inline-flex rounded-lg border border-zinc-800 p-0.5 bg-zinc-950">
+                {WINDOW_OPTIONS.map(days => (
+                  <button
+                    key={days}
+                    onClick={() => { setWindowDays(days); setCustomDays(''); }}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
+                      windowDays === days ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-50'
+                    }`}
+                  >
+                    {t(`statsWindow${days}`)}
+                  </button>
+                ))}
+              </div>
+              <div className="inline-flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={customDays}
+                  placeholder={t('statsWindowCustom')}
+                  onChange={(e) => setCustomDays(e.target.value)}
+                  onBlur={applyCustomWindow}
+                  onKeyDown={(e) => { if (e.key === 'Enter') applyCustomWindow(); }}
+                  className={`w-20 px-2 py-1 bg-zinc-950 border rounded-md text-[11px] text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-indigo-500 ${
+                    !WINDOW_OPTIONS.includes(windowDays) ? 'border-indigo-500' : 'border-zinc-800'
+                  }`}
+                  title={t('statsWindowCustomHint')}
+                />
+                <span className="text-[10px] text-zinc-500">{t('statsWindowDaysUnit')}</span>
+              </div>
+              {loading && <Loader2 size={14} className="animate-spin text-zinc-500" />}
+            </div>
+          )}
         </div>
 
-        {insights && (
+        {expanded && insights && (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
             {/* --- Reliability --- */}
             <Panel icon={<CheckCircle2 size={14} />} title={t('statsReliability')}>
@@ -432,9 +493,13 @@ export default function ArchiveStatsPanel({ reloadSignal = 0, onSelectNode }: Pr
                 />
                 <Figure
                   label={t('statsRunway')}
+                  // A runway of 4.8 million days is not information. Past the
+                  // forecast horizon the only honest answer is "not soon".
                   value={insights.capacity.days_until_full === null
                     ? '—'
-                    : t('statsDaysLeft', { days: Math.round(insights.capacity.days_until_full) })}
+                    : insights.capacity.days_until_full > FORECAST_HORIZON_DAYS
+                      ? t('statsBeyondHorizon')
+                      : t('statsDaysLeft', { days: Math.round(insights.capacity.days_until_full) })}
                   tone={
                     insights.capacity.days_until_full !== null && insights.capacity.days_until_full < 90
                       ? 'text-rose-400'
@@ -490,11 +555,13 @@ function Card({ icon, tone, label, value, note, valueClass }: {
   valueClass?: string;
 }) {
   return (
-    <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center gap-3">
-      <div className={`p-1.5 rounded-lg border ${TONES[tone] || TONES.indigo}`}>{icon}</div>
+    <div className="px-2.5 py-2 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center gap-2">
+      <div className={`p-1 rounded-md border shrink-0 ${TONES[tone] || TONES.indigo}`}>{icon}</div>
       <div className="min-w-0">
-        <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">{label}</p>
-        <h4 className={`text-base font-bold mt-0.5 ${valueClass || 'text-zinc-50'}`}>{value}</h4>
+        <p className="text-[9px] text-zinc-400 font-medium uppercase tracking-wider truncate" title={label}>
+          {label}
+        </p>
+        <h4 className={`text-sm font-bold leading-tight ${valueClass || 'text-zinc-50'}`}>{value}</h4>
         {note && <p className="text-[9px] text-zinc-500 truncate" title={note}>{note}</p>}
       </div>
     </div>

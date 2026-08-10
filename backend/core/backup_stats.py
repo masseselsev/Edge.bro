@@ -318,6 +318,40 @@ def deduplication_ratio(original: int, deduplicated: int) -> Optional[float]:
     return round(original / float(deduplicated), 2)
 
 
+def base_archive_totals(rows: Iterable) -> tuple:
+    """(original, deduplicated, node_count) over each node's base backup.
+
+    Summing every archive to get a deduplication figure flatters it into
+    nonsense. A node that backs up weekly and barely changes writes 3 GB of
+    source for a few hundred kilobytes of new data each time, so the ratio ends
+    up measuring "how rarely this node changes", not how well the shared
+    repository packs the fleet. Only the base backups say anything about
+    storage: the first one pays for the node's whole image, and every node
+    after the first pays only for what it does not share with the others.
+
+    The base backup is picked by largest `deduplicated_size` rather than by
+    being the oldest, because the oldest is not stable. Retention prunes old
+    archives and `global_daily_prune` deletes the history rows to match, so a
+    node's earliest surviving row eventually becomes an incremental one — a few
+    hundred kilobytes against gigabytes of source, which would send the ratio
+    into the thousands. The largest contribution is the base while it exists
+    and degrades to the best available estimate once it is gone.
+
+    `rows` are (node_id, original_size, deduplicated_size) for successful
+    archives only.
+    """
+    best: dict = {}
+    for node_id, original, deduplicated in rows:
+        deduplicated = deduplicated or 0
+        current = best.get(node_id)
+        if current is None or deduplicated > current[1]:
+            best[node_id] = (original or 0, deduplicated)
+
+    total_original = sum(o for o, _ in best.values())
+    total_deduplicated = sum(d for _, d in best.values())
+    return total_original, total_deduplicated, len(best)
+
+
 def top_counts(values: Iterable[str], limit: int = 5) -> list[tuple[str, int]]:
     """The `limit` most common values, ties broken alphabetically for stability."""
     counts: dict[str, int] = {}

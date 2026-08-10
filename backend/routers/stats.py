@@ -54,6 +54,7 @@ def get_global_stats(db: Session = Depends(get_db)):
     total_dedup = 0
     successful = 0
     nodes_with_archives = set()
+    base_rows = []
 
     for node_id, status, original_size, deduplicated_size in rows:
         nodes_with_archives.add(node_id)
@@ -62,6 +63,13 @@ def get_global_stats(db: Session = Depends(get_db)):
         successful += 1
         total_original += original_size or 0
         total_dedup += deduplicated_size or 0
+        base_rows.append((node_id, original_size, deduplicated_size))
+
+    # The saving is reported across nodes only. Summing every archive would
+    # count a node re-backing up unchanged data as deduplication, which says
+    # nothing about how well the shared repository packs the fleet — see
+    # backup_stats.base_archive_totals.
+    base_original, base_dedup, base_nodes = backup_stats.base_archive_totals(base_rows)
 
     total_archives = len(rows)
     disk = repo_usage.disk_usage()
@@ -75,8 +83,11 @@ def get_global_stats(db: Session = Depends(get_db)):
         success_rate=backup_stats.success_rate(successful, total_archives),
         total_original_size_bytes=total_original,
         total_deduplicated_size_bytes=total_dedup,
-        saved_space_bytes=max(0, total_original - total_dedup),
-        deduplication_ratio=backup_stats.deduplication_ratio(total_original, total_dedup),
+        base_original_size_bytes=base_original,
+        base_deduplicated_size_bytes=base_dedup,
+        base_nodes=base_nodes,
+        saved_space_bytes=max(0, base_original - base_dedup),
+        deduplication_ratio=backup_stats.deduplication_ratio(base_original, base_dedup),
         repo_size_bytes=repo_usage.repo_size_bytes(),
         **disk,
     )

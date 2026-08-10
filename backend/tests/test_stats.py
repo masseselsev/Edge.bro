@@ -116,7 +116,10 @@ def test_totals_cover_every_archive_not_just_the_first_per_node(client, db_sessi
 
     assert data["total_original_size_bytes"] == 25000
     assert data["total_deduplicated_size_bytes"] == 3100
-    assert data["saved_space_bytes"] == 21900
+    # The saving is scoped to base backups, so it is not these figures minus
+    # each other — see the cross-node tests below.
+    assert data["base_original_size_bytes"] == 15000
+    assert data["base_deduplicated_size_bytes"] == 3000
 
 
 def test_failed_archives_are_counted_but_do_not_contribute_size(client, db_session):
@@ -152,6 +155,48 @@ def test_an_empty_fleet_reports_nothing_rather_than_a_ratio_of_one(client, db_se
     assert data["total_archives"] == 0
     assert data["deduplication_ratio"] is None
     assert data["success_rate"] is None
+
+
+def test_the_saving_is_measured_across_nodes_not_across_repeat_backups(client, db_session):
+    """A node re-backing up unchanged data is not deduplication. Counting it
+    would make the ratio measure how rarely the node changes."""
+    node1 = add_node(db_session, "node-1", "192.168.1.101")
+    node2 = add_node(db_session, "node-2", "192.168.1.102")
+
+    # Each node's base backup, then six near-empty incrementals.
+    add_history(db_session, node1, "n1-base", days_ago=40, original=3_000_000_000, dedup=900_000_000)
+    add_history(db_session, node2, "n2-base", days_ago=40, original=2_000_000_000, dedup=400_000_000)
+    for i in range(6):
+        add_history(db_session, node1, f"n1-inc-{i}", days_ago=i + 1,
+                    original=3_000_000_000, dedup=400_000)
+        add_history(db_session, node2, f"n2-inc-{i}", days_ago=i + 1,
+                    original=2_000_000_000, dedup=300_000)
+
+    data = client.get("/api/stats").json()
+
+    assert data["base_nodes"] == 2
+    assert data["base_original_size_bytes"] == 5_000_000_000
+    assert data["base_deduplicated_size_bytes"] == 1_300_000_000
+    assert data["deduplication_ratio"] == pytest.approx(3.85, rel=0.01)
+    assert data["saved_space_bytes"] == 3_700_000_000
+
+    # The cumulative totals still cover everything; only the saving is scoped.
+    assert data["total_original_size_bytes"] == 35_000_000_000
+
+
+def test_the_base_survives_retention_pruning_the_first_archive(client, db_session):
+    """global_daily_prune deletes history rows for archives borg no longer has,
+    so a node's earliest surviving row eventually becomes an incremental."""
+    node = add_node(db_session, "node-1", "192.168.1.101")
+    # The real first backup is gone; what remains is an incremental and a later
+    # full-ish archive that now carries the bulk of the node's unique data.
+    add_history(db_session, node, "n1-inc", days_ago=10, original=3_000_000_000, dedup=400_000)
+    add_history(db_session, node, "n1-bulk", days_ago=5, original=3_000_000_000, dedup=900_000_000)
+
+    data = client.get("/api/stats").json()
+
+    assert data["base_deduplicated_size_bytes"] == 900_000_000
+    assert data["deduplication_ratio"] == pytest.approx(3.33, rel=0.01)
 
 
 def test_disk_figures_are_reported_separately_from_the_sums(client, db_session):

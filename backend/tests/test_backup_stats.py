@@ -240,6 +240,55 @@ def test_ratio_of_an_empty_repository_is_none_not_one():
     assert bs.deduplication_ratio(0, 0) is None
 
 
+def test_base_totals_ignore_repeat_backups_of_unchanged_data():
+    """A weekly node that barely changes writes gigabytes of source for a few
+    hundred kilobytes of new data. Summing every archive would measure how
+    rarely it changes, not how well the repository packs the fleet."""
+    rows = [
+        (1, 3_160_000_000, 986_000_000),   # base backup
+        (1, 3_160_000_000, 366_000),       # incrementals, nearly nothing new
+        (1, 3_170_000_000, 328_000),
+        (1, 3_170_000_000, 381_000),
+    ]
+    original, deduplicated, nodes = bs.base_archive_totals(rows)
+
+    assert original == 3_160_000_000
+    assert deduplicated == 986_000_000
+    assert nodes == 1
+
+
+def test_base_totals_sum_across_nodes():
+    rows = [
+        (1, 3_000_000_000, 900_000_000),
+        (1, 3_000_000_000, 500_000),
+        (2, 2_000_000_000, 400_000_000),
+        (2, 2_000_000_000, 300_000),
+    ]
+    assert bs.base_archive_totals(rows) == (5_000_000_000, 1_300_000_000, 2)
+
+
+def test_the_base_is_picked_by_size_not_by_age():
+    """The oldest surviving row is not stable: retention prunes the real first
+    backup and deletes its history row, leaving an incremental behind. Picking
+    the largest contribution survives that."""
+    rows = [
+        (1, 3_160_000_000, 366_000),       # oldest survivor, an incremental
+        (1, 3_160_000_000, 986_000_000),   # the actual base
+    ]
+    original, deduplicated, _ = bs.base_archive_totals(rows)
+
+    assert deduplicated == 986_000_000
+    assert bs.deduplication_ratio(original, deduplicated) == pytest.approx(3.2, rel=0.01)
+
+
+def test_base_totals_of_an_empty_fleet():
+    assert bs.base_archive_totals([]) == (0, 0, 0)
+
+
+def test_a_node_with_no_deduplicated_bytes_still_counts_as_a_node():
+    assert bs.base_archive_totals([(1, 1000, 0)]) == (1000, 0, 1)
+
+
 def test_top_counts_orders_by_frequency():
     values = ["A", "B", "A", "C", "A", "B"]
     assert bs.top_counts(values, limit=2) == [("A", 3), ("B", 2)]
