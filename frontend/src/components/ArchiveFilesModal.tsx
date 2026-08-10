@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, FileText, Folder, FolderOpen, File, Copy, Check, Loader2, AlertCircle, HardDrive, Maximize2, Minimize2, ChevronRight, ChevronDown, Download } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
@@ -27,6 +27,20 @@ interface ArchiveFilesModalProps {
   onClose: () => void;
 }
 
+// Split position, as a percentage of the body width taken by the file tree.
+const SPLIT_STORAGE_KEY = 'archiveFilesModal.splitPercent';
+const SPLIT_DEFAULT = 50;
+const SPLIT_MIN = 20;
+const SPLIT_MAX = 80;
+
+function readStoredSplit(): number {
+  const stored = Number(localStorage.getItem(SPLIT_STORAGE_KEY));
+  if (!Number.isFinite(stored) || stored < SPLIT_MIN || stored > SPLIT_MAX) {
+    return SPLIT_DEFAULT;
+  }
+  return stored;
+}
+
 export default function ArchiveFilesModal({ historyId, archiveName, onClose }: ArchiveFilesModalProps) {
   const { t } = useTranslation();
   const [files, setFiles] = useState<ArchiveFileInfo[]>([]);
@@ -42,6 +56,45 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
   const [contentMessage, setContentMessage] = useState<string | null>(null);
   const [isText, setIsText] = useState<boolean>(true);
   const [copied, setCopied] = useState<boolean>(false);
+
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [splitPercent, setSplitPercent] = useState<number>(readStoredSplit);
+  const [isResizing, setIsResizing] = useState<boolean>(false);
+
+  // Drag the divider. Listeners live on the window so the pointer may leave the
+  // handle mid-drag without the resize sticking.
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMove = (e: PointerEvent) => {
+      const rect = bodyRef.current?.getBoundingClientRect();
+      if (!rect || rect.width === 0) return;
+      const percent = ((e.clientX - rect.left) / rect.width) * 100;
+      setSplitPercent(Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, percent)));
+    };
+    const stop = () => setIsResizing(false);
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+    // Keep the resize cursor and suppress text selection for the whole drag.
+    const previousCursor = document.body.style.cursor;
+    const previousSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousSelect;
+    };
+  }, [isResizing]);
+
+  useEffect(() => {
+    localStorage.setItem(SPLIT_STORAGE_KEY, String(Math.round(splitPercent)));
+  }, [splitPercent]);
 
   useEffect(() => {
     if (!historyId) return;
@@ -303,10 +356,13 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 flex overflow-hidden">
-          
+        <div ref={bodyRef} className="flex-1 flex overflow-hidden">
+
           {/* Left Pane: File Tree / Search List */}
-          <div className="w-1/2 border-r border-slate-800 flex flex-col bg-slate-950/40">
+          <div
+            style={{ width: `${splitPercent}%` }}
+            className="shrink-0 min-w-0 flex flex-col bg-slate-950/40"
+          >
             {/* Search Input */}
             <div className="p-3 border-b border-slate-800 flex items-center justify-between gap-2">
               <div className="relative flex-1">
@@ -426,8 +482,26 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
             </div>
           </div>
 
+          {/* Draggable divider */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuenow={Math.round(splitPercent)}
+            aria-valuemin={SPLIT_MIN}
+            aria-valuemax={SPLIT_MAX}
+            title={t('resizePanesHint')}
+            onPointerDown={(e) => { e.preventDefault(); setIsResizing(true); }}
+            onDoubleClick={() => setSplitPercent(SPLIT_DEFAULT)}
+            className={`relative w-px shrink-0 cursor-col-resize transition-colors ${
+              isResizing ? 'bg-indigo-500' : 'bg-slate-800 hover:bg-indigo-500/60'
+            }`}
+          >
+            {/* Widens the grab target without affecting layout. */}
+            <div className="absolute inset-y-0 -left-2 -right-2" />
+          </div>
+
           {/* Right Pane: Config & File Content Reader */}
-          <div className="w-1/2 flex flex-col bg-slate-900/50">
+          <div className="flex-1 min-w-0 flex flex-col bg-slate-900/50">
             {selectedFile ? (
               <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Reader Header */}
