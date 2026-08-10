@@ -112,6 +112,17 @@ Seven containers in `docker-compose.yml`:
   | `/var/hasplm/*` | Sentinel HASP licensing data |
   | `/etc/hasplm/*` | Sentinel HASP licensing config |
 
+
+### Archive Statistics & Fleet Insights
+- Header cards: repository size measured on disk, cumulative source data, cross-node saving, and the fleet-wide backup success rate.
+- **Cross-node saving** is computed from each node's *base* backup only. Counting every archive would score a node re-backing up unchanged data as deduplication, which measures how rarely the node changes rather than how well the shared repository packs the fleet. The base backup is identified by largest deduplicated contribution rather than by age, so it survives retention pruning the original archive.
+- **Fleet Insights** (collapsed by default, loaded on demand) over a 7 / 30 / 90 day or custom window:
+  - *Reliability* — success rate, overdue nodes, consecutive failure streaks, most common failure causes. Staleness is judged against the node's own group interval, so a monthly node is not flagged three weeks after its last run.
+  - *Throughput* — median and 10th/90th percentile, slowest nodes, and whether a node's configured rate limit is actually what holds it back.
+  - *Duration & Window* — run time against the group's execution window, judged on the worst run rather than the median.
+  - *Capacity* — daily growth, runway and largest contributors. Stated as an upper bound, since retention pruning is not subtracted.
+- **Clearing failed records**: failed backup entries can be deleted individually or per node, for tidying up controlled test runs and known outages. Successful archives are refused — removing restorable data belongs to retention or the per-node purge. Any checkpoint the failed run left behind goes with the record, and every deletion is written to the audit log.
+
 ### Bare-Metal Restore (Flasher)
 - Connect target drive via USB-SATA/NVMe adapter → select node + snapshot → flash.
 - **Local Flashing Warning**: Since the orchestrator supports flashing drives directly from the server, all drives other than the server's own system (OS) partition will be visible in the Flasher dropdown. Operators must choose the target disk **EXTREMELY CAREFULLY**. Drives connected via USB will have a special badge/label in the UI.

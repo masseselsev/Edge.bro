@@ -276,6 +276,33 @@ You can add, remove, or comment any exclusion directly from the UI.
 
 ---
 
+
+### 4.5 Reading the Archive tab
+
+The four header cards each answer a different question, and they are deliberately not interchangeable:
+
+| Card | What it means |
+|------|---------------|
+| **Stored on Disk** | Measured size of the Borg repository, plus free space on its filesystem. The real number. |
+| **Source Data** | Logical bytes across every successful archive, before compression and deduplication. Cumulative over time. |
+| **Cross-Node Saving** | What the shared repository saves compared with storing each node's base image separately. |
+| **Success Rate** | Successful archives out of all archives. Turns red below 80%. |
+
+**Why the saving is measured on base backups only.** A node that backs up weekly and barely changes writes gigabytes of source for a few hundred kilobytes of new data each run. Counting those runs would score "this node rarely changes" as deduplication and inflate the ratio several times over. Only the base backups say anything about storage: the first node pays for its whole image, every node after it pays only for what it does not share.
+
+The base backup is identified by largest deduplicated contribution, not by being the oldest. Retention prunes old archives and the daily job deletes the matching history rows, so a node's earliest *surviving* row eventually becomes an incremental — and using it would send the ratio into the thousands.
+
+**Fleet Insights** sits below, collapsed by default and fetched only when opened. Pick a 7, 30 or 90 day window, or type any value from 1 to 365. Panels cover reliability, throughput, duration against the group window, and capacity. A metric the system cannot compute honestly is shown as a dash with the reason, never as a zero.
+
+### 4.6 Clearing failed backup records
+
+Failed entries accumulate from controlled test runs and known outages, and they skew every reliability figure on the page.
+
+- **One record** — the **Delete record** button on any failed row.
+- **All failures on a node** — **Clear failures** in the node's header, shown only when the node has some.
+
+Successful archives cannot be deleted here; they hold restorable data, and removing them belongs to retention or to **Purge Archives**. If the failed run left a checkpoint archive in the repository it is removed with the record, and an unreachable repository does not block the deletion. Every removal is written to the audit log.
+
 ## 5. Bare-Metal Restore (Flasher)
 
 Restore a backup directly onto a physical disk connected to the orchestrator via USB.
