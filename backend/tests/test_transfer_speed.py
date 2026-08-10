@@ -134,6 +134,19 @@ def test_limit_utilisation_reports_whether_a_cap_binds():
     assert ts.limit_is_binding(measured_mbps=9.6, limit_mbps=None) is None
 
 
+def test_a_little_over_the_cap_still_counts_as_bound_by_it():
+    """Sampling noise puts a capped transfer slightly either side of the cap."""
+    assert ts.limit_is_binding(measured_mbps=10.5, limit_mbps=10.0) is True
+
+
+def test_running_far_above_the_cap_proves_the_cap_did_not_bind():
+    """Throughput is derived from borg's deduplicated_size counter, which
+    advances for chunks already in the repository that never cross the wire.
+    A heavily deduplicated run can therefore report several times the cap —
+    which means the cap was not the bottleneck, not that it was."""
+    assert ts.limit_is_binding(measured_mbps=110.0, limit_mbps=20.48) is False
+
+
 def test_node_rate_limit_overrides_the_group():
     assert ts.resolve_rate_limit(500, 2000) == (500, "node")
 

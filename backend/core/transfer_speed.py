@@ -57,15 +57,24 @@ def limit_is_binding(
     measured_mbps: Optional[float],
     limit_mbps: Optional[float],
     threshold: float = 0.9,
+    over_tolerance: float = 1.2,
 ) -> Optional[bool]:
     """Whether a configured rate limit is what actually held the transfer back.
 
     Answers the practical question: is this backup slow because we capped it,
     or because the link is slow? None when either side is unknown.
+
+    Running *above* the cap is not evidence that the cap bound the transfer —
+    it is evidence that it did not. That happens for real: throughput is
+    derived from borg's deduplicated_size counter, which advances for chunks
+    already present in the repository that never cross the wire, so a heavily
+    deduplicated run can report far more than the link ever carried. Only a
+    measurement sitting just under the cap means the cap is the bottleneck;
+    `over_tolerance` leaves room for ordinary sampling noise above it.
     """
     if measured_mbps is None or not limit_mbps:
         return None
-    return measured_mbps >= limit_mbps * threshold
+    return limit_mbps * threshold <= measured_mbps <= limit_mbps * over_tolerance
 
 
 def parse_borg_log_line(line: str) -> tuple[LineKind, dict[str, Any]]:
