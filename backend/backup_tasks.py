@@ -2,6 +2,8 @@ import os
 import subprocess
 import json
 import logging
+import threading
+import time as time_module
 from datetime import datetime
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
@@ -11,6 +13,7 @@ from database import SessionLocal
 from models import Node, TaskLog, BackupHistory, Settings, BackupGroup
 from ansible_utils import run_ansible_playbook
 from core.borg_local import borg_kwargs
+from core import transfer_speed
 
 # Re-use logging configuration from tasks
 logger = logging.getLogger(__name__)
@@ -119,7 +122,7 @@ def build_borg_create_cmd(
         rate_limit_str = f"--remote-ratelimit {rate_limit_kib} "
 
     borg_create = (
-        f"borg create --json --stats "
+        f"borg create --json --stats --log-json --progress "
         f"--compression {borg_compression} "
         f"--checkpoint-interval {checkpoint_secs} "
         f"{rate_limit_str}"
@@ -389,7 +392,12 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
     # Sized from this node's history rather than a flat 4h: on slow links a
     # backup that outlives its lock gets killed by the next scheduler tick.
     group = db.query(BackupGroup).filter(BackupGroup.id == node.group_id).first() if node.group_id else None
-    _lock_ttl = backup_lock_ttl_seconds(db, node.id, group.upload_rate_limit if group else None)
+    rate_limit_kib, rate_limit_source = transfer_speed.resolve_rate_limit(
+        node.upload_rate_limit, group.upload_rate_limit if group else None
+    )
+    # Size the lock from the limit that will actually apply, otherwise a node
+    # capped slower than its group outlives its own lock and gets killed.
+    _lock_ttl = backup_lock_ttl_seconds(db, node.id, rate_limit_kib or None)
     redis_client.setex(f"backup_running:{node.id}", _lock_ttl, f"{int(time.time())}:{task_id}")
 
     # Check Sentinel HASP license for READY nodes
@@ -495,11 +503,6 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         or getattr(settings, 'default_compression', None)
         or 'zstd:3'
     )
-    rate_limit_kib = (
-        group.upload_rate_limit
-        if group and group.upload_rate_limit is not None
-        else 0
-    )
     checkpoint_secs = (
         group.checkpoint_interval
         if group and group.checkpoint_interval is not None
@@ -511,9 +514,18 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         else getattr(settings, 'default_cpu_quota', None)
     )
 
+    limit_mbps = transfer_speed.kib_s_to_mbps(rate_limit_kib) if rate_limit_kib else None
+    if rate_limit_kib:
+        rate_text = (
+            f"{rate_limit_kib} KiB/s ({transfer_speed.format_mbps(limit_mbps)}), "
+            f"set on the {rate_limit_source}"
+        )
+    else:
+        rate_text = "unlimited"
+
     log_to_task(task_id, (
         f"Resource limits — compression: {compression}, "
-        f"rate: {rate_limit_kib} KiB/s, "
+        f"upload rate: {rate_text}, "
         f"checkpoint: {checkpoint_secs}s, "
         f"cpu_quota: {cpu_quota}%"
     ))
@@ -537,8 +549,41 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
     # Locks have been cleaned up and IP resolved at the start of the task
 
     try:
-        process = subprocess.Popen(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, stderr = process.communicate()
+        # stderr is consumed line by line: borg reports cumulative byte counters
+        # there several times a second, which is the only way to see how fast
+        # the transfer actually ran rather than just its average.
+        process = subprocess.Popen(
+            ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
+        )
+
+        tracker = transfer_speed.SpeedTracker()
+        stdout_chunks: list = []
+        stderr_lines: list = []
+        started_at = time_module.monotonic()
+
+        def _drain_stdout() -> None:
+            # Read concurrently, otherwise a full stdout pipe deadlocks the
+            # child while we are still blocked reading stderr.
+            for chunk in process.stdout:
+                stdout_chunks.append(chunk)
+
+        stdout_reader = threading.Thread(target=_drain_stdout, daemon=True)
+        stdout_reader.start()
+
+        for raw_line in process.stderr:
+            kind, payload = transfer_speed.parse_borg_log_line(raw_line)
+            if kind is transfer_speed.LineKind.PROGRESS:
+                tracker.sample(payload.get("time"), payload.get("deduplicated_size"))
+            elif kind is transfer_speed.LineKind.MESSAGE:
+                stderr_lines.append(transfer_speed.render_message(payload))
+            elif kind is transfer_speed.LineKind.PLAIN:
+                stderr_lines.append(payload["message"])
+
+        process.wait()
+        stdout_reader.join(timeout=30)
+        stdout = "".join(stdout_chunks)
+        stderr = "\n".join(stderr_lines)
+        wall_seconds = time_module.monotonic() - started_at
 
         log_to_task(task_id, f"Remote execution stdout:\n{stdout}")
         if stderr:
@@ -549,13 +594,44 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
                 log_to_task(task_id, "WARNING: Backup completed with warnings (some files changed during backup or were skipped).")
             original_size = 0
             deduplicated_size = 0
+            borg_duration = None
             try:
                 data = json.loads(stdout)
                 archive_stats = data.get("archive", {}).get("stats", {})
                 original_size = archive_stats.get("original_size", 0)
                 deduplicated_size = archive_stats.get("deduplicated_size", 0)
+                borg_duration = data.get("archive", {}).get("duration")
             except Exception:
                 log_to_task(task_id, "Failed to parse JSON directly; estimating size metrics.")
+
+            # Deduplicated bytes are what actually crossed the network; original
+            # bytes only say how much the node read off its own disk.
+            duration = borg_duration or wall_seconds
+            avg_mbps = transfer_speed.average_mbps(deduplicated_size, duration)
+            max_mbps = tracker.max_mbps
+            read_mbps = transfer_speed.average_mbps(original_size, duration)
+
+            log_to_task(task_id, (
+                f"Transfer speed — average: {transfer_speed.format_mbps(avg_mbps)}, "
+                f"peak: {transfer_speed.format_mbps(max_mbps)} "
+                f"(sustained over {tracker.window_seconds:.0f}s), "
+                f"read from disk: {transfer_speed.format_mbps(read_mbps)}"
+            ))
+
+            if rate_limit_kib:
+                binding = transfer_speed.limit_is_binding(max_mbps, limit_mbps)
+                if binding is True:
+                    verdict = "the limit is being reached, so it is what caps this backup"
+                elif binding is False:
+                    verdict = "the limit was never reached, so something else is the bottleneck"
+                else:
+                    verdict = "not enough samples to tell whether the limit was reached"
+                log_to_task(task_id, (
+                    f"Upload limit {rate_limit_kib} KiB/s "
+                    f"({transfer_speed.format_mbps(limit_mbps)}) from the {rate_limit_source} — {verdict}"
+                ))
+            elif max_mbps is not None:
+                log_to_task(task_id, "No upload limit configured; the link itself set the pace.")
 
             history = BackupHistory(
                 node_id=node.id,
@@ -564,7 +640,9 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
                 deduplicated_size=deduplicated_size,
                 status="SUCCESS",
                 log_output=stdout + "\n" + stderr,
-                comment=comment
+                comment=comment,
+                avg_speed_mbps=avg_mbps,
+                max_speed_mbps=max_mbps,
             )
             db.add(history)
             node.last_backup = datetime.utcnow()

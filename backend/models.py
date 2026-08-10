@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean, Float, UniqueConstraint
 from sqlalchemy.sql import func
 from database import Base
 
@@ -126,6 +126,10 @@ class Node(Base):
     # authorized_keys inventory reported by the node at its last bootstrap.
     node_authorized_keys = Column(JSON, nullable=True)
 
+    # KiB/s. NULL = inherit the node's group limit, then unlimited. Set per node
+    # for the odd site whose link differs from the rest of its group.
+    upload_rate_limit = Column(Integer, nullable=True)
+
     # availability fields
     last_ping_status = Column(Boolean, nullable=True)
     last_available_at = Column(DateTime, nullable=True)
@@ -146,6 +150,11 @@ class BackupHistory(Base):
     status = Column(String, nullable=False) # SUCCESS, FAILED
     log_output = Column(Text, nullable=True)
     comment = Column(Text, nullable=True)
+
+    # Transfer throughput to the repository, in Mbit/s. NULL when borg reported
+    # no progress to measure, e.g. a very short or failed run.
+    avg_speed_mbps = Column(Float, nullable=True)
+    max_speed_mbps = Column(Float, nullable=True)
 
 
 class TaskLog(Base):

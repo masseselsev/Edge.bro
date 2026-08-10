@@ -147,6 +147,28 @@ def update_node_nat_override(node_id: int, payload: schemas.NodeNatOverrideUpdat
     return {"message": "Node NAT override updated successfully."}
 
 
+@router.post("/{node_id}/rate-limit")
+def update_node_rate_limit(node_id: int, payload: schemas.NodeRateLimitUpdate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    """
+    Overrides the upload rate limit for this specific node, in KiB/s.
+    None clears the override so the node inherits its group limit, then unlimited.
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+
+    if payload.upload_rate_limit is not None and payload.upload_rate_limit < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Rate limit cannot be negative.")
+
+    node.upload_rate_limit = payload.upload_rate_limit
+    db.commit()
+
+    described = "inherit" if payload.upload_rate_limit is None else f"{payload.upload_rate_limit} KiB/s"
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Update Node Rate Limit", f"Set upload rate limit for node '{node.hostname}' to {described}", request)
+    return {"message": "Node rate limit updated successfully."}
+
+
 @router.post("/{node_id}/backup-today")
 def trigger_backup_today(node_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """

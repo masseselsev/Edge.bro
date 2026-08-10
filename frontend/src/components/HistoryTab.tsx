@@ -19,6 +19,8 @@ interface BackupHistory {
   deduplicated_size: number;
   status: string;
   comment: string | null;
+  avg_speed_mbps?: number | null;
+  max_speed_mbps?: number | null;
 }
 
 interface Node {
@@ -539,6 +541,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
               </button>
             </th>
             <th className="px-6 py-3 text-zinc-500 font-semibold">{t('estDownloadSizeColumn') || 'Est. Download Size'}</th>
+            <th className="px-6 py-3 text-zinc-500 font-semibold">{t('transferSpeedColumn')}</th>
             <th className="px-6 py-3">
               <button
                 onClick={() => handleSort('status')}
@@ -605,6 +608,19 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                 <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
                 <td className="px-6 py-3.5 text-zinc-300">
                   {getFormatSize(Math.max(h.deduplicated_size, Math.round(h.original_size * 0.4)))}
+                </td>
+                <td className="px-6 py-3.5 text-zinc-300 whitespace-nowrap">
+                  {h.avg_speed_mbps == null ? (
+                    <span className="text-zinc-600">—</span>
+                  ) : (
+                    <span title={`${t('backupSpeedAvg')} / ${t('backupSpeedMax')}`}>
+                      {h.avg_speed_mbps.toFixed(1)}
+                      {h.max_speed_mbps != null && (
+                        <span className="text-zinc-500"> / {h.max_speed_mbps.toFixed(1)}</span>
+                      )}
+                      <span className="text-zinc-600 text-[10px] ml-1">Mbit/s</span>
+                    </span>
+                  )}
                 </td>
                 <td className="px-6 py-3.5">
                   {h.status === 'SUCCESS' ? (

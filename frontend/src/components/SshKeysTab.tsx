@@ -34,16 +34,17 @@ export default function SshKeysTab() {
   const [orchestratorFp, setOrchestratorFp] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [includeNodes, setIncludeNodes] = useState(false);
+  const [showRemoved, setShowRemoved] = useState(false);
   const [abortReason, setAbortReason] = useState<string | null>(null);
 
-  const load = async () => {
-    const res = await fetch('/api/ssh-keys/audit?include_resolved=true');
+  const load = async (withRemoved = showRemoved) => {
+    const res = await fetch(`/api/ssh-keys/audit?include_resolved=${withRemoved}`);
     if (res.ok) setFindings(await res.json());
     const orch = await fetch('/api/ssh-keys/orchestrator');
     if (orch.ok) setOrchestratorFp((await orch.json()).fingerprint);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(showRemoved); }, [showRemoved]);
 
   const runScan = async () => {
     setScanning(true);
@@ -55,7 +56,7 @@ export default function SshKeysTab() {
         const summary = await res.json();
         setAbortReason(summary.aborted ? summary.abort_reason : null);
       }
-      await load();
+      await load(showRemoved);
     } finally {
       setScanning(false);
     }
@@ -75,7 +76,7 @@ export default function SshKeysTab() {
       const body = await res.json().catch(() => ({ detail: 'Request failed' }));
       window.alert(body.detail);
     }
-    await load();
+    await load(showRemoved);
   };
 
   return (
@@ -117,6 +118,14 @@ export default function SshKeysTab() {
           />
           {t('sshKeysIncludeNodes')}
         </label>
+        <label className="flex items-center gap-2 text-sm text-zinc-450 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showRemoved}
+            onChange={(e) => setShowRemoved(e.target.checked)}
+          />
+          {t('sshKeysShowRemoved')}
+        </label>
       </div>
 
       {findings.length === 0 ? (
@@ -143,7 +152,7 @@ export default function SshKeysTab() {
                   }`}
                 >
                   <td className="px-3 py-2">
-                    {f.host === '__orchestrator__' ? t('sshKeysOrchestratorKey') : f.host}
+                    {f.host === '__orchestrator__' ? t('sshKeysLocationOrchestrator') : f.host}
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">{f.fingerprint}</td>
                   <td className="px-3 py-2 font-mono text-xs">{f.comment ?? '—'}</td>
@@ -155,7 +164,9 @@ export default function SshKeysTab() {
                       {t(CLASS_LABEL[f.classification] ?? f.classification)}
                     </span>
                     {f.pruned_at && (
-                      <span className="ml-2 text-xs text-zinc-600">({t('sshKeysPruned')})</span>
+                      <span className="ml-2 text-xs text-zinc-600">
+                        {t('sshKeysPruned')} {new Date(f.pruned_at).toLocaleDateString()}
+                      </span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-xs">
@@ -163,7 +174,7 @@ export default function SshKeysTab() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     {!f.pruned_at
-                      && f.classification !== 'OURS_MATCHED'
+                      && f.classification === 'UNKNOWN'
                       && f.location === 'ORCHESTRATOR' && (
                       <button
                         type="button"

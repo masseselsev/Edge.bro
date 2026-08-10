@@ -160,6 +160,8 @@ class NodeResponse(BaseModel):
     last_available_at: Optional[datetime] = None
     # None = inherit from the node's group, then the global setting
     orchestrator_behind_nat: Optional[bool] = None
+    # KiB/s. None = inherit the group limit, then unlimited.
+    upload_rate_limit: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -181,6 +183,9 @@ class BackupHistoryResponse(BaseModel):
     status: str
     log_output: Optional[str] = None
     comment: Optional[str] = None
+    # Transfer throughput to the repository, Mbit/s. None for older rows.
+    avg_speed_mbps: Optional[float] = None
+    max_speed_mbps: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -270,6 +275,11 @@ class NodeNotesUpdate(BaseModel):
 class NodeNatOverrideUpdate(BaseModel):
     # None clears the override -> inherit from group, then global settings
     orchestrator_behind_nat: Optional[bool] = None
+
+
+class NodeRateLimitUpdate(BaseModel):
+    # KiB/s. None clears the override -> inherit the group limit, then unlimited.
+    upload_rate_limit: Optional[int] = None
 
 
 class NodeProvisionRequest(BaseModel):

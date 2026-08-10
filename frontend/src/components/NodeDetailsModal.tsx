@@ -38,6 +38,8 @@ interface Node {
   last_available_at?: string | null;
   // null = inherit from the node's group, then the global setting
   orchestrator_behind_nat?: boolean | null;
+  // KiB/s. null = inherit the group limit, then unlimited.
+  upload_rate_limit?: number | null;
 }
 
 interface BackupHistory {
@@ -54,6 +56,7 @@ interface BackupGroup {
   id: number;
   name: string;
   orchestrator_behind_nat?: boolean | null;
+  upload_rate_limit?: number | null;
 }
 
 interface TaskLog {
@@ -79,6 +82,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const [notes, setNotes] = useState('');
   const [groupId, setGroupId] = useState<number>(0);
   const [natChoice, setNatChoice] = useState<NatChoice>('inherit');
+  const [rateLimit, setRateLimit] = useState<string>('');
   const [globalBehindNat, setGlobalBehindNat] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
@@ -117,6 +121,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           setNotes(found.notes || '');
           setGroupId(found.group_id || 0);
           setNatChoice(natChoiceFrom(found.orchestrator_behind_nat));
+          setRateLimit(found.upload_rate_limit == null ? '' : String(found.upload_rate_limit));
           if (found.status === 'RESTORED') {
               setSentinelExpanded(true);
               setTimeout(() => {
@@ -243,6 +248,29 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
     } catch (err) {
       console.error(err);
       setNatChoice(previous);
+    }
+  };
+
+  const handleRateLimit = async () => {
+    const trimmed = rateLimit.trim();
+    const parsed = trimmed === '' ? null : Number(trimmed);
+    if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0)) {
+      setRateLimit(node?.upload_rate_limit == null ? '' : String(node.upload_rate_limit));
+      return;
+    }
+    if ((node?.upload_rate_limit ?? null) === parsed) return;
+    try {
+      const res = await fetch(`/api/nodes/${nodeId}/rate-limit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ upload_rate_limit: parsed })
+      });
+      if (res.ok) {
+        onRefreshList();
+        fetchNodeDetails();
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -500,6 +528,30 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                       value={natChoice}
                       onChange={(val) => handleNatOverride(val as NatChoice)}
                       placeholder={t('natOverrideInherit')}
+                    />
+                  </div>
+                  <div>
+                    <InfoLabel
+                      label={t('rateLimitLabel')}
+                      hint={t('rateLimitNodeHint')}
+                      className="block text-xs font-semibold text-zinc-400 mb-1.5"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      value={rateLimit}
+                      onChange={(e) => setRateLimit(e.target.value)}
+                      onBlur={handleRateLimit}
+                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                      placeholder={(() => {
+                        // Spell out what leaving this empty resolves to, the way
+                        // the NAT selector above does.
+                        const inherited = groups.find(g => g.id === groupId)?.upload_rate_limit;
+                        return inherited
+                          ? `${t('rateLimitInherit')} (${inherited} KiB/s)`
+                          : `${t('rateLimitInherit')} (${t('rateLimitUnlimited')})`;
+                      })()}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-indigo-500/50"
                     />
                   </div>
                 </div>
