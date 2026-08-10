@@ -44,6 +44,10 @@ docs/
 *.db
 .worktrees/
 
+# Operator notes kept local, not shipped with the repo
+UPGRADE.md
+UPGRADE_ru.md
+
 # Scheduler dev/test tools
 backend/core/scheduler_large_scale_test.py
 backend/core/scheduler_simulator.py
