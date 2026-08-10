@@ -124,6 +124,9 @@ services:
     volumes:
       - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/home/borg/.ssh
+      # Keeps the server's SSH identity stable across rebuilds; without it every
+      # node's known_hosts entry is invalidated and backups stop.
+      - borg-hostkeys:/etc/ssh/keys
     depends_on:
       - db
 
@@ -163,6 +166,9 @@ volumes:
     external: false
   ssh-keys:
     name: edge-bro_ssh-keys
+    external: false
+  borg-hostkeys:
+    name: edge-bro_borg-hostkeys
     external: false
   redis-data:
     name: edge-bro_redis-data

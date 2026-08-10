@@ -4,5 +4,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 RUN mkdir /var/run/sshd && mkdir -p /data/borg
 RUN useradd -m -d /home/borg -s /bin/bash borg
+COPY docker/borg/sshd_hostkeys.conf /etc/ssh/sshd_config.d/10-hostkeys.conf
+COPY docker/borg/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 EXPOSE 22
-CMD ["/usr/sbin/sshd", "-D"]
+CMD ["/usr/local/bin/entrypoint.sh"]
