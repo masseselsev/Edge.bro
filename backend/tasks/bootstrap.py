@@ -5,7 +5,7 @@ from typing import Dict, Any
 from sqlalchemy.orm import Session
 from models import Node, TaskLog, Settings
 from celery_app import celery_app
-from core import ssh_keys
+from core import known_hosts, ssh_keys
 import tasks
 
 
@@ -69,6 +69,21 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
     db.add(task_log)
     db.commit()
     tasks.log_to_task(task_id, f"Starting bootstrap for {node.hostname} ({node.ip_address})")
+
+    # A (re)install regenerates the node's SSH host keys. Forgetting the old
+    # entry unconditionally means the next connection just relearns the new
+    # one quietly instead of every backup afterwards printing a full "REMOTE
+    # HOST IDENTIFICATION HAS CHANGED" warning for a change that was expected.
+    try:
+        if known_hosts.forget(node.ip_address, node.ssh_port):
+            tasks.log_to_task(
+                task_id,
+                f"Cleared the previous SSH host key for {node.ip_address}:{node.ssh_port} "
+                f"— (re)install generates a new one",
+            )
+    except Exception as e:
+        tasks.log_to_task(task_id, f"WARNING: Could not clear old host key: {str(e)}")
+
     try:
         orchestrator_pub_key = tasks.ensure_orchestrator_ssh_key()
         parsed_orch = ssh_keys.parse_line(orchestrator_pub_key)
