@@ -1,3 +1,5 @@
+import json
+import os
 from datetime import datetime, timedelta
 
 import pytest
@@ -5,15 +7,19 @@ import pytest
 from core import smart
 from core.smart import Grade, Protocol
 
+FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
+
 
 def sata_report(**overrides):
     """A healthy Samsung 870 EVO, the drive in the fleet's EMBC-5000 units."""
     attributes = {
         5: 0,      # Reallocated_Sector_Ct
         177: 99,   # Wear_Leveling_Count, normalised, counts down from 100
+        179: 0,    # Used_Rsvd_Blk_Cnt_Tot (SSD-native bad-block signal)
+        183: 0,    # Runtime_Bad_Block (SSD-native bad-block signal)
         187: 0,    # Reported_Uncorrect
-        197: 0,    # Current_Pending_Sector
-        198: 0,    # Offline_Uncorrectable
+        197: 0,    # Current_Pending_Sector (HDD-era; kept for that coverage)
+        198: 0,    # Offline_Uncorrectable (HDD-era; kept for that coverage)
         199: 0,    # UDMA_CRC_Error_Count
         241: 2_000_000_000,  # Total_LBAs_Written
     }
@@ -186,6 +192,86 @@ def test_the_breakdown_travels_with_the_score():
 
     assert {"wear", "spare", "integrity", "errors", "thermal"} <= names
     assert all(isinstance(s.evidence, dict) for s in health.subscores)
+
+
+# --- SSD-native bad-block attributes (179/183), not just the HDD pair ------
+#
+# Confirmed against a live Samsung 870 EVO in the fleet's own EMBC-5000 units:
+# this drive reports neither 197 (Current_Pending_Sector) nor 198
+# (Offline_Uncorrectable) at all. Without checking the SSD-native equivalents,
+# "integrity" would go silently unavailable on exactly the drive the fleet
+# uses, which would have meant relying on wear and CRC alone to notice a
+# drive that is actively finding bad blocks.
+
+def sata_report_without_the_hdd_pair(**overrides):
+    """The fleet's actual drive's attribute set: no 197/198 at all."""
+    report = sata_report(**overrides)
+    table = report["ata_smart_attributes"]["table"]
+    report["ata_smart_attributes"]["table"] = [e for e in table if e["id"] not in (197, 198)]
+    return report
+
+
+def test_integrity_falls_back_to_ssd_native_attributes_when_the_hdd_pair_is_absent():
+    report = sata_report_without_the_hdd_pair()
+    health = smart.score(smart.parse(report))
+
+    integrity = next((s for s in health.subscores if s.name == "integrity"), None)
+    assert integrity is not None
+    assert integrity.score == 100.0
+
+
+def test_reserved_blocks_consumed_caps_the_score_even_without_the_hdd_pair():
+    report = sata_report_without_the_hdd_pair(attributes={179: 3})
+    health = smart.score(smart.parse(report))
+
+    assert health.score <= 30
+    assert any("reserved blocks used=3" in o for o in health.overrides)
+
+
+def test_runtime_bad_blocks_cap_the_score_even_without_the_hdd_pair():
+    report = sata_report_without_the_hdd_pair(attributes={183: 2})
+    health = smart.score(smart.parse(report))
+
+    assert health.score <= 30
+    assert any("runtime bad block=2" in o for o in health.overrides)
+
+
+def test_a_drive_reporting_neither_family_at_all_has_no_integrity_subscore():
+    """Genuinely nothing to check must stay None, not a fabricated 100."""
+    report = sata_report()
+    table = report["ata_smart_attributes"]["table"]
+    report["ata_smart_attributes"]["table"] = [
+        e for e in table if e["id"] not in (197, 198, 179, 183)
+    ]
+
+    health = smart.score(smart.parse(report))
+
+    integrity = next((s for s in health.subscores if s.name == "integrity"), None)
+    assert integrity is None
+
+
+def test_the_real_samsung_870_evo_capture_scores_as_healthy():
+    """Golden-file regression test against the fleet's actual hardware.
+
+    Captured 2026-08-11 from a live EMBC-5000 test node (WS20240170) via
+    `smartctl -j -a /dev/sda`. Guards against ever losing coverage on the
+    drive the fleet actually ships.
+    """
+    with open(os.path.join(FIXTURES_DIR, "samsung_870_evo_smartctl.json")) as f:
+        report = json.load(f)
+
+    reading = smart.parse(report)
+    assert reading.protocol is Protocol.SATA
+    assert reading.model == "Samsung SSD 870 EVO 500GB"
+    assert reading.percent_used == pytest.approx(1.0)
+
+    health = smart.score(reading)
+    assert health.grade is Grade.OK
+    assert health.score >= 95
+    assert health.overrides == []
+
+    names = {s.name for s in health.subscores}
+    assert "integrity" in names, "179/183 are present on this capture; must be picked up"
 
 
 # --- temperature ------------------------------------------------------------

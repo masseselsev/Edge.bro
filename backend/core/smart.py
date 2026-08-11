@@ -269,11 +269,15 @@ def score(
 
     pending = _raw(reading, 197)
     uncorrectable = _raw(reading, 198)
-    if pending or uncorrectable:
+    reserved_used = _raw(reading, 179)
+    runtime_bad = _raw(reading, 183)
+    if pending or uncorrectable or reserved_used or runtime_bad:
         total = min(total if total is not None else 100, 30)
         overrides.append(
             f"Unreadable sectors present (pending={pending or 0}, "
-            f"offline uncorrectable={uncorrectable or 0})"
+            f"offline uncorrectable={uncorrectable or 0}, "
+            f"reserved blocks used={reserved_used or 0}, "
+            f"runtime bad block={runtime_bad or 0})"
         )
 
     spare = _as_float(reading.values.get("available_spare"))
@@ -345,6 +349,20 @@ def _spare_subscore(reading: Reading) -> Optional[SubScore]:
 
 
 def _integrity_subscore(reading: Reading) -> Optional[SubScore]:
+    """Sectors or blocks the drive itself has flagged as bad since leaving the factory.
+
+    Checks two attribute families, because a drive reports one or the other
+    and not both. 197 (Current_Pending_Sector) and 198 (Offline_Uncorrectable)
+    are the classic HDD pair. Plenty of SSDs — including the Samsung 870 EVO
+    in the fleet's own EMBC-5000 units, confirmed against a live unit's actual
+    smartctl output — report neither and instead carry 179
+    (Used_Rsvd_Blk_Cnt_Tot: reserved blocks consumed by failures) and 183
+    (Runtime_Bad_Block: blocks that went bad during operation, as opposed to
+    being culled at the factory). Checking only the HDD pair would leave this
+    subscore silently unavailable on exactly the drive the fleet actually
+    uses — any of the four moving off zero means the same thing regardless of
+    which family the drive speaks.
+    """
     if reading.protocol is Protocol.NVME:
         critical = reading.values.get("critical_warning")
         if critical is None:
@@ -354,11 +372,17 @@ def _integrity_subscore(reading: Reading) -> Optional[SubScore]:
 
     pending = _raw(reading, 197)
     uncorrectable = _raw(reading, 198)
-    if pending is None and uncorrectable is None:
+    reserved_used = _raw(reading, 179)
+    runtime_bad = _raw(reading, 183)
+    if all(v is None for v in (pending, uncorrectable, reserved_used, runtime_bad)):
         return None
-    bad = (pending or 0) + (uncorrectable or 0)
-    return SubScore("integrity", 100.0 if bad == 0 else 0.0,
-                    {"pending": pending, "offline_uncorrectable": uncorrectable})
+    bad = sum(v or 0 for v in (pending, uncorrectable, reserved_used, runtime_bad))
+    return SubScore("integrity", 100.0 if bad == 0 else 0.0, {
+        "pending": pending,
+        "offline_uncorrectable": uncorrectable,
+        "reserved_blocks_used": reserved_used,
+        "runtime_bad_block": runtime_bad,
+    })
 
 
 def _error_subscore(reading: Reading) -> Optional[SubScore]:
