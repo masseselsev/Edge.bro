@@ -22,6 +22,12 @@
 
 set -u
 
+# Debian's non-interactive PATH for a plain user omits /usr/sbin and /sbin,
+# where smartctl and dmidecode actually live. Confirmed on a live node: the
+# binaries were present and this script still reported them absent.
+PATH="/usr/sbin:/sbin:$PATH"
+export PATH
+
 SAMPLES=${SAMPLES:-60}      # 60 samples at 2 s = 2 minutes of load observation
 INTERVAL=${INTERVAL:-2}
 
@@ -45,9 +51,21 @@ fi
 
 hdr "RAPL (package power)"
 # Without RAPL there is no power measurement and no thermal resistance.
+# energy_uj is root-only since CVE-2020-8694, so a readability test run as a
+# plain user reports absent even when the file is right there — confirmed on
+# a live node, where this used to print "NO RAPL" for a file `sudo cat`
+# opened without complaint. Existence and readability are checked separately
+# so that case reads as what it is: fine for the collector, since it runs as
+# root over the same channel the backup path already uses.
 RAPL=""
+RAPL_EXISTS_NOT_READABLE=""
 for d in /sys/class/powercap/intel-rapl:0 /sys/class/powercap/intel-rapl/intel-rapl:0; do
-    [ -r "$d/energy_uj" ] && { RAPL="$d"; break; }
+    if [ -r "$d/energy_uj" ]; then
+        RAPL="$d"
+        break
+    elif [ -e "$d/energy_uj" ]; then
+        RAPL_EXISTS_NOT_READABLE="$d"
+    fi
 done
 if [ -n "$RAPL" ]; then
     say "path:        $RAPL"
@@ -61,6 +79,15 @@ if [ -n "$RAPL" ]; then
         say "VERDICT:     RAPL OK"
     else
         say "VERDICT:     RAPL present but counter did not advance (E1=$E1 E2=$E2)"
+    fi
+elif [ -n "$RAPL_EXISTS_NOT_READABLE" ]; then
+    say "path:        $RAPL_EXISTS_NOT_READABLE (exists, not readable by $(id -un 2>/dev/null))"
+    if [ "$(id -u 2>/dev/null)" = "0" ]; then
+        say "VERDICT:     UNEXPECTED — already root and still denied; check kernel config"
+    else
+        say "VERDICT:     present, permission denied for this user — expected, root-only since CVE-2020-8694."
+        say "             The collector runs as root over the same channel backups already use, so this is fine."
+        say "             Re-run as root (or via sudo) for a real reading: sudo sh -s < edge-bro-recon.sh"
     fi
 else
     say "VERDICT:     NO RAPL — package power unavailable, thermal model degraded"
