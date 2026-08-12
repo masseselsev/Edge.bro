@@ -70,3 +70,91 @@ def test_send_never_leaks_token_in_network_error():
     assert ok is False
     assert token not in detail, f"Token leaked in error detail: {detail}"
     assert "network error:" in detail
+
+
+# Task 6: dispatch tests
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from database import Base
+from core.alerts import SyncResult
+from core.notify import dispatch
+
+
+def _db():
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+    return factory()
+
+
+def _add_user(db, telegram_enabled=True, min_severity="WATCH", telegram_id="1"):
+    user = models.User(
+        username=f"u_{telegram_id}", hashed_password="x", name="U", telegram_id=telegram_id,
+        notification_prefs={"telegram_enabled": telegram_enabled, "min_severity": min_severity},
+    )
+    db.add(user)
+    db.commit()
+    return user
+
+
+def test_dispatch_skips_users_who_are_not_subscribed():
+    db = _db()
+    _add_user(db, telegram_enabled=False)
+    alert = models.Alert(module="thermal", dedup_key="k", severity="WATCH",
+                         status="OPEN", title="t")
+    db.add(alert)
+    db.commit()
+    with patch("core.notify.telegram.send") as send:
+        dispatch.notify(db, SyncResult(opened=[alert]))
+    send.assert_not_called()
+
+
+def test_dispatch_respects_min_severity():
+    db = _db()
+    _add_user(db, min_severity="ALERT")
+    alert = models.Alert(module="thermal", dedup_key="k", severity="WATCH",
+                         status="OPEN", title="t")
+    db.add(alert)
+    db.commit()
+    with patch("core.notify.telegram.send") as send:
+        dispatch.notify(db, SyncResult(opened=[alert]))
+    send.assert_not_called()
+
+
+def test_dispatch_sends_to_subscribed_user_at_or_above_threshold():
+    db = _db()
+    _add_user(db, min_severity="WATCH")
+    alert = models.Alert(module="thermal", dedup_key="k", severity="WATCH",
+                         status="OPEN", title="t")
+    db.add(alert)
+    db.commit()
+    with patch("core.notify.telegram.send", return_value=(True, "sent")) as send:
+        dispatch.notify(db, SyncResult(opened=[alert]))
+    send.assert_called_once()
+    assert send.call_args.args[2] == "opened"
+
+
+def test_dispatch_resolution_bypasses_severity_gate():
+    db = _db()
+    _add_user(db, min_severity="ALERT")
+    alert = models.Alert(module="thermal", dedup_key="k", severity="WATCH",
+                         status="RESOLVED", title="t")
+    db.add(alert)
+    db.commit()
+    with patch("core.notify.telegram.send", return_value=(True, "sent")) as send:
+        dispatch.notify(db, SyncResult(resolved=[alert]))
+    send.assert_called_once()
+    assert send.call_args.args[2] == "resolved"
+
+
+def test_dispatch_one_failing_recipient_does_not_block_others():
+    db = _db()
+    _add_user(db, telegram_id="1")
+    _add_user(db, telegram_id="2")
+    alert = models.Alert(module="thermal", dedup_key="k", severity="WATCH",
+                         status="OPEN", title="t")
+    db.add(alert)
+    db.commit()
+    with patch("core.notify.telegram.send", side_effect=[(False, "boom"), (True, "sent")]) as send:
+        dispatch.notify(db, SyncResult(opened=[alert]))
+    assert send.call_count == 2
