@@ -8,6 +8,9 @@ import NodeBackupHistory from './NodeBackupHistory';
 import { SearchableSelect } from './SearchableSelect';
 import { InfoLabel } from './InfoLabel';
 import { natChoiceFrom, natChoiceToValue } from './BackupGroupModal';
+import { SmartBadge, ThermalBadge } from './NodeHealthBadges';
+import type { NodeHealth } from './NodeHealthBadges';
+import NodeHealthModal from './NodeHealthModal';
 import type { NatChoice } from './BackupGroupModal';
 
 interface Node {
@@ -77,6 +80,11 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const { t, language } = useTranslation();
   
   const [node, setNode] = useState<Node | null>(null);
+  // Health is fetched separately from the node itself: it reads several
+  // monitoring tables and must not delay the modal opening.
+  const [health, setHealth] = useState<NodeHealth | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [healthTab, setHealthTab] = useState<'smart' | 'thermal' | null>(null);
   const [history, setHistory] = useState<BackupHistory[]>([]);
   const [groups, setGroups] = useState<BackupGroup[]>([]);
   const [notes, setNotes] = useState('');
@@ -210,6 +218,26 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
   useEffect(() => {
     fetchNodeDetails();
+  }, [nodeId]);
+
+  // Kept out of fetchNodeDetails deliberately: the health endpoint reads
+  // several monitoring tables and runs the cohort comparison across the
+  // fleet, so making the modal wait on it would slow every open.
+  const fetchHealth = async () => {
+    setHealthLoading(true);
+    try {
+      const res = await fetch(`/api/monitoring/nodes/${nodeId}`);
+      setHealth(res.ok ? await res.json() : null);
+    } catch (e) {
+      console.error(e);
+      setHealth(null);
+    } finally {
+      setHealthLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHealth();
   }, [nodeId]);
 
   const handleSaveNotes = async () => {
@@ -402,9 +430,16 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
             <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
               <Cpu className="h-8 w-8 text-cyan-400/90" />
-              <div>
-                <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('cpu')}</span>
-                <span className="text-xs font-semibold text-zinc-200 block mt-0.5" title={node.cpu_info || 'UNKNOWN'}>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] uppercase font-bold text-zinc-500">{t('cpu')}</span>
+                  <ThermalBadge
+                    thermal={health?.thermal}
+                    loading={healthLoading}
+                    onClick={() => setHealthTab('thermal')}
+                  />
+                </div>
+                <span className="text-xs font-semibold text-zinc-200 block mt-0.5 truncate" title={node.cpu_info || 'UNKNOWN'}>
                   {node.cpu_info || 'Generic CPU'}
                 </span>
               </div>
@@ -422,9 +457,16 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
             <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
               <HardDrive className="h-8 w-8 text-amber-400/90" />
-              <div>
-                <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('diskDrive') || 'Disk Drive'}</span>
-                <span className="text-xs font-semibold text-zinc-200 block mt-0.5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] uppercase font-bold text-zinc-500">{t('diskDrive') || 'Disk Drive'}</span>
+                  <SmartBadge
+                    smart={health?.smart?.[0]}
+                    loading={healthLoading}
+                    onClick={() => setHealthTab('smart')}
+                  />
+                </div>
+                <span className="text-xs font-semibold text-zinc-200 block mt-0.5 truncate">
                   {node.disk_type}
                 </span>
               </div>
@@ -790,6 +832,20 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           )}
         </div>
       </div>
+
+      {healthTab && node && (
+        <NodeHealthModal
+          nodeId={nodeId}
+          hostname={node.hostname}
+          initialTab={healthTab}
+          onClose={() => {
+            setHealthTab(null);
+            // The detail view can trigger a harvest, so re-read the badges on
+            // the way out rather than leaving them showing the old verdict.
+            fetchHealth();
+          }}
+        />
+      )}
     </div>,
     document.body
   );
