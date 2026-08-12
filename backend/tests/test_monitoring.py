@@ -414,6 +414,29 @@ def test_retention_leaves_recent_rejections_alone(db, monkeypatch):
     assert db.query(models.ThermalFit).count() == 1
 
 
+def test_clearing_a_raw_report_stores_sql_null_not_json_null(db, monkeypatch):
+    """SQLAlchemy's JSON type stores Python None as the JSON value `null` by
+    default, which still satisfies `IS NOT NULL`. Without none_as_null the
+    retention sweep would re-clear the same rows every run and report a false
+    count, and the full-statistics endpoint would hand back a null report
+    instead of saying none is stored."""
+    node = make_node(db)
+    old = datetime.utcnow() - timedelta(days=200)
+    db.add(models.SmartSnapshot(node_id=node.id, captured_at=old, device="/dev/sda",
+                                score=97, raw={"big": "report"}))
+    db.add(models.Settings(telemetry_retention_days=90))
+    db.commit()
+
+    assert monitoring.monitoring_retention_task()["raw_reports_cleared"] == 1
+    # The second sweep must find nothing left to clear.
+    assert monitoring.monitoring_retention_task()["raw_reports_cleared"] == 0
+
+    remaining = db.query(models.SmartSnapshot).filter(
+        models.SmartSnapshot.raw.isnot(None)
+    ).count()
+    assert remaining == 0
+
+
 def test_retention_leaves_recent_data_alone(db, monkeypatch):
     node = make_node(db)
     recent = datetime.utcnow() - timedelta(days=3)

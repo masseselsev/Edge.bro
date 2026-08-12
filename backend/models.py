@@ -279,6 +279,11 @@ class User(Base):
     phone = Column(String, nullable=True)
     telegram_id = Column(String, nullable=True)
     comment = Column(Text, nullable=True)
+
+    # Per-user UI state that should follow the person rather than the browser:
+    # which series the monitoring graphs plot and how deep a window they show.
+    # Stored server-side so the same choices appear from any machine.
+    ui_preferences = Column(JSON, nullable=True)
     is_superadmin = Column(Boolean, default=False, nullable=False)
     is_admin_plus = Column(Boolean, default=False, nullable=False)
 
@@ -426,4 +431,10 @@ class SmartSnapshot(Base):
     overrides = Column(JSON, nullable=True)
     advisories = Column(JSON, nullable=True)
 
-    raw = Column(JSON, nullable=True)
+    # none_as_null matters here. SQLAlchemy's JSON type stores a Python None
+    # as the JSON value `null` by default, not as SQL NULL — so a report
+    # cleared by retention would still satisfy `raw IS NOT NULL`. Retention
+    # would re-clear the same rows on every run and report a false count, and
+    # the "full statistics" endpoint would hand back a null report instead of
+    # honestly saying none is stored. Absence is what None means here.
+    raw = Column(JSON(none_as_null=True), nullable=True)
