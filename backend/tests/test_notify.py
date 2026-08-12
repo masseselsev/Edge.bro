@@ -56,3 +56,17 @@ def test_send_handles_network_error():
             ok, detail = telegram.send(make_user(), make_alert(), "opened")
     assert ok is False
     assert "boom" in detail
+
+
+def test_send_never_leaks_token_in_network_error():
+    """Verify that connection/timeout errors don't leak the token via requests exception strings."""
+    import requests
+    token = "SUPER_SECRET_TOKEN_12345"
+    with patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": token}):
+        # Simulate a real requests exception that embeds the URL with token
+        error_msg = f"Max retries exceeded with url: /bot{token}/sendMessage (Caused by NewConnectionError)"
+        with patch("core.notify.telegram.requests.post", side_effect=requests.ConnectionError(error_msg)):
+            ok, detail = telegram.send(make_user(), make_alert(), "opened")
+    assert ok is False
+    assert token not in detail, f"Token leaked in error detail: {detail}"
+    assert "network error:" in detail
