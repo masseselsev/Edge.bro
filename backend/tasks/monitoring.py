@@ -311,10 +311,23 @@ def monitoring_sweep_task() -> Dict[str, Any]:
 def monitoring_retention_task() -> Dict[str, Any]:
     """Age out bulky monitoring data, keeping the parts worth keeping.
 
-    Rollups expire wholesale. SMART snapshots keep their parsed scalars
-    indefinitely — those are what the history graph plots — but shed their
-    `raw` report, which is ~15 KB apiece and would otherwise dwarf everything
-    else in this database within a year.
+    Three different policies, because the three tables age differently:
+
+    * **Rollups** expire wholesale at the configured window.
+    * **SMART snapshots** keep their parsed scalars — those are what the
+      history graph plots and they are tiny — but shed their `raw` report,
+      which is ~15 KB apiece and would otherwise dwarf everything else in this
+      database within a year.
+    * **Rejected thermal fits** expire on the same window as rollups. A node
+      draining a month of buffer produces ~180 windows per harvest, and on a
+      fleet whose load barely varies almost every one of them is a rejection.
+      That is 2.16M rows a year across a thousand nodes for records whose
+      entire content is "the load never varied enough" — worth keeping long
+      enough to diagnose a node, worthless as history.
+
+    Successful fits are deliberately **not** pruned. They are the long-term
+    degradation trend the whole feature exists to produce, and at roughly a
+    tenth the volume of the rejections they are affordable to keep.
     """
     db = SessionLocal()
     try:
@@ -334,8 +347,18 @@ def monitoring_retention_task() -> Dict[str, Any]:
             .update({SmartSnapshot.raw: None}, synchronize_session=False)
         )
 
+        rejected_removed = (
+            db.query(ThermalFit)
+            .filter(ThermalFit.window_start < cutoff, ThermalFit.rejection != "OK")
+            .delete(synchronize_session=False)
+        )
+
         db.commit()
-        return {"rollups_removed": rollups_removed, "raw_reports_cleared": raw_cleared}
+        return {
+            "rollups_removed": rollups_removed,
+            "raw_reports_cleared": raw_cleared,
+            "rejected_fits_removed": rejected_removed,
+        }
     except Exception as e:
         db.rollback()
         return {"status": "FAILED", "error": str(e)}

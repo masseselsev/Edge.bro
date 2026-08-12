@@ -35,6 +35,19 @@ SCHEMA_VERSION = 1
 TEMP_BOUNDS_C = (-50.0, 150.0)
 MAX_PLAUSIBLE_POWER_W = 500.0
 
+#: Epoch bounds for a usable timestamp: 2020-01-01 to 2100-01-01.
+#:
+#: Not paranoia. A roadside unit whose RTC battery has died comes back from a
+#: reboot with a garbage clock, and `datetime.fromtimestamp` raises on those
+#: values rather than returning something odd — ValueError for year 3170843,
+#: OSError for anything past the platform's time_t. Since the harvester has
+#: already drained and deleted the node's buffer by the time parsing happens,
+#: letting that propagate would lose the whole batch and keep losing every
+#: batch for as long as the clock stayed wrong. A sample whose time is unknown
+#: is useless in a time series, so it is dropped rather than clamped: clamping
+#: would place it at a moment it did not happen and corrupt the series.
+TIMESTAMP_BOUNDS = (1_577_836_800, 4_102_444_800)
+
 #: A gap longer than this means the node was off, or the buffer was trimmed.
 #: Counters cannot be differenced across it — the deltas would be nonsense —
 #: so the series is cut into separate runs at that point.
@@ -183,8 +196,8 @@ def parse_buffer(text: str) -> ParseResult:
 
 def _record_from(payload: dict, result: ParseResult) -> Optional[Record]:
     timestamp = _number(payload.get("ts"))
-    if timestamp is None or timestamp <= 0:
-        result.malformed += 1
+    if timestamp is None or not (TIMESTAMP_BOUNDS[0] <= timestamp <= TIMESTAMP_BOUNDS[1]):
+        result.out_of_range += 1
         return None
 
     temperatures = {}

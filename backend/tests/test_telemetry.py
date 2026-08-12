@@ -9,6 +9,10 @@ from core import telemetry, thermal
 # 2026-08-12. Kept verbatim so the parser is exercised against what the
 # collector actually emits on real hardware, not only against what the tests
 # think it emits.
+# A realistic epoch. The parser rejects timestamps outside 2020-2100, so a
+# 1970-era fixture value would be dropped as a broken node clock.
+BASE_TS = 1_786_000_000
+
 REAL_LINES = (
     '{"v":1,"ts":1786520135,"up":71105.80,"rapl_uj":198343604665,'
     '"rapl_max":262143328850,"t_pkg":42.0,"t_core_max":38.0,"t_board":27.8,'
@@ -23,7 +27,7 @@ REAL_LINES = (
 
 def line(**overrides):
     payload = {
-        "v": 1, "ts": 1_000_000, "up": 5000.0,
+        "v": 1, "ts": BASE_TS, "up": 5000.0,
         "rapl_uj": 1_000_000_000, "rapl_max": 262143328850,
         "t_pkg": 45.0, "t_board": 28.0, "t_ssd": 37.0,
         "thr_pkg": 0, "thr_core": 0, "load1": 0.5,
@@ -66,7 +70,7 @@ def test_blank_lines_are_ignored_without_being_counted_as_damage():
 
 def test_a_truncated_final_line_costs_one_sample_not_the_harvest():
     """Expected rather than exceptional: the node can lose power mid-write."""
-    text = buffer_of(line(), line(ts=1_000_060)) + '{"v":1,"ts":1000120,"rapl'
+    text = buffer_of(line(), line(ts=(BASE_TS + 60))) + '{"v":1,"ts":%d,"rapl' % (BASE_TS + 120)
 
     result = telemetry.parse_buffer(text)
 
@@ -85,7 +89,50 @@ def test_a_line_with_no_timestamp_is_unusable():
     del payload["ts"]
     result = telemetry.parse_buffer(json.dumps(payload))
     assert result.records == []
-    assert result.malformed == 1
+    assert result.dropped == 1
+
+
+@pytest.mark.parametrize("ts", [
+    99999999999999,      # ValueError: year 3170843 is out of range
+    10**18,              # OSError: value too large for defined data type
+    253402300800,        # ValueError: year 10000 is out of range
+    0,                   # the epoch itself is not a plausible sample time
+    -1,
+])
+def test_a_broken_node_clock_cannot_crash_the_harvest(ts):
+    """A roadside unit whose RTC battery has died reboots with a garbage clock,
+    and datetime.fromtimestamp raises on those values. The harvester has
+    already drained and deleted the node's buffer by then, so letting that
+    propagate would lose the batch — and keep losing every batch for as long
+    as the clock stayed wrong."""
+    result = telemetry.parse_buffer(line(ts=ts))
+
+    assert result.records == []
+    assert result.out_of_range == 1
+
+
+def test_a_rejected_timestamp_does_not_stop_the_rest_of_the_buffer():
+    text = buffer_of(line(ts=BASE_TS), line(ts=99999999999999), line(ts=(BASE_TS + 60)))
+
+    result = telemetry.parse_buffer(text)
+
+    assert len(result.records) == 2
+    assert result.out_of_range == 1
+
+
+def test_every_accepted_timestamp_survives_the_whole_pipeline():
+    """The bounds exist to make `.moment` and the rollups total, so nothing
+    downstream has to defend against a date it cannot represent."""
+    for ts in telemetry.TIMESTAMP_BOUNDS:
+        result = telemetry.parse_buffer(line(ts=ts))
+        assert len(result.records) == 1
+        assert isinstance(result.records[0].moment, datetime)
+
+    readings = [
+        telemetry.Reading(timestamp=float(telemetry.TIMESTAMP_BOUNDS[0]), power_w=5.0, cpu_temp_c=40.0),
+        telemetry.Reading(timestamp=float(telemetry.TIMESTAMP_BOUNDS[1]), power_w=5.0, cpu_temp_c=40.0),
+    ]
+    assert len(telemetry.rollups(readings)) == 2
 
 
 def test_an_impossible_temperature_is_dropped_but_the_sample_is_kept():
@@ -107,7 +154,7 @@ def test_garbage_lines_are_counted_not_raised(garbage):
 
 def test_absent_sensors_leave_none_rather_than_zero():
     """The collector omits keys it cannot read; zero would be a real reading."""
-    result = telemetry.parse_buffer('{"v":1,"ts":1000000}')
+    result = telemetry.parse_buffer('{"v":1,"ts":%d}' % BASE_TS)
 
     record = result.records[0]
     assert record.cpu_temp_c is None
@@ -117,9 +164,9 @@ def test_absent_sensors_leave_none_rather_than_zero():
 
 def test_records_come_back_in_time_order_even_if_the_clock_stepped():
     result = telemetry.parse_buffer(buffer_of(
-        line(ts=1_000_120), line(ts=1_000_000), line(ts=1_000_060),
+        line(ts=(BASE_TS + 120)), line(ts=BASE_TS), line(ts=(BASE_TS + 60)),
     ))
-    assert [r.timestamp for r in result.records] == [1_000_000, 1_000_060, 1_000_120]
+    assert [r.timestamp for r in result.records] == [BASE_TS, (BASE_TS + 60), (BASE_TS + 120)]
 
 
 def test_the_summary_names_what_was_dropped():
@@ -135,8 +182,8 @@ def test_the_summary_names_what_was_dropped():
 def test_power_comes_from_differencing_the_energy_counter():
     # 900 J over 60 s = 15 W
     text = buffer_of(
-        line(ts=1_000_000, rapl_uj=1_000_000_000),
-        line(ts=1_000_060, rapl_uj=1_900_000_000),
+        line(ts=BASE_TS, rapl_uj=1_000_000_000),
+        line(ts=(BASE_TS + 60), rapl_uj=1_900_000_000),
     )
     readings = telemetry.to_readings(telemetry.parse_buffer(text).records)
 
@@ -152,8 +199,8 @@ def test_the_first_record_of_a_run_yields_no_reading():
 
 def test_cpu_utilisation_comes_from_differencing_jiffies():
     text = buffer_of(
-        line(ts=1_000_000, cpu_busy=1000, cpu_total=10_000),
-        line(ts=1_000_060, cpu_busy=1500, cpu_total=12_000),
+        line(ts=BASE_TS, cpu_busy=1000, cpu_total=10_000),
+        line(ts=(BASE_TS + 60), cpu_busy=1500, cpu_total=12_000),
     )
     readings = telemetry.to_readings(telemetry.parse_buffer(text).records)
 
@@ -163,8 +210,8 @@ def test_cpu_utilisation_comes_from_differencing_jiffies():
 
 def test_io_service_time_is_milliseconds_per_completed_io():
     text = buffer_of(
-        line(ts=1_000_000, dr_ms=1000, dw_ms=1000, dio=100),
-        line(ts=1_000_060, dr_ms=1300, dw_ms=1500, dio=200),
+        line(ts=BASE_TS, dr_ms=1000, dw_ms=1000, dio=100),
+        line(ts=(BASE_TS + 60), dr_ms=1300, dw_ms=1500, dio=200),
     )
     readings = telemetry.to_readings(telemetry.parse_buffer(text).records)
 
@@ -175,8 +222,8 @@ def test_io_service_time_is_milliseconds_per_completed_io():
 def test_a_reboot_breaks_the_run_rather_than_producing_a_bogus_delta():
     """Uptime going backwards means every counter restarted at zero."""
     text = buffer_of(
-        line(ts=1_000_000, up=5000.0, rapl_uj=900_000_000),
-        line(ts=1_000_060, up=30.0, rapl_uj=1_000_000),
+        line(ts=BASE_TS, up=5000.0, rapl_uj=900_000_000),
+        line(ts=(BASE_TS + 60), up=30.0, rapl_uj=BASE_TS),
     )
     readings = telemetry.to_readings(telemetry.parse_buffer(text).records)
     assert readings == []
@@ -185,8 +232,8 @@ def test_a_reboot_breaks_the_run_rather_than_producing_a_bogus_delta():
 def test_a_long_gap_breaks_the_run():
     """The node was off, or the buffer was trimmed; counters cannot be spanned."""
     text = buffer_of(
-        line(ts=1_000_000, rapl_uj=1_000_000_000),
-        line(ts=1_100_000, rapl_uj=9_000_000_000),
+        line(ts=BASE_TS, rapl_uj=1_000_000_000),
+        line(ts=(BASE_TS + 100_000), rapl_uj=9_000_000_000),
     )
     readings = telemetry.to_readings(telemetry.parse_buffer(text).records)
     assert readings == []
@@ -194,8 +241,8 @@ def test_a_long_gap_breaks_the_run():
 
 def test_a_throttle_counter_that_moved_marks_the_reading():
     text = buffer_of(
-        line(ts=1_000_000, thr_pkg=0),
-        line(ts=1_000_060, thr_pkg=3),
+        line(ts=BASE_TS, thr_pkg=0),
+        line(ts=(BASE_TS + 60), thr_pkg=3),
     )
     readings = telemetry.to_readings(telemetry.parse_buffer(text).records)
     assert readings[0].throttled is True
@@ -204,15 +251,15 @@ def test_a_throttle_counter_that_moved_marks_the_reading():
 def test_a_static_throttle_counter_does_not_mark_the_reading():
     """The counter is cumulative; a node that throttled last week is not
     throttling now."""
-    text = buffer_of(line(ts=1_000_000, thr_pkg=7), line(ts=1_000_060, thr_pkg=7))
+    text = buffer_of(line(ts=BASE_TS, thr_pkg=7), line(ts=(BASE_TS + 60), thr_pkg=7))
     readings = telemetry.to_readings(telemetry.parse_buffer(text).records)
     assert readings[0].throttled is False
 
 
 def test_a_wrapped_energy_counter_is_unwrapped():
     text = buffer_of(
-        line(ts=1_000_000, rapl_uj=262_143_000_000, rapl_max=262143328850),
-        line(ts=1_000_060, rapl_uj=600_000_000, rapl_max=262143328850),
+        line(ts=BASE_TS, rapl_uj=262_143_000_000, rapl_max=262143328850),
+        line(ts=(BASE_TS + 60), rapl_uj=600_000_000, rapl_max=262143328850),
     )
     readings = telemetry.to_readings(telemetry.parse_buffer(text).records)
 
@@ -231,7 +278,7 @@ def test_the_real_capture_differences_to_a_plausible_wattage():
 
 # --- windowing --------------------------------------------------------------
 
-def readings_at(count, step=60.0, start=1_000_000.0, power=8.0, temp=45.0):
+def readings_at(count, step=60.0, start=float(BASE_TS), power=8.0, temp=45.0):
     return [
         telemetry.Reading(timestamp=start + i * step, power_w=power, cpu_temp_c=temp)
         for i in range(count)
@@ -267,8 +314,8 @@ def test_a_window_shorter_than_the_minimum_is_discarded():
 def test_a_gap_starts_a_new_run_rather_than_spanning_the_hole():
     """A three-hour hole in a window would read as an impossibly fast
     thermal response."""
-    early = readings_at(100, start=1_000_000.0)
-    late = readings_at(100, start=1_050_000.0)
+    early = readings_at(100, start=float(BASE_TS))
+    late = readings_at(100, start=float(BASE_TS + 50_000))
 
     runs = telemetry.split_runs(early + late)
 
@@ -307,7 +354,7 @@ def test_a_parsed_buffer_fits_end_to_end_to_the_right_theta():
     for i, sample in enumerate(truth):
         lines.append(json.dumps({
             "v": 1,
-            "ts": 1_000_000 + int(i * dt),
+            "ts": BASE_TS + int(i * dt),
             "up": 10_000.0 + i * dt,
             "rapl_uj": energy_uj,
             "rapl_max": 262143328850,
@@ -328,7 +375,7 @@ def test_a_parsed_buffer_fits_end_to_end_to_the_right_theta():
 # --- rollups ----------------------------------------------------------------
 
 def test_rollups_bucket_by_the_configured_interval():
-    readings = readings_at(60, step=60.0, start=1_000_000.0)
+    readings = readings_at(60, step=60.0, start=float(BASE_TS))
     result = telemetry.rollups(readings, bucket_s=900)
 
     assert all(isinstance(r.bucket_start, datetime) for r in result)
@@ -341,8 +388,8 @@ def test_buckets_are_aligned_to_absolute_time_not_to_the_first_sample():
     in the same bucket — which the cohort detector depends on. A grid anchored
     on each node's first sample would put every node on its own offset."""
     bucket = 900
-    early = telemetry.rollups(readings_at(5, start=1_000_000.0), bucket_s=bucket)
-    late = telemetry.rollups(readings_at(5, start=1_000_120.0), bucket_s=bucket)
+    early = telemetry.rollups(readings_at(5, start=float(BASE_TS)), bucket_s=bucket)
+    late = telemetry.rollups(readings_at(5, start=float(BASE_TS + 120)), bucket_s=bucket)
 
     assert early[0].bucket_start == late[0].bucket_start
     assert int(early[0].bucket_start.timestamp()) % bucket == 0
@@ -352,8 +399,8 @@ def test_a_rollup_keeps_the_maximum_alongside_the_mean():
     """A peak temperature averaged away is exactly what somebody will later
     wish had been kept."""
     readings = [
-        telemetry.Reading(timestamp=1_000_000.0, power_w=5.0, cpu_temp_c=40.0),
-        telemetry.Reading(timestamp=1_000_060.0, power_w=15.0, cpu_temp_c=80.0),
+        telemetry.Reading(timestamp=float(BASE_TS), power_w=5.0, cpu_temp_c=40.0),
+        telemetry.Reading(timestamp=float(BASE_TS + 60), power_w=15.0, cpu_temp_c=80.0),
     ]
     rollup = telemetry.rollups(readings, bucket_s=900)[0]
 
@@ -364,8 +411,8 @@ def test_a_rollup_keeps_the_maximum_alongside_the_mean():
 
 def test_a_rollup_is_throttled_if_any_reading_in_it_was():
     readings = [
-        telemetry.Reading(timestamp=1_000_000.0, power_w=5.0, cpu_temp_c=40.0),
-        telemetry.Reading(timestamp=1_000_060.0, power_w=5.0, cpu_temp_c=40.0, throttled=True),
+        telemetry.Reading(timestamp=float(BASE_TS), power_w=5.0, cpu_temp_c=40.0),
+        telemetry.Reading(timestamp=float(BASE_TS + 60), power_w=5.0, cpu_temp_c=40.0, throttled=True),
     ]
     assert telemetry.rollups(readings, bucket_s=900)[0].throttled is True
 
@@ -373,9 +420,9 @@ def test_a_rollup_is_throttled_if_any_reading_in_it_was():
 def test_missing_values_do_not_drag_a_rollup_mean_down():
     """Averaging None as zero would invent a cold reading."""
     readings = [
-        telemetry.Reading(timestamp=1_000_000.0, cpu_temp_c=40.0),
-        telemetry.Reading(timestamp=1_000_060.0, cpu_temp_c=None),
-        telemetry.Reading(timestamp=1_000_120.0, cpu_temp_c=50.0),
+        telemetry.Reading(timestamp=float(BASE_TS), cpu_temp_c=40.0),
+        telemetry.Reading(timestamp=float(BASE_TS + 60), cpu_temp_c=None),
+        telemetry.Reading(timestamp=float(BASE_TS + 120), cpu_temp_c=50.0),
     ]
     rollup = telemetry.rollups(readings, bucket_s=900)[0]
 

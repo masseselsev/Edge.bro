@@ -15,6 +15,10 @@ from tasks import monitoring
 TEST_DATABASE_URL = "sqlite:///./test_monitoring_db.db"
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
+# A realistic epoch. The parser rejects timestamps outside 2020-2100 as a
+# broken node clock, so a 1970-era fixture value would be dropped.
+BASE_TS = 1_786_000_000
+
 
 @pytest.fixture
 def session_factory():
@@ -55,7 +59,7 @@ def real_smart_report():
         return json.load(f)
 
 
-def telemetry_buffer(count=400, dt=60.0, theta=1.5, tau=2100.0, ambient=25.0, start=1_000_000):
+def telemetry_buffer(count=400, dt=60.0, theta=1.5, tau=2100.0, ambient=25.0, start=BASE_TS):
     """Serialise a known thermal system the way the node's collector would."""
     powers = [4.0 + 8.0 * (i % 17) / 16.0 for i in range(count)]
     truth = thermal.simulate(theta, tau, ambient, powers, dt)
@@ -226,7 +230,7 @@ def test_a_flat_load_is_recorded_as_a_rejection_not_silently_dropped(db, monkeyp
     energy = 1_000_000_000
     for i in range(400):
         lines.append(json.dumps({
-            "v": 1, "ts": 1_000_000 + i * 60, "up": 10_000.0 + i * 60,
+            "v": 1, "ts": BASE_TS + i * 60, "up": 10_000.0 + i * 60,
             "rapl_uj": energy, "rapl_max": 262143328850, "t_pkg": 45.0, "thr_pkg": 0,
         }))
         energy += 8 * 60 * 1_000_000  # perfectly constant 8 W
@@ -363,6 +367,51 @@ def test_retention_drops_old_rollups_but_keeps_smart_scalars(db, monkeypatch):
     snapshot = db.query(models.SmartSnapshot).filter_by(node_id=node.id).first()
     assert snapshot.raw is None
     assert snapshot.score == 97, "the parsed scalars are what the history graph plots"
+
+
+def test_retention_prunes_rejected_fits_but_keeps_the_trend(db, monkeypatch):
+    """A month of buffer yields ~180 windows per harvest, and on a flat-load
+    fleet nearly all are rejections — 2.16M rows a year across a thousand
+    nodes saying only "the load never varied enough". The successful fits are
+    the degradation trend and must survive."""
+    node = make_node(db)
+    old = datetime.utcnow() - timedelta(days=200)
+
+    db.add(models.ThermalFit(
+        node_id=node.id, window_start=old, window_end=old + timedelta(hours=4),
+        rejection="NO_EXCITATION", n_samples=240, excitation=0.02,
+    ))
+    db.add(models.ThermalFit(
+        node_id=node.id, window_start=old + timedelta(hours=4),
+        window_end=old + timedelta(hours=8),
+        rejection="OK", n_samples=240, excitation=0.31, theta_c_per_w=1.52,
+    ))
+    db.add(models.Settings(telemetry_retention_days=90))
+    db.commit()
+
+    result = monitoring.monitoring_retention_task()
+
+    assert result["rejected_fits_removed"] == 1
+    survivors = db.query(models.ThermalFit).all()
+    assert len(survivors) == 1
+    assert survivors[0].rejection == "OK"
+    assert survivors[0].theta_c_per_w == 1.52
+
+
+def test_retention_leaves_recent_rejections_alone(db, monkeypatch):
+    """Recent rejections are how an operator diagnoses why a node has no theta."""
+    node = make_node(db)
+    recent = datetime.utcnow() - timedelta(days=3)
+
+    db.add(models.ThermalFit(
+        node_id=node.id, window_start=recent, window_end=recent + timedelta(hours=4),
+        rejection="NO_EXCITATION", n_samples=240, excitation=0.02,
+    ))
+    db.add(models.Settings(telemetry_retention_days=90))
+    db.commit()
+
+    assert monitoring.monitoring_retention_task()["rejected_fits_removed"] == 0
+    assert db.query(models.ThermalFit).count() == 1
 
 
 def test_retention_leaves_recent_data_alone(db, monkeypatch):
