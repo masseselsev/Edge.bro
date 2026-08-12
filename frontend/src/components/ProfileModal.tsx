@@ -51,7 +51,7 @@ export default function ProfileModal({ currentUser, onClose, onUpdateSuccess }: 
       const data = await res.json();
       setTestResult(data);
     } catch (err: any) {
-      setTestResult({ success: false, detail: err.message || 'Request failed' });
+      setTestResult({ success: false, detail: err.message || t('notificationsTestFailed') });
     } finally {
       setTesting(false);
     }
@@ -165,7 +165,7 @@ export default function ProfileModal({ currentUser, onClose, onUpdateSuccess }: 
                 value={telegramId}
                 onChange={(e) => setTelegramId(e.target.value)}
                 className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 focus:border-indigo-500 rounded-lg text-zinc-100 text-sm focus:outline-none transition-all duration-200 font-mono"
-                placeholder="e.g. 123456789"
+                placeholder={t('adminTelegramPlaceholder')}
               />
               <p className="text-[10px] text-zinc-500 pl-1 leading-snug">{t('adminTelegramHint')}</p>
             </div>
