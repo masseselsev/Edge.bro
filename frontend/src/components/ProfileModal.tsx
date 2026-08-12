@@ -19,6 +19,7 @@ export default function ProfileModal({ currentUser, onClose, onUpdateSuccess }: 
   const [telegramConfigured, setTelegramConfigured] = useState(false);
   const [telegramEnabled, setTelegramEnabled] = useState(false);
   const [minSeverity, setMinSeverity] = useState<'WATCH' | 'ALERT'>('WATCH');
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; detail: string } | null>(null);
 
@@ -36,6 +37,7 @@ export default function ProfileModal({ currentUser, onClose, onUpdateSuccess }: 
           const prefs = await prefsRes.json();
           setTelegramEnabled(prefs.telegram_enabled);
           setMinSeverity(prefs.min_severity);
+          setPrefsLoaded(true);
         }
       } catch (err) {
         console.error('Failed to load notification preferences:', err);
@@ -91,14 +93,25 @@ export default function ProfileModal({ currentUser, onClose, onUpdateSuccess }: 
 
       onUpdateSuccess(data);
 
-      try {
-        await fetch('/api/notifications/preferences', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ telegram_enabled: telegramEnabled, min_severity: minSeverity }),
-        });
-      } catch (err) {
-        console.error('Failed to save notification preferences:', err);
+      if (prefsLoaded) {
+        try {
+          const prefsRes = await fetch('/api/notifications/preferences', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ telegram_enabled: telegramEnabled, min_severity: minSeverity }),
+          });
+          if (!prefsRes.ok) {
+            const prefsData = await prefsRes.json().catch(() => ({}));
+            setError(prefsData.detail || 'Profile saved, but notification preferences failed to save');
+            setSubmitting(false);
+            return;
+          }
+        } catch (err) {
+          console.error('Failed to save notification preferences:', err);
+          setError('Profile saved, but notification preferences failed to save');
+          setSubmitting(false);
+          return;
+        }
       }
 
       onClose();
@@ -194,6 +207,12 @@ export default function ProfileModal({ currentUser, onClose, onUpdateSuccess }: 
                   </span>
                 </label>
 
+                {telegramEnabled && !telegramId.trim() && (
+                  <p className="text-[11px] text-amber-400 px-1 leading-snug">
+                    {t('notificationsNoTelegramIdWarning')}
+                  </p>
+                )}
+
                 {telegramEnabled && (
                   <div className="flex items-center gap-3 px-1">
                     <label className="text-xs text-zinc-400 font-semibold">
@@ -211,13 +230,19 @@ export default function ProfileModal({ currentUser, onClose, onUpdateSuccess }: 
                     <button
                       type="button"
                       onClick={handleTestNotification}
-                      disabled={testing || !telegramId.trim()}
+                      disabled={testing || !telegramId.trim() || telegramId.trim() !== (currentUser.telegram_id || '')}
                       className="ml-auto flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-zinc-300 bg-zinc-800 hover:bg-zinc-700 rounded-lg disabled:opacity-40 transition-colors cursor-pointer"
                     >
                       {testing ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
                       {t('notificationsSendTest')}
                     </button>
                   </div>
+                )}
+
+                {telegramEnabled && telegramId.trim() && telegramId.trim() !== (currentUser.telegram_id || '') && (
+                  <p className="text-[11px] text-zinc-500 px-1 leading-snug">
+                    {t('notificationsTestNeedsSave')}
+                  </p>
                 )}
 
                 {testResult && (

@@ -905,7 +905,7 @@ function AppContent() {
               <div className="flex items-center gap-2">
                 {!isKiosk && isAuthenticated && currentUser && (
                   <div className="mr-1">
-                    <NotificationBell />
+                    <NotificationBell timezone={settings?.timezone || 'Browser Local'} />
                   </div>
                 )}
                 {!isKiosk && isAuthenticated && currentUser && (

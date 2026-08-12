@@ -21,7 +21,11 @@ interface Alert {
 //: closely enough to feel live without hammering the API.
 const POLL_MS = 60000;
 
-export default function NotificationBell() {
+interface NotificationBellProps {
+  timezone?: string;
+}
+
+export default function NotificationBell({ timezone }: NotificationBellProps) {
   const { t } = useTranslation();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -108,7 +112,7 @@ export default function NotificationBell() {
                     {alert.node_hostname && (
                       <p className="text-[10px] text-zinc-500 font-mono">{alert.node_hostname}</p>
                     )}
-                    <p className="text-[10px] text-zinc-600">{formatDate(alert.first_seen)}</p>
+                    <p className="text-[10px] text-zinc-600">{formatDate(alert.first_seen, timezone)}</p>
                   </div>
                 </div>
                 <button
