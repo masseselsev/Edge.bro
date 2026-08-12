@@ -1,0 +1,22 @@
+[Unit]
+Description=edge-bro telemetry sampling every minute
+Documentation=https://github.com/masseselsev/edge-bro
+
+[Timer]
+# One minute is set by what the thermal fit needs, not by taste. The heatsink
+# time constant is tens of minutes, so a 60 s step gives a few hundred points
+# across a multi-hour window — enough to identify the dynamics, while coarse
+# enough that a whole day costs about 190 KB of buffer.
+OnBootSec=2min
+OnUnitActiveSec=60s
+
+# Without this every node in the fleet samples on the same second. Harmless
+# for the nodes themselves, but it makes their load profiles correlate, and
+# correlated load is exactly what the cohort detector must not be handed.
+AccuracySec=5s
+RandomizedDelaySec=10s
+
+Persistent=false
+
+[Install]
+WantedBy=timers.target

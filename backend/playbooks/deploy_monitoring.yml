@@ -1,0 +1,111 @@
+---
+# Install the telemetry collector on a node.
+#
+# Idempotent and safe to re-run: every step either converges or is skipped.
+# Run from bootstrap (so a freshly provisioned node starts collecting without
+# a second visit) and on demand when the collector itself changes.
+#
+# Uses `raw` throughout rather than the file/systemd modules for the same
+# reason bootstrap.yml does — a node that has just been imaged may not have a
+# usable Python for Ansible to target, and the monitoring deploy must not be
+# the thing that fails on it.
+- name: Deploy edge-bro monitoring collector
+  hosts: all
+  become: yes
+  gather_facts: no
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    collector_path: /usr/local/sbin/edge-bro-collect.sh
+    buffer_dir: /var/log/edge/edge-bro
+  tasks:
+    - name: Ensure the telemetry buffer directory exists
+      # Lives under /var/log/edge, which is a separate partition and is already
+      # in the global backup exclusions — so the buffer costs nothing in backup
+      # size and cannot bloat an archive.
+      raw: mkdir -p {{ buffer_dir }} && chmod 750 {{ buffer_dir }}
+
+    - name: Install the collector script
+      copy:
+        src: files/edge-bro-collect.sh
+        dest: "{{ collector_path }}"
+        mode: "0755"
+        owner: root
+        group: root
+      register: collector_copy
+
+    - name: Install the systemd service unit
+      copy:
+        src: files/edge-bro-collect.service
+        dest: /etc/systemd/system/edge-bro-collect.service
+        mode: "0644"
+        owner: root
+        group: root
+      register: service_copy
+
+    - name: Install the systemd timer unit
+      copy:
+        src: files/edge-bro-collect.timer
+        dest: /etc/systemd/system/edge-bro-collect.timer
+        mode: "0644"
+        owner: root
+        group: root
+      register: timer_copy
+
+    - name: Expose SATA drive temperature via the drivetemp module
+      # The cheap way to read SSD temperature: a hwmon entry the collector can
+      # read in microseconds, instead of invoking smartctl every minute. The
+      # drive is not bonded to the CPU heatsink on these units, so its
+      # temperature is an ambient reference the CPU die cannot contaminate —
+      # worth having. Failure is tolerated: kernels without the module simply
+      # leave t_ssd absent from the samples.
+      raw: |
+        modprobe drivetemp 2>/dev/null || true
+        if [ -d /etc/modules-load.d ]; then
+          echo drivetemp > /etc/modules-load.d/edge-bro-drivetemp.conf
+        fi
+        exit 0
+
+    - name: Reload systemd when a unit changed
+      raw: systemctl daemon-reload
+      when: service_copy.changed or timer_copy.changed
+
+    - name: Enable and start the collection timer
+      raw: systemctl enable --now edge-bro-collect.timer
+
+    - name: Restart the timer if the collector or its units changed
+      # enable --now is a no-op on an already-running timer, so a changed
+      # script would otherwise keep running under the old unit settings.
+      raw: systemctl restart edge-bro-collect.timer
+      when: collector_copy.changed or service_copy.changed or timer_copy.changed
+
+    - name: Take one sample immediately so the node is not silent until the first tick
+      raw: systemctl start edge-bro-collect.service || true
+
+    - name: Report what the node can actually measure
+      # Printed into the task log so an operator can see, per node, whether
+      # this one will support thermal analysis at all — RAPL is the hard
+      # requirement, and a node without it still yields SMART but no theta.
+      raw: |
+        RAPL=no
+        for d in /sys/class/powercap/intel-rapl:0 /sys/class/powercap/intel-rapl/intel-rapl:0; do
+          [ -r "$d/energy_uj" ] && RAPL=yes && break
+        done
+        SSD=no
+        for h in /sys/class/hwmon/hwmon*; do
+          [ -r "$h/name" ] || continue
+          [ "$(cat "$h/name" 2>/dev/null)" = "drivetemp" ] && SSD=yes && break
+        done
+        SMART=no
+        (command -v smartctl >/dev/null 2>&1 || [ -x /usr/sbin/smartctl ]) && SMART=yes
+        TIMER=$(systemctl is-active edge-bro-collect.timer 2>/dev/null || echo unknown)
+        LINES=$(wc -l < {{ buffer_dir }}/telemetry.jsonl 2>/dev/null || echo 0)
+        echo "MONITORING_RAPL:$RAPL"
+        echo "MONITORING_SSD_TEMP:$SSD"
+        echo "MONITORING_SMARTCTL:$SMART"
+        echo "MONITORING_TIMER:$TIMER"
+        echo "MONITORING_BUFFERED_LINES:$LINES"
+      register: capability_report
+
+    - name: Show the capability report
+      debug:
+        msg: "{{ capability_report.stdout_lines | default([]) }}"

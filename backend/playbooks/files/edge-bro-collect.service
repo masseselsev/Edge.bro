@@ -1,0 +1,39 @@
+[Unit]
+Description=edge-bro telemetry sample
+Documentation=https://github.com/masseselsev/edge-bro
+# Nothing to wait for: every input is sysfs, and a sample taken during boot is
+# as valid as any other.
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/edge-bro-collect.sh
+
+# The unit exists to be unnoticeable on a 15 W passive node sharing its CPU
+# with traffic inference. Lowest scheduling priority in both dimensions, so a
+# sample never competes with the workload the node is actually deployed for.
+Nice=19
+IOSchedulingClass=idle
+CPUSchedulingPolicy=idle
+
+# A sample that cannot finish in ten seconds is a sample worth abandoning:
+# the next one is a minute away, and a pile-up of stuck readers on a wedged
+# sysfs node would be worse than a gap in the series.
+TimeoutStartSec=10
+
+# RAPL's energy_uj is root-only (CVE-2020-8694), which is the one thing here
+# that genuinely needs privilege. Everything else is world-readable, so the
+# rest of the sandbox stays tight.
+User=root
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
+ReadWritePaths=/var/log/edge/edge-bro
+
+[Install]
+WantedBy=multi-user.target
