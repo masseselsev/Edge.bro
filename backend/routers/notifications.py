@@ -12,20 +12,18 @@ import models
 import schemas
 from core.notify import telegram
 from database import get_db, log_user_action
-from routers.users import get_current_auth, require_admin
+from routers.users import require_admin, require_user
 
 router = APIRouter(prefix="/api", tags=["Notifications"])
 
 
-def _alert_response(db: Session, alert: models.Alert) -> schemas.AlertResponse:
-    node = (
-        db.query(models.Node).filter(models.Node.id == alert.node_id).first()
-        if alert.node_id else None
-    )
-    ack_user = (
-        db.query(models.User).filter(models.User.id == alert.acknowledged_by_id).first()
-        if alert.acknowledged_by_id else None
-    )
+def _alert_response(
+    alert: models.Alert,
+    nodes_by_id: dict,
+    users_by_id: dict,
+) -> schemas.AlertResponse:
+    node = nodes_by_id.get(alert.node_id) if alert.node_id else None
+    ack_user = users_by_id.get(alert.acknowledged_by_id) if alert.acknowledged_by_id else None
     return schemas.AlertResponse(
         id=alert.id, module=alert.module, node_id=alert.node_id,
         node_hostname=node.hostname if node else None,
@@ -42,6 +40,8 @@ def list_alerts(
     status_filter: Optional[str] = Query(None, alias="status"),
     severity: Optional[str] = None,
     node_id: Optional[int] = None,
+    limit: int = Query(200, le=1000),
+    offset: int = Query(0),
     db: Session = Depends(get_db),
     current_auth=Depends(require_admin),
 ):
@@ -52,8 +52,18 @@ def list_alerts(
         q = q.filter(models.Alert.severity == severity)
     if node_id:
         q = q.filter(models.Alert.node_id == node_id)
-    rows = q.order_by(models.Alert.last_seen.desc()).all()
-    return [_alert_response(db, row) for row in rows]
+    rows = q.order_by(models.Alert.last_seen.desc()).offset(offset).limit(limit).all()
+
+    node_ids = {row.node_id for row in rows if row.node_id}
+    ack_ids = {row.acknowledged_by_id for row in rows if row.acknowledged_by_id}
+    nodes_by_id = {
+        n.id: n for n in db.query(models.Node).filter(models.Node.id.in_(node_ids)).all()
+    } if node_ids else {}
+    users_by_id = {
+        u.id: u for u in db.query(models.User).filter(models.User.id.in_(ack_ids)).all()
+    } if ack_ids else {}
+
+    return [_alert_response(row, nodes_by_id, users_by_id) for row in rows]
 
 
 @router.post("/alerts/{alert_id}/acknowledge", response_model=schemas.AlertResponse)
@@ -71,18 +81,19 @@ def acknowledge_alert(
 
     alert.status = "ACKNOWLEDGED"
     alert.acknowledged_at = datetime.utcnow()
-    alert.acknowledged_by_id = getattr(current_auth, "id", None)
+    alert.acknowledged_by_id = current_auth.id
     db.commit()
     log_user_action(
-        db, getattr(current_auth, "username", "unknown"), "Alert Acknowledged",
+        db, current_auth.username, "Alert Acknowledged",
         f"Acknowledged alert #{alert.id}: {alert.title}", None,
     )
-    return _alert_response(db, alert)
+    users_by_id = {current_auth.id: current_auth}
+    return _alert_response(alert, {}, users_by_id)
 
 
 @router.get("/notifications/preferences", response_model=schemas.NotificationPreferences)
-def get_notification_preferences(current_auth=Depends(get_current_auth)):
-    prefs = getattr(current_auth, "notification_prefs", None) or {}
+def get_notification_preferences(current_auth: models.User = Depends(require_user)):
+    prefs = current_auth.notification_prefs or {}
     defaults = schemas.NotificationPreferences().model_dump()
     return schemas.NotificationPreferences(**{**defaults, **prefs})
 
@@ -91,13 +102,9 @@ def get_notification_preferences(current_auth=Depends(get_current_auth)):
 def set_notification_preferences(
     payload: schemas.NotificationPreferences,
     db: Session = Depends(get_db),
-    current_auth=Depends(get_current_auth),
+    current_auth: models.User = Depends(require_user),
 ):
-    user = db.query(models.User).filter(models.User.id == getattr(current_auth, "id", None)).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Preferences belong to a user account.")
-    user.notification_prefs = payload.model_dump()
+    current_auth.notification_prefs = payload.model_dump()
     db.commit()
     return payload
 
@@ -105,12 +112,9 @@ def set_notification_preferences(
 @router.post("/notifications/test", response_model=schemas.NotificationTestResult)
 def send_test_notification(
     db: Session = Depends(get_db),
-    current_auth=Depends(get_current_auth),
+    current_auth: models.User = Depends(require_user),
 ):
-    user = db.query(models.User).filter(models.User.id == getattr(current_auth, "id", None)).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a user account.")
-
+    user = current_auth
     probe_alert = models.Alert(
         module="test", severity="WATCH", status="OPEN",
         title="Test notification from edge-bro",

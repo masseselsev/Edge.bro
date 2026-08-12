@@ -18,14 +18,14 @@ logger = logging.getLogger(__name__)
 _SEVERITY_RANK = {"WATCH": 0, "ALERT": 1}
 
 
-def _subscribed_users(db: Session, min_alert_severity: str) -> List["models.User"]:
+def _subscribed_users(db: Session, alert_severity: str) -> List["models.User"]:
     result = []
     for user in db.query(models.User).all():
         prefs = user.notification_prefs or {}
         if not prefs.get("telegram_enabled"):
             continue
         threshold = prefs.get("min_severity", "WATCH")
-        if _SEVERITY_RANK.get(min_alert_severity, 0) >= _SEVERITY_RANK.get(threshold, 0):
+        if _SEVERITY_RANK.get(alert_severity, 0) >= _SEVERITY_RANK.get(threshold, 0):
             result.append(user)
     return result
 

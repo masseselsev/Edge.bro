@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean, Float, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean, Float, UniqueConstraint, Index, text
 from sqlalchemy.sql import func
 from database import Base
 
@@ -453,6 +453,16 @@ class Alert(Base):
     says for that specific episode.
     """
     __tablename__ = 'alerts'
+    __table_args__ = (
+        # sqlite_where kept alongside postgresql_where so the partial index
+        # (not a full-table unique constraint) also applies to the SQLite
+        # databases the test suite runs against — production only ever runs
+        # on Postgres via the migration, but the model's metadata is used
+        # directly (Base.metadata.create_all) in tests, so both need this.
+        Index('uq_alert_open_dedup', 'dedup_key', unique=True,
+              postgresql_where=text("status != 'RESOLVED'"),
+              sqlite_where=text("status != 'RESOLVED'")),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     module = Column(String, nullable=False)           # "smart", "thermal", ...
@@ -469,4 +479,4 @@ class Alert(Base):
     last_seen = Column(DateTime, default=func.now(), nullable=False)
     resolved_at = Column(DateTime, nullable=True)
     acknowledged_at = Column(DateTime, nullable=True)
-    acknowledged_by_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    acknowledged_by_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)

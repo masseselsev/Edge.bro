@@ -141,3 +141,22 @@ def test_test_endpoint_reports_telegram_failure_reason(client):
         resp = client.post("/api/notifications/test")
     assert resp.status_code == 200
     assert resp.json() == {"success": False, "detail": "chat not found"}
+
+
+def test_kiosk_principal_is_rejected_from_notification_routes(client, db_session):
+    """A Kiosk and a User have independent id sequences, so a Kiosk token
+    resolving `current_auth.id` against the users table can collide with an
+    unrelated user's account. Every route that reads/writes a User row by
+    the caller's identity must reject a Kiosk principal outright.
+    """
+    from routers.users import get_current_auth
+
+    kiosk = models.Kiosk(id=1, name="k", kiosk_id="k1", key="key1", status="APPROVED")
+    app.dependency_overrides[get_current_auth] = lambda: kiosk
+
+    assert client.get("/api/notifications/preferences").status_code == 403
+    assert client.post(
+        "/api/notifications/preferences",
+        json={"telegram_enabled": True, "min_severity": "WATCH"},
+    ).status_code == 403
+    assert client.post("/api/notifications/test").status_code == 403

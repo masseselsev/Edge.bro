@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Set
 
 from sqlalchemy.orm import Session
 
@@ -32,14 +32,23 @@ class SyncResult:
     resolved: List["models.Alert"] = field(default_factory=list)
 
 
-def sync(db: Session, candidates: List[AlertCandidate]) -> SyncResult:
+def sync(
+    db: Session,
+    candidates: List[AlertCandidate],
+    modules: Optional[Set[str]] = None,
+) -> SyncResult:
     """Reconcile the current candidate list against open alerts.
 
-    Two preconditions on the caller, not enforced here:
-    - Candidates absent from this call are read as "resolved", so every
-      source must be evaluated and included in one call — a partial
-      candidate list (e.g. one source failed) would incorrectly resolve
-      everything that source would otherwise have kept open.
+    `modules`, if given, is the set of module names that were actually
+    evaluated this sweep. An open alert whose `module` is not in that set is
+    left untouched even if it has no matching candidate — that module simply
+    didn't run this cycle (e.g. it raised), so its silence says nothing about
+    whether the underlying problem is still real. When `modules` is None
+    (the default), every leftover open alert is resolved, matching the
+    original all-or-nothing behavior; callers that only evaluate a subset of
+    sources should always pass the set of modules that actually succeeded.
+
+    One precondition on the caller, not enforced here:
     - `dedup_key` must be unique *within* one candidate list. Both shipped
       sources guarantee this by construction (smart.py groups by device in
       SQL; thermal.py emits at most one candidate per node). A source that
@@ -88,6 +97,8 @@ def sync(db: Session, candidates: List[AlertCandidate]) -> SyncResult:
 
     # Whatever is left in open_by_key had no matching candidate this sweep.
     for leftover in open_by_key.values():
+        if modules is not None and leftover.module not in modules:
+            continue  # that module didn't run this sweep; leave its alerts alone
         leftover.status = "RESOLVED"
         leftover.resolved_at = now
         result.resolved.append(leftover)

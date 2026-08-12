@@ -33,7 +33,7 @@ def upgrade() -> None:
         sa.Column('last_seen', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('resolved_at', sa.DateTime(), nullable=True),
         sa.Column('acknowledged_at', sa.DateTime(), nullable=True),
-        sa.Column('acknowledged_by_id', sa.Integer(), sa.ForeignKey('users.id'), nullable=True),
+        sa.Column('acknowledged_by_id', sa.Integer(), sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True),
     )
     op.create_index('ix_alerts_dedup_key', 'alerts', ['dedup_key'])
     # Only one OPEN/ACKNOWLEDGED row per dedup_key at a time. A RESOLVED row

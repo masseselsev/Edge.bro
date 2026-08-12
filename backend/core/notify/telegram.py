@@ -50,9 +50,11 @@ def send(user: "models.User", alert: "models.Alert", kind: str) -> Tuple[bool, s
 
     if response.status_code != 200:
         try:
-            description = response.json().get("description", response.text)
+            body = response.json()
+            description = body.get("description", response.text) if isinstance(body, dict) else response.text
         except ValueError:
             description = response.text
-        return False, description
+        description = description[:200]
+        return False, _scrub_token_from_string(description)
 
     return True, "sent"

@@ -24,16 +24,18 @@ def evaluate_alerts_task() -> Dict[str, Any]:
     db: Session = tasks.SessionLocal()
     try:
         candidates = []
+        succeeded_modules = set()
         for module_name, evaluate_fn in SOURCES.items():
             try:
                 candidates.extend(evaluate_fn(db))
+                succeeded_modules.add(module_name)
             except Exception:
                 tasks.logger.exception(
                     "Alert source '%s' raised during evaluation; skipping it this sweep",
                     module_name,
                 )
 
-        result = sync_alerts(db, candidates)
+        result = sync_alerts(db, candidates, modules=succeeded_modules)
         dispatch.notify(db, result)
         return {
             "status": "SUCCESS",
