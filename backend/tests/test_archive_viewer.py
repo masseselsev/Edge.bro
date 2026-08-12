@@ -1,4 +1,6 @@
 import os
+import tempfile
+
 import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
@@ -138,7 +140,13 @@ def test_download_archive_file_endpoint(mock_popen, mock_exists, client, test_db
 
 
 @patch("routers.nodes_crud.subprocess.run")
-def test_download_archive_directory_as_zip_endpoint(mock_run, client, test_db):
+def test_download_archive_directory_as_zip_endpoint(mock_run, client, test_db, tmp_path):
+    # Folder download extracts into scratch space next to the repository, at
+    # /data/borg/tmp. That path exists only inside the container, so without
+    # redirecting it this test can pass nowhere else — it used to fail on the
+    # host with PermissionError: '/data' while mocking only os.path.exists.
+    scratch = tmp_path / "borg-scratch"
+
     node = models.Node(hostname="node-zip", ip_address="192.168.1.103")
     test_db.add(node)
     test_db.commit()
@@ -174,7 +182,30 @@ def test_download_archive_directory_as_zip_endpoint(mock_run, client, test_db):
             return True
         return real_exists(path)
 
-    with patch("routers.nodes_crud.os.path.exists", side_effect=fake_exists):
+    real_makedirs = os.makedirs
+    def fake_makedirs(path, *args, **kwargs):
+        # The endpoint derives its scratch root from the repository path; send
+        # that one directory into pytest's tmp_path and leave the rest alone.
+        if path == "/data/borg/tmp":
+            path = str(scratch)
+        return real_makedirs(path, *args, **kwargs)
+
+    real_chmod = os.chmod
+    def fake_chmod(path, *args, **kwargs):
+        if path == "/data/borg/tmp":
+            path = str(scratch)
+        return real_chmod(path, *args, **kwargs)
+
+    real_mkdtemp = tempfile.mkdtemp
+    def fake_mkdtemp(*args, **kwargs):
+        if kwargs.get("dir") == "/data/borg/tmp":
+            kwargs["dir"] = str(scratch)
+        return real_mkdtemp(*args, **kwargs)
+
+    with patch("routers.nodes_crud.os.path.exists", side_effect=fake_exists), \
+         patch("routers.nodes_crud.os.makedirs", side_effect=fake_makedirs), \
+         patch("routers.nodes_crud.os.chmod", side_effect=fake_chmod), \
+         patch("routers.nodes_crud.tempfile.mkdtemp", side_effect=fake_mkdtemp):
         headers = {"X-Kiosk-Secret": "kiosk-secret"}
         response = client.get(f"/api/nodes/history/{history.id}/download-file?path=var/log&is_dir=true", headers=headers)
         assert response.status_code == 200
