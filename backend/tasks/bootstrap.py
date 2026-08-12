@@ -53,6 +53,37 @@ def sync_node_key(task_id: str, node, new_pubkey: str) -> None:
     )
 
 
+def deploy_monitoring(task_id: str, node) -> bool:
+    """Install the telemetry collector on a node that has just been provisioned.
+
+    Never raises and never fails the caller. Monitoring is an addition to a
+    node that is already working; a node whose collector would not install
+    still backs up perfectly well, and turning that into a bootstrap failure
+    would be a worse outcome than going without telemetry.
+    """
+    try:
+        tasks.log_to_task(task_id, "Installing the telemetry collector...")
+        result = tasks.run_ansible_playbook(
+            task_id=task_id,
+            playbook_name="deploy_monitoring.yml",
+            host_ip=node.ip_address,
+            ssh_port=node.ssh_port,
+            extra_vars={},
+            ssh_key_path=ssh_keys.ORCHESTRATOR_PRIVATE_KEY,
+        )
+        if result.get("status") == "SUCCESS":
+            tasks.log_to_task(task_id, "Telemetry collector installed and running.")
+            return True
+        tasks.log_to_task(
+            task_id,
+            "WARNING: Could not install the telemetry collector. The node is "
+            "otherwise provisioned; monitoring can be retried separately.",
+        )
+    except Exception as e:
+        tasks.log_to_task(task_id, f"WARNING: Monitoring deploy raised: {str(e)}")
+    return False
+
+
 @celery_app.task(bind=True, name="tasks.run_bootstrap_task")
 def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: str, force_orchestrator_proxy: bool = False) -> Dict[str, Any]:
     """
@@ -186,6 +217,13 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
         node.status = "READY" if is_prep else "NEEDS_FIX"
         db.commit()
         tasks.log_to_task(task_id, f"Bootstrap completed. {'Already prepared.' if is_prep else 'Key fetched.'}")
+
+        # Install the telemetry collector so a freshly provisioned node starts
+        # sampling without a second visit. Deliberately after the commit and
+        # non-fatal: monitoring is an addition to a node that is already
+        # working, and a failure to install it must never turn a successful
+        # bootstrap into a failed one.
+        deploy_monitoring(task_id, node)
 
     else:
         is_offline = False

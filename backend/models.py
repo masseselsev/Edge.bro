@@ -53,6 +53,20 @@ class Settings(Base):
     default_credentials_id = Column(String, nullable=True, default='default')
     server_net_capacity_mbps = Column(Integer, default=1000, nullable=False)
 
+    # --- Monitoring: fleet-wide defaults, each overridable per node ---
+    monitoring_enabled = Column(Boolean, default=True, nullable=False)
+    # How often a node is polled, in days. Every node is also polled on
+    # provision, re-provision and after each backup regardless of this.
+    monitoring_interval_days = Column(Integer, default=30, nullable=False)
+    # Drive temperature thresholds. Roadside enclosures in full sun run hot
+    # and a single fleet-wide limit would either cry wolf or miss real
+    # trouble, so these are the default rather than the rule.
+    smart_temp_warn_c = Column(Integer, default=60, nullable=False)
+    smart_temp_crit_c = Column(Integer, default=70, nullable=False)
+    # How long raw-ish telemetry rollups are kept. Thermal fits and SMART
+    # snapshots are small and kept indefinitely; rollups are the bulky part.
+    telemetry_retention_days = Column(Integer, default=90, nullable=False)
+
 
 
 
@@ -133,6 +147,22 @@ class Node(Base):
     # availability fields
     last_ping_status = Column(Boolean, nullable=True)
     last_available_at = Column(DateTime, nullable=True)
+
+    # --- Monitoring overrides. NULL = inherit the global Settings value, the
+    # same precedence the rest of the per-node settings use. A node standing
+    # in full sun legitimately needs a looser ceiling than one in shade.
+    monitoring_enabled = Column(Boolean, nullable=True)
+    monitoring_interval_days = Column(Integer, nullable=True)
+    smart_temp_warn_c = Column(Integer, nullable=True)
+    smart_temp_crit_c = Column(Integer, nullable=True)
+
+    # When the orchestrator last drained this node's telemetry buffer.
+    last_harvest_at = Column(DateTime, nullable=True)
+    # What the node reported it can actually measure, from the monitoring
+    # deploy: RAPL, drive temperature, smartctl. A node without RAPL yields
+    # SMART but no thermal model, and the UI needs to say so rather than
+    # leaving an empty panel unexplained.
+    monitoring_capabilities = Column(JSON, nullable=True)
 
 
 class BackupHistory(Base):
@@ -291,3 +321,109 @@ class SshKeyFinding(Base):
     pruned_at = Column(DateTime, nullable=True)
 
 
+
+
+class TelemetryRollup(Base):
+    """A time bucket of node telemetry, aggregated for long-term storage.
+
+    Raw minute samples are fitted at harvest and discarded — at a thousand
+    nodes they would be tens of millions of rows a month for data nothing
+    reads twice. These buckets are what the charts read months later, which
+    is why each carries maxima alongside means: a peak temperature averaged
+    away is exactly the thing somebody will later wish had been kept.
+
+    Buckets are aligned to the absolute epoch grid, not to each node's first
+    sample, so two nodes' rows for the same bucket are directly comparable —
+    which is what the cohort detector depends on.
+    """
+    __tablename__ = 'telemetry_rollups'
+    __table_args__ = (
+        UniqueConstraint('node_id', 'bucket_start', name='uq_telemetry_rollup'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    node_id = Column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'), nullable=False)
+    bucket_start = Column(DateTime, nullable=False, index=True)
+    sample_count = Column(Integer, nullable=False)
+
+    power_w_mean = Column(Float, nullable=True)
+    power_w_max = Column(Float, nullable=True)
+    cpu_temp_c_mean = Column(Float, nullable=True)
+    cpu_temp_c_max = Column(Float, nullable=True)
+    board_temp_c_mean = Column(Float, nullable=True)
+    ssd_temp_c_mean = Column(Float, nullable=True)
+    cpu_util_mean = Column(Float, nullable=True)
+    io_service_ms_mean = Column(Float, nullable=True)
+    throttled = Column(Boolean, default=False, nullable=False)
+
+
+class ThermalFit(Base):
+    """One thermal model identified from one window of telemetry.
+
+    Rows are written for rejected windows too, carrying only the rejection
+    reason and the excitation that caused it. A node with no theta needs to
+    be distinguishable from a node nobody looked at, and "the load never
+    varied enough" is the answer an operator will ask for.
+    """
+    __tablename__ = 'thermal_fits'
+    __table_args__ = (
+        UniqueConstraint('node_id', 'window_start', name='uq_thermal_fit_window'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    node_id = Column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'), nullable=False)
+    window_start = Column(DateTime, nullable=False, index=True)
+    window_end = Column(DateTime, nullable=False)
+
+    # core.thermal.Rejection: OK, or why this window yielded nothing.
+    rejection = Column(String, nullable=False)
+    n_samples = Column(Integer, nullable=False, default=0)
+    excitation = Column(Float, nullable=True)
+
+    theta_c_per_w = Column(Float, nullable=True)
+    # Theta corrected back to reference conditions. Comparing a node against
+    # its own past needs this; comparing nodes within the same window does
+    # not, since they share the weather.
+    theta_normalised = Column(Float, nullable=True)
+    tau_seconds = Column(Float, nullable=True)
+    t_ambient_c = Column(Float, nullable=True)
+    mean_temp_c = Column(Float, nullable=True)
+    r_squared = Column(Float, nullable=True)
+
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+
+class SmartSnapshot(Base):
+    """One smartctl reading of one device, parsed and scored.
+
+    `raw` holds the complete smartctl report so the UI can show the full
+    statistics of the latest query. It is nulled out on older rows by the
+    retention task — the report is ~15 KB, which across a fleet and a year
+    would dwarf everything else in this database, while the parsed scalars
+    beside it are what the history graph actually plots.
+    """
+    __tablename__ = 'smart_snapshots'
+
+    id = Column(Integer, primary_key=True, index=True)
+    node_id = Column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'), nullable=False)
+    captured_at = Column(DateTime, default=func.now(), nullable=False, index=True)
+    device = Column(String, nullable=False)
+
+    protocol = Column(String, nullable=True)
+    model = Column(String, nullable=True)
+    serial = Column(String, nullable=True)
+    firmware = Column(String, nullable=True)
+
+    health_passed = Column(Boolean, nullable=True)
+    temperature_c = Column(Integer, nullable=True)
+    power_on_hours = Column(Integer, nullable=True)
+    written_bytes = Column(BigInteger, nullable=True)
+    percent_used = Column(Float, nullable=True)
+
+    score = Column(Integer, nullable=True)
+    grade = Column(String, nullable=True)
+    subscores = Column(JSON, nullable=True)
+    overrides = Column(JSON, nullable=True)
+    advisories = Column(JSON, nullable=True)
+
+    raw = Column(JSON, nullable=True)

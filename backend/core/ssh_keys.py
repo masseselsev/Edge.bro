@@ -30,6 +30,11 @@ SELFGRANT_TAG = f"{TAG_PREFIX}-orchestrator-selfgrant"
 #: edge-bro_ssh-keys volume.
 ORCHESTRATOR_AUTHORIZED_KEYS = "/root/.ssh/authorized_keys"
 
+#: The key the orchestrator authenticates to nodes with. Same volume, and the
+#: same identity the backup path already uses — monitoring deliberately adds
+#: no second credential to the fleet.
+ORCHESTRATOR_PRIVATE_KEY = "/root/.ssh/id_ed25519"
+
 # Must stay byte-identical to the option string already deployed on the fleet.
 BORG_SERVE_OPTIONS = (
     'command="borg serve --restrict-to-path /data/borg/fleet",'

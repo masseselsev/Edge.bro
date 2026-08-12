@@ -68,6 +68,18 @@ celery_app.conf.beat_schedule = {
         'task': 'tasks.ssh_key_audit_task',
         'schedule': crontab(hour=3, minute=45), # Run at 3:45 AM daily
     },
+    'monitoring-sweep-task': {
+        'task': 'tasks.monitoring_sweep_task',
+        # Hourly, picking up whatever is overdue rather than firing at a
+        # per-node instant. With intervals measured in weeks an hour of slack
+        # is irrelevant, and a sweep that just asks "who is overdue?" needs no
+        # state and recovers by itself from an orchestrator that was down.
+        'schedule': crontab(minute=20),
+    },
+    'monitoring-retention-task': {
+        'task': 'tasks.monitoring_retention_task',
+        'schedule': crontab(hour=4, minute=15), # Run at 4:15 AM daily
+    },
 }
 celery_app.conf.timezone = 'UTC'
 
@@ -199,6 +211,11 @@ from tasks.ssh_audit import ssh_key_audit_task
 from tasks.ping import ping_all_nodes_task, async_ping_ip
 from tasks.scheduler import scheduler_tick
 from tasks.cleanup import docker_system_cleanup_task, db_task_log_prune_task
+from tasks.monitoring import (
+    harvest_node_task,
+    monitoring_retention_task,
+    monitoring_sweep_task,
+)
 
 # Import other tasks so they register with Celery automatically when this file is loaded
 from backup_tasks import run_prepare_task, run_backup_task, global_daily_prune

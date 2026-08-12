@@ -650,6 +650,19 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
             db.commit()
 
             log_to_task(task_id, "Backup completed successfully.", status="SUCCESS")
+
+            # A backup is the one moment the fleet reliably runs its nodes hard,
+            # which makes the telemetry either side of it the most informative
+            # the node will produce — see docs on why excitation is what the
+            # thermal fit needs. Dispatched rather than run inline so a slow
+            # harvest cannot extend the backup, and non-fatal because a
+            # completed backup must never be reported as failed over telemetry.
+            try:
+                from tasks.monitoring import harvest_node_task
+                harvest_node_task.apply_async(args=[node.id], retry=False)
+            except Exception as e:
+                logger.warning(f"Could not schedule post-backup harvest: {e}")
+
             return {"status": "SUCCESS", "archive": archive_name}
         else:
             # Classified here rather than when the Archives page asks, so the
