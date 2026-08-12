@@ -198,11 +198,15 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
     except Exception as re:
         logger.error(f"Failed to clear base_iso_dirty in Celery task: {re}")
 
+    # close in a finally: a failure to insert the task log used to leave this
+    # session open with a transaction attached for the whole ISO build.
     db = SessionLocal()
-    task_log = TaskLog(id=task_id, task_type="ISO_GEN", status="RUNNING", log_output="")
-    db.add(task_log)
-    db.commit()
-    db.close()
+    try:
+        task_log = TaskLog(id=task_id, task_type="ISO_GEN", status="RUNNING", log_output="")
+        db.add(task_log)
+        db.commit()
+    finally:
+        db.close()
 
     # Validate cached ISO size
     if os.path.exists(BASE_ISO_PATH):

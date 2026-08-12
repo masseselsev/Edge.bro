@@ -41,6 +41,12 @@ class DBLoggingHandler(logging.Handler):
         ):
             return
         
+        # The close must sit in a finally. It used to follow the commit inside
+        # the try, so any failure to write the log — which is precisely when
+        # the database is unhappy — left the session open forever with a
+        # transaction attached. A leaking log handler leaks hardest exactly
+        # when things are already going wrong.
+        db = None
         try:
             db = SessionLocal()
             from models import SystemLog
@@ -50,9 +56,14 @@ class DBLoggingHandler(logging.Handler):
             )
             db.add(log_entry)
             db.commit()
-            db.close()
         except Exception:
             pass
+        finally:
+            if db is not None:
+                try:
+                    db.close()
+                except Exception:
+                    pass
 
 
 def setup_db_logging():

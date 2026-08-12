@@ -91,9 +91,23 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
     """
     task_id = self.request.id
     db: Session = tasks.SessionLocal()
+    try:
+        return _run_bootstrap(
+            db, node_id, task_id, ssh_password, bootstrap_user, force_orchestrator_proxy
+        )
+    finally:
+        # In a finally rather than at the end of the body. Bootstrap reads
+        # Settings early and runs Ansible for minutes afterwards, so an
+        # exception in between used to strand this session idle in transaction
+        # holding a lock on `settings`.
+        db.close()
+
+
+def _run_bootstrap(
+    db, node_id, task_id, ssh_password, bootstrap_user, force_orchestrator_proxy
+) -> Dict[str, Any]:
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
-        db.close()
         return {"status": "FAILED", "error": "Node not found"}
 
     task_log = TaskLog(id=task_id, task_type="BOOTSTRAP", status="RUNNING", node_id=node_id, log_output="")
@@ -251,7 +265,6 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
                     break
         tasks.log_to_task(task_id, error_msg, status="FAILED")
 
-    db.close()
     return res
 
 @celery_app.task(name="tasks.auto_retry_bootstrap_task")

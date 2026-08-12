@@ -313,6 +313,15 @@ def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
     task_id = self.request.id
     from tasks import log_to_task
     db: Session = SessionLocal()
+    try:
+        return _run_prepare(self, db, node_id, task_id, log_to_task)
+    finally:
+        # In a finally rather than at the end of the body: an exception midway
+        # used to leave this session open with a transaction attached.
+        db.close()
+
+
+def _run_prepare(self, db, node_id, task_id, log_to_task) -> Dict[str, Any]:
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         db.close()
@@ -354,7 +363,6 @@ def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
         db.commit()
         log_to_task(task_id, "Auto-prepare task failed.", status="FAILED")
 
-    db.close()
     return res
 
 
@@ -707,6 +715,17 @@ def global_daily_prune() -> Dict[str, Any]:
     from models import BackupGroup
     from tasks import fix_repo_permissions
     db: Session = SessionLocal()
+    try:
+        return _run_global_daily_prune(db, BackupGroup, fix_repo_permissions)
+    finally:
+        # Was closed at the very end of the body rather than in a finally, so
+        # any exception in between left this session idle in transaction
+        # holding a lock on `settings`. That blocked every later ALTER TABLE
+        # on settings or nodes, which is to say every future migration.
+        db.close()
+
+
+def _run_global_daily_prune(db, BackupGroup, fix_repo_permissions) -> Dict[str, Any]:
     settings = db.query(Settings).first()
     if not settings:
         settings = Settings()
@@ -816,5 +835,4 @@ def global_daily_prune() -> Dict[str, Any]:
         logger.error(f"Exception during backup history DB sync: {str(e)}")
 
     fix_repo_permissions(repo_path)
-    db.close()
     return results
