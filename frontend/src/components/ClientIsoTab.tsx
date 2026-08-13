@@ -5,6 +5,7 @@ import { useTranslation } from '../context/TranslationContext';
 import KioskManagementSection from './KioskManagementSection';
 import { formatDate } from './dateUtils';
 import { formatBytes } from './formatBytes';
+import { ApiError } from '../api';
 
 interface IsoStatus {
   base_iso_cached: boolean;
@@ -79,6 +80,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
   const fetchStatus = async () => {
     try {
       const res = await fetch('/api/iso/status');
+      if (!res.ok) throw new ApiError(res.status, `status poll failed: ${res.status}`);
       const data = await res.json();
       setStatus(data);
       

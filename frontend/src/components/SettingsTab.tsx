@@ -9,6 +9,7 @@ import AuditLogsTab from './AuditLogsTab';
 import SshKeysTab from './SshKeysTab';
 import { CredentialsModal } from './CredentialsModal';
 import { InfoLabel } from './InfoLabel';
+import { api } from '../api';
 
 interface SettingsTabProps {
   onSettingsUpdated?: (settings: any) => void;
@@ -104,8 +105,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   ], [t]);
 
   useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
+    api.get<any>('/api/settings')
       .then(data => {
         setSshPort(data.borg_ssh_port);
         setRepoPath(data.borg_repo_path);
@@ -168,8 +168,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           setTimezone(dbTz);
         }
         
-        fetch('/api/health')
-          .then(res => res.json())
+        api.get<any>('/api/health')
           .then(hdata => {
             if (hdata.warnings) {
               setWarnings(hdata.warnings);

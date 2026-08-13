@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '../context/TranslationContext';
+import { api } from '../api';
 
 interface Node {
   id: number;
@@ -36,8 +37,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
   const [selectedCredId, setSelectedCredId] = useState('manual');
 
   React.useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
+    api.get<any>('/api/settings')
       .then(data => {
         const creds = data.bootstrap_credentials || [];
         setCredentials(creds);
@@ -239,8 +239,7 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
   const [selectedCredId, setSelectedCredId] = useState('manual');
 
   React.useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
+    api.get<any>('/api/settings')
       .then(data => {
         const creds = data.bootstrap_credentials || [];
         setCredentials(creds);

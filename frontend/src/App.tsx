@@ -21,6 +21,7 @@ import IpPromptModal from './components/IpPromptModal';
 import WatchdogModal from './components/WatchdogModal';
 import MainFooter from './components/MainFooter';
 import KioskFooter from './components/KioskFooter';
+import { api, installApiErrorHandling } from './api';
 
 type Tab = 'fleet' | 'flasher' | 'history' | 'logs' | 'settings' | 'clientiso' | 'schedule';
 
@@ -163,6 +164,16 @@ function AppContent() {
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // A 401 from any API call means the session is gone, whichever panel
+  // happened to notice first. Without this an expired session showed empty
+  // panels rather than the login screen — see src/api.ts.
+  useEffect(() => {
+    installApiErrorHandling(() => {
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+    });
   }, []);
 
   const handleLogout = async () => {
@@ -308,14 +319,13 @@ function AppContent() {
 
   useEffect(() => {
     if (!isKiosk) return;
-    fetch('/api/kiosk/mode')
-      .then(res => res.json())
+    api.get<{ mode?: 'offline' | 'online' }>('/api/kiosk/mode')
       .then(data => {
         if (data && data.mode) {
           setRestoreMode(data.mode);
         }
       })
-      .catch(err => console.error(err));
+      .catch(err => console.error('Failed to read kiosk mode:', err));
   }, [isKiosk]);
 
   useEffect(() => {
