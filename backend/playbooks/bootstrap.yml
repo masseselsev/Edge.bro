@@ -144,6 +144,14 @@
         mkdir -p /home/borg/.ssh
         chmod 700 /home/borg/.ssh
         chown borg:borg /home/borg/.ssh
+        # The borg user only ever talks to the orchestrator, so this file holds
+        # at most one entry. Dropping it here is safe and cheap even when
+        # nothing changed — the next connection just relearns the same key —
+        # but it means a node whose known_hosts predates an orchestrator
+        # migration (or came from a base image with a stale entry baked in)
+        # stops printing "REMOTE HOST IDENTIFICATION HAS CHANGED" on every
+        # single backup afterwards.
+        rm -f /home/borg/.ssh/known_hosts
         if [ ! -f /home/borg/.ssh/id_ed25519 ]; then
           ssh-keygen -t ed25519 -N "" -f /home/borg/.ssh/id_ed25519
           chown borg:borg /home/borg/.ssh/id_ed25519*

@@ -135,6 +135,15 @@ def run_ansible_playbook(
         parsed_data: Dict[str, Any] = {}
         log_accumulator = []
 
+        # A single task_id can drive more than one playbook run in sequence
+        # (bootstrap.yml, then deploy_monitoring.yml). log_accumulator only
+        # holds what *this* run has printed so far, so every write below is
+        # layered on top of whatever this task_id already logged — never a
+        # replacement, or the earlier playbook's output would vanish the
+        # moment this one starts writing.
+        existing_log = db.query(TaskLog).filter(TaskLog.id == task_id).first()
+        log_prefix = existing_log.log_output if existing_log and existing_log.log_output else ""
+
         is_bootstrap = "bootstrap" in playbook_name
         is_prepare = "prepare" in playbook_name
         
@@ -265,7 +274,12 @@ def run_ansible_playbook(
                                     break
                     except Exception:
                         pass
-                elif "PLAY RECAP" in line:
+                elif "PLAY RECAP" in line and (is_bootstrap or is_prepare):
+                    # Playbooks that are neither (e.g. deploy_monitoring.yml,
+                    # run after bootstrap.yml under the same task_id) have no
+                    # translated "complete" message of their own; leave the
+                    # last real progress marker on screen instead of
+                    # mislabelling this recap as "Auto-prepare completed".
                     percent = 100
                     p_type = "bootstrap" if is_bootstrap else "prepare"
                     desc = PROGRESS_TRANSLATIONS[p_type][lang].get("complete")
@@ -313,7 +327,7 @@ def run_ansible_playbook(
 
                 # Periodic write to DB to avoid overloading database connections
                 if len(log_accumulator) % 5 == 0:
-                    current_log = "".join(log_accumulator)
+                    current_log = log_prefix + "".join(log_accumulator)
                     db.query(TaskLog).filter(TaskLog.id == task_id).update({
                         "log_output": current_log,
                         "status": "RUNNING"
@@ -406,7 +420,7 @@ def run_ansible_playbook(
                 print(f"Error parsing partition layout: {str(e)}")
                 traceback.print_exc()
 
-        final_log = "".join(log_accumulator)
+        final_log = log_prefix + "".join(log_accumulator)
         status = "SUCCESS" if return_code == 0 else "FAILED"
 
         db.query(TaskLog).filter(TaskLog.id == task_id).update({
@@ -429,8 +443,10 @@ def run_ansible_playbook(
 
     except Exception as e:
         error_msg = f"Exception occurred during execution: {str(e)}"
+        prior_log = db.query(TaskLog).filter(TaskLog.id == task_id).first()
+        prior_text = prior_log.log_output if prior_log and prior_log.log_output else ""
         db.query(TaskLog).filter(TaskLog.id == task_id).update({
-            "log_output": error_msg,
+            "log_output": prior_text + error_msg,
             "status": "FAILED"
         })
         db.commit()
