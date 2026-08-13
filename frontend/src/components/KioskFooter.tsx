@@ -9,11 +9,8 @@ interface KioskFooterProps {
   activationError: string;
   handleRequestActivation: () => void;
   requestingActivation: boolean;
-  setPairingIp: (ip: string) => void;
-  setPairingKey: (key: string) => void;
-  setPairingError: (err: string) => void;
-  setPairingSuccess: (msg: string) => void;
-  setShowPairingModal: (open: boolean) => void;
+  /** Opens the pairing dialog with its fields reset. See useKioskPairing. */
+  onOpenPairing: () => void;
   kioskOrchestratorIp: string;
   kioskId: string;
   connectionKeyphrase: string;
@@ -31,11 +28,7 @@ export default function KioskFooter({
   activationError,
   handleRequestActivation,
   requestingActivation,
-  setPairingIp,
-  setPairingKey,
-  setPairingError,
-  setPairingSuccess,
-  setShowPairingModal,
+  onOpenPairing,
   kioskOrchestratorIp,
   kioskId,
   connectionKeyphrase,
@@ -124,13 +117,7 @@ export default function KioskFooter({
             
             <button
               type="button"
-              onClick={() => {
-                setPairingIp(kioskOrchestratorIp || window.location.hostname);
-                setPairingKey('');
-                setPairingError('');
-                setPairingSuccess('');
-                setShowPairingModal(true);
-              }}
+              onClick={onOpenPairing}
               className="px-3 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded border border-zinc-800 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 active:translate-y-0.5"
             >
               <Link2 size={11} />
