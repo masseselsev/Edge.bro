@@ -15,6 +15,7 @@ from core.borg_local import borg_kwargs
 from core.db_session import session_scope
 from core import ssh
 from core import backup_stats, transfer_speed
+from core.repo_lock import maintenance_in_progress, repository_maintenance
 from core.task_log import log_to_task
 
 # Re-use logging configuration from tasks
@@ -234,24 +235,39 @@ def cleanup_locks_and_resolve_ip(
     except Exception as e:
         log_to_task(task_id, f"[Lock cleanup] WARNING: Pre-backup check exception: {e}")
 
-    try:
-        env = os.environ.copy()
-        env["BORG_PASSPHRASE"] = borg_passphrase
-        res = subprocess.run(
-            ["borg", "break-lock", repo_path],
-            env=env,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, timeout=30,
-            **borg_kwargs(repo_path, env),
+    # Break the repository lock only if nothing is legitimately holding it.
+    #
+    # This used to be unconditional, and the lock it took away was as likely to
+    # belong to the running nightly prune as to a dead worker. Breaking a live
+    # lock does not queue the backup behind the prune — it lets both write to
+    # the same segments and manifest at once, which is repository corruption,
+    # not contention. See core/repo_lock.py.
+    owner = maintenance_in_progress()
+    if owner:
+        log_to_task(
+            task_id,
+            "[Lock cleanup] Repository maintenance is in progress; leaving the "
+            "repo lock alone. This backup will be retried on the next tick.",
         )
-        if res.returncode == 0:
-            log_to_task(task_id, "[Lock cleanup] Repo lock check passed (no stale lock, or lock broken).")
-        else:
-            log_to_task(task_id, f"[Lock cleanup] WARNING: Repo break-lock failed: {res.stderr.strip()}")
+    else:
+        try:
+            env = os.environ.copy()
+            env["BORG_PASSPHRASE"] = borg_passphrase
+            res = subprocess.run(
+                ["borg", "break-lock", repo_path],
+                env=env,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, timeout=30,
+                **borg_kwargs(repo_path, env),
+            )
+            if res.returncode == 0:
+                log_to_task(task_id, "[Lock cleanup] Repo lock check passed (no stale lock, or lock broken).")
+            else:
+                log_to_task(task_id, f"[Lock cleanup] WARNING: Repo break-lock failed: {res.stderr.strip()}")
+                force_cleanup_stale_repo_locks(task_id, repo_path)
+        except Exception as e:
+            log_to_task(task_id, f"[Lock cleanup] WARNING: Server-side lock check exception: {e}")
             force_cleanup_stale_repo_locks(task_id, repo_path)
-    except Exception as e:
-        log_to_task(task_id, f"[Lock cleanup] WARNING: Server-side lock check exception: {e}")
-        force_cleanup_stale_repo_locks(task_id, repo_path)
 
     if orchestrator_behind_nat:
         log_to_task(task_id, "Orchestrator is behind NAT — will reach it through a reverse tunnel instead of a direct IP.")
@@ -794,18 +810,9 @@ def global_daily_prune() -> Dict[str, Any]:
     return _run_global_daily_prune(fix_repo_permissions)
 
 
-def _plan_prunes() -> list:
-    """Resolve every node's retention policy into a ready-to-run borg command.
-
-    All of it in one short session, before any pruning starts. This task used
-    to keep a session open for the whole run — and the run is hours, one
-    serialised `borg prune` per node against a shared repository. That session
-    is the one found on 2026-08-12 sitting `idle in transaction` on `settings`
-    for a day and sixteen hours, blocking migrations; see
-    tests/test_session_hygiene.py.
-    """
-    repo_path = "/data/borg/fleet"
-    plans = []
+def _retention_by_hostname() -> dict:
+    """Every node's retention rules, keyed by hostname, in one short session."""
+    from core.retention import rules_from_policy
 
     with session_scope() as db:
         settings = db.query(Settings).first()
@@ -814,6 +821,7 @@ def _plan_prunes() -> list:
 
         groups = {g.id: g for g in db.query(BackupGroup).all()}
 
+        resolved = {}
         for node in db.query(Node).all():
             group = groups.get(node.group_id) if node.group_id else None
 
@@ -823,37 +831,86 @@ def _plan_prunes() -> list:
             elif settings.retention_policy:
                 policy = settings.retention_policy
 
-            prune_cmd = ["borg", "prune", "--prefix", f"{node.hostname}-"]
+            resolved[node.hostname] = rules_from_policy(policy, settings)
+        return resolved
 
-            if policy:
-                p_type = policy.get("type", "interval")
-                if p_type == "interval":
-                    prune_cmd.extend([
-                        "--keep-daily", str(policy.get("keep_daily", 7)),
-                        "--keep-weekly", str(policy.get("keep_weekly", 4)),
-                        "--keep-monthly", str(policy.get("keep_monthly", 6))
-                    ])
-                elif p_type == "count":
-                    prune_cmd.extend(["--keep-last", str(policy.get("keep_last", 5))])
-                elif p_type == "timeframe":
-                    val = policy.get("within_value", 3)
-                    unit = policy.get("within_unit", "m")
-                    prune_cmd.extend([
-                        "--keep-last", "1",
-                        "--keep-within", f"{val}{unit}"
-                    ])
-            else:
-                # Fallback to legacy settings flat columns
-                prune_cmd.extend([
-                    "--keep-daily", str(settings.keep_daily),
-                    "--keep-weekly", str(settings.keep_weekly),
-                    "--keep-monthly", str(settings.keep_monthly)
-                ])
 
-            prune_cmd.append(repo_path)
-            plans.append((node.hostname, prune_cmd))
+def _list_archives(repo_path: str, env: dict) -> Optional[list]:
+    """Every archive in the repository, newest first. None if borg would not say.
 
-    return plans
+    One `borg list` replaces the manifest read that each of the old per-node
+    prunes was doing on its own.
+    """
+    from core.retention import Archive
+
+    res = subprocess.run(
+        ["borg", "list", "--json", repo_path],
+        env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env),
+    )
+    if res.returncode != 0:
+        logger.error(f"Could not list the repository: {res.stderr}")
+        return None
+
+    archives = []
+    for entry in json.loads(res.stdout).get("archives", []):
+        name = entry.get("name")
+        raw_time = entry.get("start") or entry.get("time")
+        if not name or not raw_time:
+            continue
+        try:
+            # Naive local time, which is the same clock borg's own prune uses
+            # to compute period buckets. See core/retention.py.
+            archives.append(Archive(name=name, ts=datetime.fromisoformat(raw_time)))
+        except ValueError:
+            logger.warning(f"Skipping archive with unparseable timestamp: {name} {raw_time!r}")
+    archives.sort(key=lambda a: a.ts, reverse=True)
+    return archives
+
+
+def plan_deletions(archives: list, retention: dict, now=None) -> tuple:
+    """Decide what to delete across the whole fleet in one pass.
+
+    Returns (names_to_delete, per_node_report). Archives are matched to a node
+    by the `{hostname}-` prefix the backup task gives them.
+
+    Two archives are deliberately spared regardless of policy:
+
+    * anything whose hostname does not match a current node — a renamed or
+      deleted node's history is not this task's to throw away, and guessing
+      wrong is unrecoverable;
+    * every node's most recent archive, as a backstop. Borg's rules already
+      keep it under any non-empty policy, so this only fires if the policy
+      resolved to something unexpected.
+    """
+    from core.retention import select
+
+    by_node = {}
+    unclaimed = []
+    for archive in archives:
+        for hostname in retention:
+            if archive.name.startswith(f"{hostname}-"):
+                by_node.setdefault(hostname, []).append(archive)
+                break
+        else:
+            unclaimed.append(archive.name)
+
+    if unclaimed:
+        logger.info(
+            f"{len(unclaimed)} archive(s) belong to no current node and are left alone."
+        )
+
+    to_delete = []
+    report = {}
+    for hostname, node_archives in by_node.items():
+        keep, delete, _ = select(node_archives, retention[hostname], now=now)
+
+        newest = max(node_archives, key=lambda a: a.ts)
+        delete = [a for a in delete if a.name != newest.name]
+
+        to_delete.extend(a.name for a in delete)
+        report[hostname] = {"kept": len(node_archives) - len(delete), "deleted": len(delete)}
+
+    return to_delete, report
 
 
 def _reconcile_history_with_repo(active_archives: set) -> int:
@@ -869,57 +926,113 @@ def _reconcile_history_with_repo(active_archives: set) -> int:
         return len(stale)
 
 
+#: Batch size for `borg delete`. One invocation could take every name, but a
+#: fleet-wide argv of 100k archive names hits the kernel's ARG_MAX, and a
+#: failure part-way through a single huge call tells you nothing about what
+#: survived. Batches keep the argv sane and make a partial failure legible.
+DELETE_BATCH = int(os.getenv("BORG_DELETE_BATCH", "200"))
+
+#: Set to skip the deletion itself and only log what would have gone. Worth one
+#: night on a real fleet before trusting the retention port in core/retention.py.
+PRUNE_DRY_RUN = os.getenv("BORG_PRUNE_DRY_RUN", "").lower() in ("1", "true", "yes")
+
+
 def _run_global_daily_prune(fix_repo_permissions) -> Dict[str, Any]:
+    """Prune the whole fleet in three borg invocations: list, delete, compact.
+
+    It used to be one `borg prune --prefix <host>` per node. Each took the
+    repository's exclusive lock and re-read a manifest holding every archive of
+    every node, so the cost was quadratic in fleet size — hours at 2000 nodes,
+    starting at 03:00 and still running when the backup windows opened, with no
+    backup able to run for the whole of it because they need the same lock.
+
+    Deciding in Python (core/retention.py, a port of borg's own algorithm)
+    makes it one list, batched deletes, one compact.
+    """
     repo_path = "/data/borg/fleet"
     if not os.path.exists(repo_path):
         return {"error": "Repository path not found"}
 
-    results = {"prunes": {}, "compact": "PENDING"}
-
     env = os.environ.copy()
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
-    for hostname, prune_cmd in _plan_prunes():
+    with repository_maintenance(owner="global_daily_prune") as heartbeat:
+        if heartbeat is None:
+            # Another prune already holds the repository. Two of these against
+            # one repository is exactly what the flag exists to prevent, and
+            # skipping costs nothing — the next nightly run picks it up.
+            logger.warning("Repository maintenance already in progress; skipping this prune.")
+            return {"status": "SKIPPED", "reason": "maintenance already in progress"}
+
+        results: Dict[str, Any] = {"deleted": 0, "nodes": {}, "compact": "PENDING"}
+
+        archives = _list_archives(repo_path, env)
+        if archives is None:
+            return {"error": "Could not list the repository"}
+
+        retention = _retention_by_hostname()
+        to_delete, report = plan_deletions(archives, retention)
+        results["nodes"] = report
+
+        if PRUNE_DRY_RUN:
+            logger.warning(
+                f"BORG_PRUNE_DRY_RUN is set: {len(to_delete)} archive(s) would be "
+                f"deleted, nothing was. {to_delete}"
+            )
+            return {"status": "DRY_RUN", "would_delete": len(to_delete), "nodes": report}
+
+        deleted = 0
+        for index in range(0, len(to_delete), DELETE_BATCH):
+            batch = to_delete[index:index + DELETE_BATCH]
+            heartbeat()
+            try:
+                res = subprocess.run(
+                    ["borg", "delete", repo_path, *batch],
+                    env=env, capture_output=True, text=True,
+                    **borg_kwargs(repo_path, env),
+                )
+                if res.returncode == 0:
+                    deleted += len(batch)
+                else:
+                    logger.error(f"Borg delete failed for a batch of {len(batch)}: {res.stderr}")
+                    results.setdefault("errors", []).append(res.stderr.strip())
+            except Exception as e:
+                logger.error(f"Exception deleting a batch of {len(batch)}: {e}")
+                results.setdefault("errors", []).append(str(e))
+        results["deleted"] = deleted
+        logger.info(f"Pruned {deleted} archive(s) across {len(report)} node(s).")
+
+        # Compaction reclaims the segments the deletes freed. Inside the
+        # maintenance flag: it takes the same exclusive lock.
+        heartbeat()
         try:
-            logger.info(f"Executing Borg prune for node {hostname}...")
-            res_prune = subprocess.run(prune_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
-            if res_prune.returncode == 0:
-                results["prunes"][hostname] = "SUCCESS"
+            logger.info("Starting Borg repository compaction after daily prunes...")
+            res_compact = subprocess.run(
+                ["borg", "compact", repo_path],
+                env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env),
+            )
+            if res_compact.returncode == 0:
+                logger.info("Successfully compacted Borg repository.")
+                results["compact"] = "SUCCESS"
             else:
-                logger.error(f"Borg prune failed for node {hostname}: {res_prune.stderr}")
-                results["prunes"][hostname] = f"FAILED: {res_prune.stderr}"
+                logger.error(f"Failed to compact Borg repository: {res_compact.stderr}")
+                results["compact"] = f"FAILED: {res_compact.stderr}"
         except Exception as e:
-            logger.error(f"Exception pruning node {hostname}: {str(e)}")
-            results["prunes"][hostname] = f"ERROR: {str(e)}"
+            logger.error(f"Exception compacting Borg repository: {str(e)}")
+            results["compact"] = f"ERROR: {str(e)}"
 
-    # Compaction
-    try:
-        logger.info("Starting Borg repository compaction after daily prunes...")
-        compact_cmd = ["borg", "compact", repo_path]
-        res_compact = subprocess.run(compact_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
-        if res_compact.returncode == 0:
-            logger.info("Successfully compacted Borg repository.")
-            results["compact"] = "SUCCESS"
-        else:
-            logger.error(f"Failed to compact Borg repository: {res_compact.stderr}")
-            results["compact"] = f"FAILED: {res_compact.stderr}"
-    except Exception as e:
-        logger.error(f"Exception compacting Borg repository: {str(e)}")
-        results["compact"] = f"ERROR: {str(e)}"
-
-    # Reconcile database history with active archives in repository
-    try:
-        logger.info("Synchronizing backup history database records with active archives...")
-        list_cmd = ["borg", "list", "--json", repo_path]
-        res_list = subprocess.run(list_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
-        if res_list.returncode == 0:
-            active_archives = {a["name"] for a in json.loads(res_list.stdout).get("archives", [])}
-            deleted_count = _reconcile_history_with_repo(active_archives)
-            logger.info(f"Database history sync completed. Removed {deleted_count} stale records.")
-        else:
-            logger.error(f"Failed to list Borg archives during DB sync: {res_list.stderr}")
-    except Exception as e:
-        logger.error(f"Exception during backup history DB sync: {str(e)}")
+        # Reconcile database history with what is actually left. Re-listed
+        # rather than derived from `to_delete`, so a delete that silently
+        # failed does not remove a history row for an archive still present.
+        heartbeat()
+        try:
+            logger.info("Synchronizing backup history database records with active archives...")
+            remaining = _list_archives(repo_path, env)
+            if remaining is not None:
+                stale = _reconcile_history_with_repo({a.name for a in remaining})
+                logger.info(f"Database history sync completed. Removed {stale} stale records.")
+        except Exception as e:
+            logger.error(f"Exception during backup history DB sync: {str(e)}")
 
     fix_repo_permissions(repo_path)
     return results
