@@ -22,6 +22,23 @@ CACHE_DIR = paths.ISO_CACHE_DIR
 BASE_ISO_PATH = paths.BASE_ISO_PATH
 BASE_ISO_PATH_TMP = paths.BASE_ISO_TMP_PATH
 
+#: Files from backend/core/ that get copied into the offline kiosk payload.
+#: The kiosk runs the same bare-metal restore the orchestrator does, from the
+#: same source, so these are shipped rather than duplicated.
+#:
+#: **Every module these import from core/ must be in this list.** The payload
+#: client wraps its `from core.disk_ops import ...` in a bare except, so a
+#: missing file does not crash the kiosk — it produces a kiosk whose Restore
+#: button quietly does nothing, discovered by a technician standing in front of
+#: a dead server. That is exactly how the routers below shipped broken.
+#: `tests/test_iso_payload_injection.py` walks the imports and fails if this
+#: list falls behind.
+INJECTED_CORE_MODULES = ("disk_ops.py", "guest_config.py")
+
+#: Same contract for backend/routers/. network.py imports both sub-routers at
+#: module scope, so all three ship together.
+INJECTED_ROUTER_MODULES = ("network.py", "network_dhcp.py", "network_wg.py")
+
 @celery_app.task(bind=True)
 def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
     os.makedirs(CACHE_DIR, exist_ok=True)
@@ -291,18 +308,22 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         # Copy Payload Backend
         run_command_with_logging(task_id, f"cp -v -r /payload_client/backend/* {os.path.join(opt_offline, 'backend')}/", shell=True)
         
-        # Inject Shared Disk Ops Module
-        shutil.copy2("/app/core/disk_ops.py", os.path.join(opt_offline, "backend", "core", "disk_ops.py"))
+        # Inject the shared bare-metal restore modules.
+        # disk_ops imports guest_config at module scope, so both have to ship.
+        # See INJECTED_CORE_MODULES for why this is a list and not two lines.
+        for _core_file in INJECTED_CORE_MODULES:
+            shutil.copy2(
+                f"/app/core/{_core_file}",
+                os.path.join(opt_offline, "backend", "core", _core_file),
+            )
 
-        # Inject Shared Network settings router.
-        # network.py imports both sub-routers at module scope, so all three
-        # files have to ship together. When they were split out of network.py
-        # this list was not updated, and the kiosk's whole /api/network/*
-        # surface — WiFi, wired, VPN — silently 404'd, because the payload
-        # client swallows the resulting ImportError.
+        # Inject Shared Network settings router. When the sub-routers were
+        # split out of network.py this list was not updated, and the kiosk's
+        # whole /api/network/* surface — WiFi, wired, VPN — silently 404'd,
+        # because the payload client swallows the resulting ImportError.
         os.makedirs(os.path.join(opt_offline, "backend", "routers"), exist_ok=True)
         open(os.path.join(opt_offline, "backend", "routers", "__init__.py"), "w").close()
-        for _router_file in ("network.py", "network_dhcp.py", "network_wg.py"):
+        for _router_file in INJECTED_ROUTER_MODULES:
             shutil.copy2(
                 f"/app/routers/{_router_file}",
                 os.path.join(opt_offline, "backend", "routers", _router_file),

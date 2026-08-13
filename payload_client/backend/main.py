@@ -16,10 +16,16 @@ the orchestrator's Kiosk tab it has a token but no standing; after approval it
 can read the fleet and pull archives. `auto_register_with_orchestrator` polls
 for that transition in a background thread.
 
-Shared code arrives by injection, not by import: `core/disk_ops.py`, the
-network routers and `version.py` are copied in during ISO generation, which is
-why the imports below are wrapped in try/except — they genuinely do not exist
-when this file is read on the orchestrator.
+Shared code arrives by injection, not by import: `core/disk_ops.py` and its
+sibling `core/guest_config.py`, the network routers and `version.py` are copied
+in during ISO generation, which is why the imports below are wrapped in
+try/except — they genuinely do not exist when this file is read on the
+orchestrator.
+
+The try/except is also why a file left out of `iso_tasks.INJECTED_CORE_MODULES`
+does not announce itself: the import fails, this module loads anyway, and the
+kiosk's Restore button does nothing at all. `tests/test_iso_payload_injection.py`
+exists to catch that before an ISO ships.
 """
 import os
 import subprocess
@@ -32,7 +38,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-# We will inject the shared disk_ops.py into core/disk_ops.py during ISO generation
+# core/disk_ops.py and core/guest_config.py are injected during ISO generation.
 try:
     from core.disk_ops import format_and_restore
 except ImportError:
