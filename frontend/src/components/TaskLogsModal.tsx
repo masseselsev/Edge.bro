@@ -153,16 +153,19 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
   const { logLines, progressInfo } = useMemo(() => {
     const lines = logs.split('\n');
     const kept: string[] = [];
-    let progress: { percent: number; description: string } | null = null;
+    let progress: { percent: number; step: string } | null = null;
 
     for (const line of lines) {
       if (line.includes('[PROGRESS]')) {
         // Last one wins: progress is cumulative, not a list.
         const match = line.match(/\[PROGRESS\]\s*(\d+):(.*)/);
         if (match) {
+          // The step is kept unresolved so this memo stays keyed on `logs`
+          // alone — `t` is a fresh closure every render, and depending on it
+          // would re-split the whole buffer each second.
           progress = {
             percent: Math.min(100, Math.max(0, parseInt(match[1], 10))),
-            description: match[2].trim(),
+            step: match[2].trim(),
           };
         }
         continue;
@@ -225,7 +228,12 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
         {progressInfo && (status === 'RUNNING' || status === 'SUCCESS') && (
           <div className="bg-zinc-900 px-6 py-3 border-b border-zinc-800/80 space-y-1.5">
             <div className="flex justify-between items-center text-xs font-semibold">
-              <span className="text-zinc-300">{progressInfo.description}</span>
+              {/* The orchestrator writes a translation key here
+                  ("bootstrap_installing_deps"); the kiosk writes a finished
+                  English sentence. t() returns its argument unchanged when
+                  there is no such key, so both render, and logs written
+                  before this protocol existed still read as they were. */}
+              <span className="text-zinc-300">{t(progressInfo.step)}</span>
               <span className="text-sky-400 font-bold">{progressInfo.percent}%</span>
             </div>
             <div className="w-full h-2 bg-zinc-850 rounded-full overflow-hidden border border-zinc-800">

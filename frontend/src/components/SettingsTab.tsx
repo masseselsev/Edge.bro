@@ -365,7 +365,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
               {/* Connection & General Settings */}
               <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
                 <h3 className="text-sm font-bold text-zinc-50 border-b border-zinc-850 pb-2">
-                  {language === 'ru' ? 'Общие настройки' : language === 'uk' ? 'Загальні налаштування' : 'General & Connection'}
+                  {t('generalConnection')}
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">

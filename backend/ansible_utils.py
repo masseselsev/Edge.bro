@@ -2,9 +2,9 @@ import os
 import subprocess
 import tempfile
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 from core.db_session import session_scope
-from models import TaskLog, Settings
+from models import TaskLog
 from core import ssh_keys
 import re
 
@@ -97,121 +97,19 @@ PROGRESS_TASKS = {
     "monitoring": MONITORING_TASKS,
 }
 
-# TODO(phase-2): these belong in frontend/src/i18n/translations.ts, keyed by
-# the trans_key above and resolved at render time. Keeping them here means the
-# language is baked into the stored log at write time, so switching languages
-# does not re-render past logs, and it costs a Settings read per playbook run.
-PROGRESS_TRANSLATIONS = {
-    "bootstrap": {
-        "en": {
-            "verifying_os": "Connecting to node via SSH & verifying OS compatibility (please wait)...",
-            "installing_python": "Ensuring Python3/Pip are installed (Downloading/Installing - this may take several minutes)...",
-            "installing_deps": "Installing system dependencies (parted, borgbackup, udev... this may take a moment)...",
-            "creating_user": "Creating borg system user...",
-            "generating_ssh": "Generating SSH keys for borg...",
-            "authorizing_keys": "Authorizing orchestrator SSH key...",
-            "configuring_ssh": "Configuring SSH server settings...",
-            "gathering_system": "Gathering partition and system details...",
-            "cleaning_up": "Restoring proxy configurations & cleaning up...",
-            "complete": "Bootstrap completed successfully!"
-        },
-        "ru": {
-            "verifying_os": "Подключение к узлу по SSH и проверка совместимости ОС (пожалуйста, подождите)...",
-            "installing_python": "Установка Python3/Pip (скачивание и установка пакетов, может занять несколько минут)...",
-            "installing_deps": "Установка системных зависимостей (parted, borgbackup, udev... это может занять некоторое время)...",
-            "creating_user": "Создание системного пользователя borg...",
-            "generating_ssh": "Генерация SSH-ключей для borg...",
-            "authorizing_keys": "Авторизация SSH-ключа оркестратора...",
-            "configuring_ssh": "Настройка SSH-сервера...",
-            "gathering_system": "Сбор сведений о разделах и системе...",
-            "cleaning_up": "Восстановление настроек прокси и очистка...",
-            "complete": "Начальная настройка успешно завершена!"
-        },
-        "uk": {
-            "verifying_os": "Підключення до вузла по SSH та перевірка сумісності ОС (будь ласка, зачекайте)...",
-            "installing_python": "Встановлення Python3/Pip (завантаження та встановлення пакетів, може зайняти кілька хвилин)...",
-            "installing_deps": "Встановлення системних залежностей (parted, borgbackup, udev... це може зайняти деякий час)...",
-            "creating_user": "Створення системного користувача borg...",
-            "generating_ssh": "Генерація SSH-ключів для borg...",
-            "authorizing_keys": "Авторизація SSH-ключа оркестратора...",
-            "configuring_ssh": "Налаштування SSH-сервера...",
-            "gathering_system": "Збір відомостей про розділи та систему...",
-            "cleaning_up": "Відновлення налаштувань проксі та очищення...",
-            "complete": "Початкове налаштування успішно завершено!"
-        }
-    },
-    "prepare": {
-        "en": {
-            "backup_fstab": "Backing up fstab...",
-            "gather_details": "Gathering partition and system details...",
-            "labeling_fs": "Labeling filesystems (root, boot, log, storage)...",
-            "writing_fstab": "Writing standardized fstab configuration...",
-            "verifying_mount": "Verifying new mount configuration...",
-            "updating_grub": "Updating GRUB bootloader and initramfs...",
-            "complete": "Auto-prepare completed successfully!"
-        },
-        "ru": {
-            "backup_fstab": "Резервное копирование fstab...",
-            "gather_details": "Сбор сведений о разделах и системе...",
-            "labeling_fs": "Маркировка файловых систем...",
-            "writing_fstab": "Запись стандартизированной конфигурации fstab...",
-            "verifying_mount": "Проверка новой конфигурации монтирования...",
-            "updating_grub": "Обновление загрузчика GRUB и initramfs...",
-            "complete": "Автоподготовка успешно завершена!"
-        },
-        "uk": {
-            "backup_fstab": "Резервне копіювання fstab...",
-            "gather_details": "Збір відомостей про розділи та систему...",
-            "labeling_fs": "Маркування файлових систем...",
-            "writing_fstab": "Запис стандартизованої конфігурації fstab...",
-            "verifying_mount": "Перевірка нової конфігурації монтування...",
-            "updating_grub": "Оновлення завантажувача GRUB та initramfs...",
-            "complete": "Автопідготовка успішно завершена!"
-        }
-    },
-    "monitoring": {
-        "en": {
-            "buffer_dir": "Ensuring telemetry buffer directory...",
-            "collector_script": "Installing telemetry collector script...",
-            "service_unit": "Installing systemd service unit...",
-            "timer_unit": "Installing systemd timer unit...",
-            "drivetemp": "Configuring drivetemp kernel module for SSD monitoring...",
-            "enable_timer": "Enabling telemetry collection timer...",
-            "restart_timer": "Restarting telemetry collection timer...",
-            "immediate_sample": "Taking initial telemetry sample...",
-            "capability_report": "Checking hardware sensors & capability report...",
-            "show_capability": "Displaying telemetry capability report...",
-            "complete": "Telemetry collector installed successfully!"
-        },
-        "ru": {
-            "buffer_dir": "Проверка директории буфера телеметрии...",
-            "collector_script": "Установка скрипта сборщика телеметрии...",
-            "service_unit": "Установка службы systemd...",
-            "timer_unit": "Установка таймера systemd...",
-            "drivetemp": "Настройка модуля ядра drivetemp для мониторинга SSD...",
-            "enable_timer": "Включение таймера сбора телеметрии...",
-            "restart_timer": "Перезапуск таймера сбора телеметрии...",
-            "immediate_sample": "Снятие первого образца телеметрии...",
-            "capability_report": "Проверка аппаратных датчиков и возможностей...",
-            "show_capability": "Отображение отчета о возможностях телеметрии...",
-            "complete": "Сборщик телеметрии успешно установлен!"
-        },
-        "uk": {
-            "buffer_dir": "Перевірка директорії буфера телеметрії...",
-            "collector_script": "Встановлення скрипта збирача телеметрії...",
-            "service_unit": "Встановлення служби systemd...",
-            "timer_unit": "Встановлення таймера systemd...",
-            "drivetemp": "Налаштування модуля ядра drivetemp для моніторингу SSD...",
-            "enable_timer": "Увімкнення таймера збору телеметрії...",
-            "restart_timer": "Перезапуск таймера збору телеметрії...",
-            "immediate_sample": "Зняття першого зразка телеметрії...",
-            "capability_report": "Перевірка апаратних датчиків та можливостей...",
-            "show_capability": "Відображення звіту про можливості телеметрії...",
-            "complete": "Збирач телеметрії успішно встановлено!"
-        }
-    }
-}
-
+# What goes into the log is `[PROGRESS] <percent>:<kind>_<trans_key>` — a
+# stable identifier, not a sentence. The UI resolves it against
+# frontend/src/i18n/translations.ts at render time.
+#
+# This used to be three languages of prose embedded in this file, chosen from
+# the Settings row read at the start of every playbook run. That baked the
+# operator's language into the stored log, so switching languages left every
+# past provision in the old one, and it put a database read in the hot loop.
+#
+# Keys are prefixed with the playbook kind because "complete" is not unique
+# across the three tables. Anything the UI does not recognise is displayed
+# verbatim, which is what keeps the kiosk's own plain-English progress lines
+# (payload_client/backend/main.py) working unchanged.
 
 def playbook_kind(playbook_name: str) -> Optional[str]:
     """Which progress table, if any, applies to this playbook.
@@ -226,8 +124,8 @@ def playbook_kind(playbook_name: str) -> Optional[str]:
     return None
 
 
-def _load_log_prefix_and_language(task_id: str) -> Tuple[str, str]:
-    """What this run needs from the database before it starts — and nothing more.
+def _load_log_prefix(task_id: str) -> str:
+    """Whatever this task_id has already logged.
 
     A single task_id can drive more than one playbook run in sequence
     (bootstrap.yml, then deploy_monitoring.yml). `log_accumulator` only holds
@@ -235,19 +133,14 @@ def _load_log_prefix_and_language(task_id: str) -> Tuple[str, str]:
     this task_id already logged — never a replacement, or the earlier
     playbook's output would vanish the moment this one starts writing.
     """
-    log_prefix = ""
-    lang = "en"
     try:
         with session_scope() as db:
             existing_log = db.query(TaskLog).filter(TaskLog.id == task_id).first()
             if existing_log and existing_log.log_output:
-                log_prefix = existing_log.log_output
-            settings = db.query(Settings).first()
-            if settings and settings.language in ("en", "ru", "uk"):
-                lang = settings.language
+                return existing_log.log_output
     except Exception as e:
-        logger.warning("Could not read task log prefix or language for %s: %s", task_id, e)
-    return log_prefix, lang
+        logger.warning("Could not read task log prefix for %s: %s", task_id, e)
+    return ""
 
 
 def _write_task_log(task_id: str, log_output: str, status: str) -> None:
@@ -289,10 +182,9 @@ def run_ansible_playbook(
     Returns:
         A dictionary containing the return code, parsed outputs, and status.
     """
-    log_prefix, lang = _load_log_prefix_and_language(task_id)
+    log_prefix = _load_log_prefix(task_id)
     kind = playbook_kind(playbook_name)
     progress_tasks = PROGRESS_TASKS.get(kind, {})
-    translations = PROGRESS_TRANSLATIONS.get(kind, {}).get(lang, {})
 
     inv_path = None
     try:
@@ -360,23 +252,23 @@ def run_ansible_playbook(
 
                 # Check for progress updates
                 percent = None
-                desc = None
+                step = None
                 if "TASK [" in line:
                     try:
                         task_title = line.split("TASK [")[1].split("]")[0]
                         for key, (pct, trans_key) in progress_tasks.items():
                             if key in task_title:
                                 percent = pct
-                                desc = translations.get(trans_key)
+                                step = trans_key
                                 break
                     except Exception:
                         pass
                 elif "PLAY RECAP" in line and kind:
                     percent = 100
-                    desc = translations.get("complete")
+                    step = "complete"
 
-                if percent is not None and desc is not None:
-                    log_accumulator.append(f"[PROGRESS] {percent}:{desc}\n")
+                if percent is not None and step is not None:
+                    log_accumulator.append(f"[PROGRESS] {percent}:{kind}_{step}\n")
                 # Parse custom output lines
                 if "NODE_AUTHKEY:" in line:
                     entry_line = line.split("NODE_AUTHKEY:", 1)[1].strip().strip('"').rstrip(",")

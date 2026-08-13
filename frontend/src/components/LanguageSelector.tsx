@@ -65,6 +65,9 @@ export default function LanguageSelector() {
     )
   };
 
+  // Endonyms, deliberately not translated and deliberately not in
+  // translations.ts: a language picker names each language in that language,
+  // so someone who cannot read the current UI can still find their own.
   const labels: Record<Language, string> = {
     en: 'English',
     ru: 'Русский',

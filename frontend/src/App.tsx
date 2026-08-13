@@ -768,7 +768,7 @@ function AppContent() {
                   <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono font-bold">{appVersion}</span>
                 </h1>
                 <p className="text-[9px] text-zinc-500 font-semibold mt-1.5 uppercase tracking-wider">
-                  {language === 'ru' ? 'Оркестратор бэкапа и восстановления' : language === 'uk' ? 'Оркестратор бекапу та відновлення' : 'Backup & Restore Orchestrator'}
+                  {t('appSubtitle')}
                 </p>
               </div>
             </div>

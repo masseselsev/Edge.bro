@@ -219,14 +219,14 @@ export default function ScheduleTab() {
     </div>
   );
 
-  const getDayOfWeekName = (idx: number) => {
-    const daysEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const daysRu = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-    const daysUk = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
-    if (language === 'ru') return daysRu[idx];
-    if (language === 'uk') return daysUk[idx];
-    return daysEn[idx];
-  };
+  // Monday-first, matching the backend's day_of_week numbering rather than
+  // Intl's Sunday-first default.
+  const DAY_KEYS = [
+    'dayShortMon', 'dayShortTue', 'dayShortWed', 'dayShortThu',
+    'dayShortFri', 'dayShortSat', 'dayShortSun',
+  ];
+
+  const getDayOfWeekName = (idx: number) => t(DAY_KEYS[idx]);
 
   return (
     <div className="space-y-6">

@@ -122,8 +122,10 @@ def test_play_recap_progress_line_is_emitted_for_monitoring(monkeypatch, db_sess
     ])
 
     log = db.query(models.TaskLog).filter(models.TaskLog.id == "monitoring-progress-task").first()
-    assert "[PROGRESS] 95:" in log.log_output
-    assert "[PROGRESS] 100:" in log.log_output
+    # A translation key, not a sentence: the language is chosen when the log is
+    # rendered, not when it is written. See ansible_utils.PROGRESS_TASKS.
+    assert "[PROGRESS] 95:monitoring_show_capability" in log.log_output
+    assert "[PROGRESS] 100:monitoring_complete" in log.log_output
 
 
 def test_play_recap_progress_line_is_still_emitted_for_bootstrap(monkeypatch, db_session):
@@ -138,4 +140,61 @@ def test_play_recap_progress_line_is_still_emitted_for_bootstrap(monkeypatch, db
     ])
 
     log = db.query(models.TaskLog).filter(models.TaskLog.id == "bootstrap-progress-task").first()
-    assert "[PROGRESS] 100:" in log.log_output
+    assert "[PROGRESS] 100:bootstrap_complete" in log.log_output
+
+
+def test_prepare_progress_fires_at_all(monkeypatch, db_session):
+    """prepare.yml used to emit no progress whatsoever.
+
+    Its lookup table was referenced but never defined, so every prepare run
+    raised NameError into a bare `except Exception: pass` — a silent, permanent
+    dead progress bar with nothing in the log to say so.
+    """
+    db, session_local = db_session
+    monkeypatch.setattr("database.SessionLocal", session_local)
+    db.add(models.TaskLog(id="prepare-progress-task", task_type="PREPARE", status="RUNNING", log_output=""))
+    db.commit()
+
+    _run_playbook("prepare-progress-task", "prepare.yml", [
+        "TASK [Backup remote fstab] ****\n",
+        "ok: [1.2.3.4]\n",
+        "TASK [Update GRUB bootloader configuration] ****\n",
+        "changed: [1.2.3.4]\n",
+        "PLAY RECAP ****\n",
+    ])
+
+    log = db.query(models.TaskLog).filter(models.TaskLog.id == "prepare-progress-task").first()
+    assert "[PROGRESS] 10:prepare_backup_fstab" in log.log_output
+    assert "[PROGRESS] 90:prepare_updating_grub" in log.log_output
+    assert "[PROGRESS] 100:prepare_complete" in log.log_output
+
+
+def test_every_progress_key_has_an_english_translation():
+    """A key with no entry in translations.ts renders as the raw key.
+
+    The fallback that lets the kiosk's plain-English lines through is the same
+    fallback that would quietly show an operator "monitoring_drivetemp", so the
+    keys and the translation file have to be checked against each other.
+    """
+    import pathlib
+    import re
+
+    import ansible_utils
+
+    expected = {
+        f"{kind}_{trans_key}"
+        for kind, table in ansible_utils.PROGRESS_TASKS.items()
+        for _, trans_key in table.values()
+    } | {f"{kind}_complete" for kind in ansible_utils.PROGRESS_TASKS}
+
+    translations = (
+        pathlib.Path(__file__).resolve().parent.parent.parent
+        / "frontend" / "src" / "i18n" / "translations.ts"
+    ).read_text(encoding="utf-8")
+    defined = set(re.findall(r"^\s{4}(\w+):", translations, re.M))
+
+    missing = sorted(expected - defined)
+    assert not missing, (
+        "These progress keys are written into task logs but have no entry in "
+        f"frontend/src/i18n/translations.ts: {missing}"
+    )
