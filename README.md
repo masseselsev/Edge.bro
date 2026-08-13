@@ -123,6 +123,16 @@ Seven containers in `docker-compose.yml`:
   - *Capacity* — daily growth, runway and largest contributors. Stated as an upper bound, since retention pruning is not subtracted.
 - **Clearing failed records**: failed backup entries can be deleted individually or per node, for tidying up controlled test runs and known outages. Successful archives are refused — removing restorable data belongs to retention or the per-node purge. Any checkpoint the failed run left behind goes with the record, and every deletion is written to the audit log.
 
+### Fleet Health Monitoring (SMART & Thermal)
+- **SMART scoring**: `min()` over independently-scored sub-scores (wear, spare capacity, integrity, error counters, thermal, self-test) rather than one opaque number — the UI always shows which sub-score is driving the grade. Hard overrides (failed health check, pending/uncorrectable sectors, low spare) cap the score regardless of the rest.
+- **Endurance projection**: trailing write-rate fit against the drive's rated TBW, reported as a projected replacement date rather than a raw percentage, with the derivation (current wear, rate/day, days observed) shown alongside — and an honest reason in place of a date when the fit isn't reliable yet.
+- **Thermal interface health**: estimates CPU-to-heatsink thermal resistance (θ) passively from the load each scheduled backup already generates, using an instrumental-variable fit to correct for sensor noise. No synthetic load test is run against the fleet.
+  - **Cohort comparison** flags a node whose θ stands out from peers on the same CPU model.
+  - **Self-baseline drift** flags a node whose own θ has moved against its own history, independent of peers.
+- **Health badges** on the DISK DRIVE and CPU cards, shaded continuously from green to red. Click through for the full latest reading plus a history graph with selectable metrics and depth, saved per user.
+- **Thresholds** (SMART temperature, monitoring interval, monitoring on/off) are global with per-node override — same inheritance chain as the backup rate limit.
+- **Lightweight collector**: POSIX-sh script + systemd timer, sampling sysfs once a minute at idle I/O priority. Buffers locally; the orchestrator pulls the buffer over the existing SSH channel — no listening port, no new credentials.
+
 ### Bare-Metal Restore (Flasher)
 - Connect target drive via USB-SATA/NVMe adapter → select node + snapshot → flash.
 - **Local Flashing Warning**: Since the orchestrator supports flashing drives directly from the server, all drives other than the server's own system (OS) partition will be visible in the Flasher dropdown. Operators must choose the target disk **EXTREMELY CAREFULLY**. Drives connected via USB will have a special badge/label in the UI.
@@ -253,7 +263,10 @@ Replace `152d:0581` with your adapter's Vendor:Product ID from `lsusb`.
 
 ## What the Orchestrator Changes on Target Nodes
 
-No persistent agents are installed. All actions are SSH-based, one-time.
+No persistent *network* agent is installed — every action is initiated by the
+orchestrator over SSH. The one local exception is the optional monitoring
+collector below: a systemd timer that only writes to a local file and never
+listens or calls out.
 
 ### Bootstrap (initial provisioning)
 | What | Details |
@@ -277,6 +290,19 @@ No persistent agents are installed. All actions are SSH-based, one-time.
 | Files modified on node | **None** — `borg create` is read-only |
 | Processes | Temporary `borg create` + `ssh` tunnel, both terminate on completion |
 | CPU/IO control | Optional `systemd-run --scope -p CPUQuota=... -p IOSchedulingClass=idle` |
+
+### Monitoring collector (optional)
+| What | Details |
+|------|---------|
+| Script | `/usr/local/sbin/edge-bro-collect.sh` — POSIX sh, sysfs-only reads, no smartctl spin-up |
+| Schedule | systemd timer, every 60 s, `Nice=19` + `IOSchedulingClass=idle` |
+| Buffer | `/var/log/edge/edge-bro/telemetry.jsonl`, capped at 16 MB, on a partition already excluded from backups |
+| Network | None on the node side — no listening port, no outbound calls. The orchestrator pulls the buffer over the existing `root@node` SSH channel. |
+
+Installed automatically after every successful Bootstrap (initial provision
+and re-provision alike), via `backend/playbooks/deploy_monitoring.yml`. A
+failure here is logged but never fails the bootstrap itself — a node that
+already backs up correctly should not be marked broken over telemetry.
 
 ---
 

@@ -532,3 +532,64 @@ If you already worked around it by hand, note that volumes are now named `edge-b
 docker run --rm -v backup-edge-restore_pg-data:/from -v edge-bro_pg-data:/to alpine cp -a /from/. /to/
 ```
 
+## 11. Fleet Health Monitoring (SMART & Thermal)
+
+Passive drive-health scoring and CPU thermal-interface tracking, shown as
+badges on the DISK DRIVE and CPU cards of each node.
+
+### 11.1 Enabling collection on a node
+
+The collector installs itself automatically as the last step of every
+successful **Bootstrap** — both the first provision and any later
+re-provision. Nothing to trigger by hand for a node that goes through
+Bootstrap normally. A failed install is logged as a warning on the bootstrap
+task but does not fail the bootstrap itself — a node that already backs up
+correctly is not marked broken over telemetry.
+
+Installation runs `backend/playbooks/deploy_monitoring.yml`, which puts a
+POSIX-sh collector and a systemd timer (`edge-bro-collect.timer`, every 60 s)
+on the node, sampling temperatures, RAPL energy counters and disk I/O from
+sysfs only — no `smartctl` spin-up, idle I/O priority, nothing listens on the
+network. Samples buffer to `/var/log/edge/edge-bro/telemetry.jsonl` (capped at
+16 MB, already excluded from backups) until the orchestrator pulls them over
+the existing SSH channel. The task log reports, per node, whether RAPL,
+`drivetemp` and `smartctl` are actually available — a node without RAPL still
+gets SMART scoring but no thermal reading.
+
+To (re)install the collector on a node **without** running a full Bootstrap
+— e.g. a node that was provisioned before monitoring existed — run the same
+playbook directly:
+
+```bash
+docker compose exec worker ansible-playbook playbooks/deploy_monitoring.yml \
+  -i "<node_ip>, ansible_user=root, ansible_ssh_private_key_file=/root/.ssh/id_ed25519"
+```
+
+### 11.2 Reading the badges
+
+- **SMART badge** — a 0–100 score shaded green to red. Click it for the full
+  latest reading (per-attribute sub-scores, wear/endurance projection with its
+  derivation, access latency) and a history graph with selectable metrics.
+- **CPU badge** — thermal interface status: `OK` / `WATCH` / `ALERT` /
+  `INSUFFICIENT_DATA`. Shows the estimated thermal resistance (θ, °C/W) rather
+  than a percentage — a thermal interface is judged as like its peers or not,
+  not scored on an invented scale. `INSUFFICIENT_DATA` is the honest state
+  when there is not yet enough backup-load history to fit a value, and the
+  tooltip says why (no fit yet vs. windows rejected for insufficient load).
+- A node is judged two ways: against **peers on the same CPU model**
+  (a lone outlier in its cohort) and against **its own history**
+  (drift from its own baseline). Either can independently flag ALERT/WATCH.
+
+### 11.3 Thresholds
+
+`Settings` carries global defaults for SMART temperature warning/critical and
+the monitoring interval; each is overridable per node the same way the backup
+rate limit is, for units that legitimately run hotter (e.g. full sun).
+Monitoring can be disabled per node, e.g. during maintenance.
+
+### 11.4 Nodes provisioned before monitoring existed
+
+Bootstrap-time installation only fires on a Bootstrap run. A node that was
+already `READY` before the collector shipped will not pick it up on its own —
+re-run Bootstrap on it, or apply the playbook directly as shown in §11.1.
+
