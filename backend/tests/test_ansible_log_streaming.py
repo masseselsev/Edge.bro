@@ -170,7 +170,7 @@ def test_prepare_progress_fires_at_all(monkeypatch, db_session):
 
 
 def test_every_progress_key_has_an_english_translation():
-    """A key with no entry in translations.ts renders as the raw key.
+    """A key with no entry in the English dictionary renders as the raw key.
 
     The fallback that lets the kiosk's plain-English lines through is the same
     fallback that would quietly show an operator "monitoring_drivetemp", so the
@@ -189,12 +189,13 @@ def test_every_progress_key_has_an_english_translation():
 
     translations = (
         pathlib.Path(__file__).resolve().parent.parent.parent
-        / "frontend" / "src" / "i18n" / "translations.ts"
+        / "frontend" / "src" / "i18n" / "en.ts"
     ).read_text(encoding="utf-8")
-    defined = set(re.findall(r"^\s{4}(\w+):", translations, re.M))
+    # Two-space indent since the dictionaries became top-level consts.
+    defined = set(re.findall(r"^\s{2}(\w+):", translations, re.M))
 
     missing = sorted(expected - defined)
     assert not missing, (
         "These progress keys are written into task logs but have no entry in "
-        f"frontend/src/i18n/translations.ts: {missing}"
+        f"frontend/src/i18n/en.ts: {missing}"
     )

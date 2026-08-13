@@ -30,23 +30,26 @@ interface NodeRowProps {
   node: Node;
   depth?: number;
   bulkDeleteMode: boolean;
-  selectedNodeIds: Record<number, boolean>;
+  /** Just this row's state. Passing the whole selection map would change
+   *  identity on every click and defeat the memo below. */
+  isSelected: boolean;
   onSelectNode: (nodeId: number, checked: boolean) => void;
   onRunPrepare: (nodeId: number, hostname: string) => void;
   onShowProvision: (node: Node) => void;
   onInstantProvision: (node: Node) => void;
   onShowBackup: (node: Node) => void;
   onDeleteNode: (nodeId: number, hostname: string) => void;
-  onShowDetails: () => void;
+  /** Takes the id so FleetTab can hold one stable callback for every row. */
+  onShowDetails: (nodeId: number) => void;
   groupName: string | null;
   timezone?: string;
 }
 
-export function NodeRow({
+function NodeRowComponent({
   node,
   depth = 0,
   bulkDeleteMode,
-  selectedNodeIds,
+  isSelected,
   onSelectNode,
   onRunPrepare,
   onShowProvision,
@@ -122,7 +125,7 @@ export function NodeRow({
       RESTORED: {
         bg: "bg-indigo-500/10 hover:bg-indigo-500/20", text: "text-indigo-400", border: "border-indigo-500/30",
         label: "RESTORED", icon: <CheckCircle size={14} />, title: t('needsLicenseUpdate') || "Needs License Update",
-        onClick: () => onShowDetails()
+        onClick: () => onShowDetails(node.id)
       },
       NEEDS_FIX: {
         bg: "bg-amber-500/10 hover:bg-amber-500/20", text: "text-amber-400", border: "border-amber-500/20",
@@ -160,7 +163,7 @@ export function NodeRow({
         <td className="px-4 py-2.5 w-10 text-center">
           <input
             type="checkbox"
-            checked={!!selectedNodeIds[node.id]}
+            checked={isSelected}
             onChange={(e) => onSelectNode(node.id, e.target.checked)}
             className="rounded border-zinc-800 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
           />
@@ -208,7 +211,7 @@ export function NodeRow({
       </td>
       <td className="px-4 py-2.5 text-right flex flex-wrap items-center justify-end gap-2 text-zinc-300 font-sans">
         <button
-          onClick={onShowDetails}
+          onClick={() => onShowDetails(node.id)}
           className="px-2.5 py-1.5 text-xs font-semibold bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700/80 rounded hover:text-indigo-400 transition-colors"
         >
           {t('nodeDetails')}
@@ -240,3 +243,17 @@ export function NodeRow({
     </tr>
   );
 }
+
+/**
+ * Memoised because FleetTab re-renders every five seconds and a fleet is
+ * thousands of rows.
+ *
+ * The poll returns the same data almost every time, so without this each tick
+ * rebuilds and re-reconciles the entire table for nothing. For the memo to
+ * hold, every prop has to be stable across renders that changed nothing —
+ * which is why this component takes `isSelected` rather than the selection
+ * map, and an `onShowDetails` that takes an id rather than a closure baked per
+ * row. Reintroducing either would leave React.memo in place and doing nothing,
+ * which is worse than not having it: it reads as solved.
+ */
+export const NodeRow = React.memo(NodeRowComponent);

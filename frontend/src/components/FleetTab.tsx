@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Settings as Gear, ShieldAlert, CheckCircle, RefreshCw, AlertTriangle, Trash2, Search, Folder, FolderOpen, ChevronRight, ChevronDown, Cpu, Square, CheckSquare, ArrowUp, ArrowDown } from 'lucide-react';
 import { AddNodeModal, ProvisionNodeModal, BackupCommentModal } from './NodeModals';
 import { NodeRow } from './NodeRow';
@@ -102,7 +102,13 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
   const [selectedNodeIds, setSelectedNodeIds] = useState<Record<number, boolean>>({});
 
-  const fetchNodes = async () => {
+  // Typing is debounced before it reaches the network. `searchQuery` is a
+  // dependency of the fetch effect below, so without this every keystroke tore
+  // down the poll and issued a fresh /api/nodes — an endpoint that does real
+  // work per request.
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+
+  const fetchNodes = useCallback(async () => {
     try {
       const qParams = new URLSearchParams({
         page: String(page),
@@ -133,23 +139,21 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, limit, sortKey, sortOrder, debouncedSearch]);
 
-  // Typing is debounced before it reaches the network. `searchQuery` is a
-  // dependency of the fetch effect below, so without this every keystroke tore
-  // down the poll and issued a fresh /api/nodes — an endpoint that does real
-  // work per request.
-  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
     return () => clearTimeout(t);
   }, [searchQuery]);
 
+  // fetchNodes is memoised on exactly the query inputs this effect used to
+  // list, so depending on it is both correct and equivalent — and it cannot
+  // drift out of step with the callback the way a duplicated list can.
   useEffect(() => {
     fetchNodes();
     const interval = setInterval(fetchNodes, 5000);
     return () => clearInterval(interval);
-  }, [page, limit, debouncedSearch, sortKey, sortOrder]);
+  }, [fetchNodes]);
 
   const handleResponse = async (res: Response) => {
     const contentType = res.headers.get("content-type");
@@ -211,7 +215,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     }
   };
 
-  const handleInstantProvision = async (node: Node) => {
+  const handleInstantProvision = useCallback(async (node: Node) => {
     try {
       const sRes = await fetch('/api/settings');
       if (!sRes.ok) throw new Error('Failed to fetch settings');
@@ -248,9 +252,9 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     } finally {
       setProvSubmitting(false);
     }
-  };
+  }, []);
 
-  const runPrepare = async (nodeId: number, name: string) => {
+  const runPrepare = useCallback(async (nodeId: number, name: string) => {
     try {
       const res = await fetch(`/api/nodes/${nodeId}/prepare`, { method: 'POST' });
       const data = await handleResponse(res);
@@ -266,7 +270,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
       console.error(e);
       alert(`Error: ${e.message}`);
     }
-  };
+  }, []);
 
   const runBackup = async (comment: string) => {
     if (!showBackupModal) return;
@@ -324,7 +328,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     }
   };
 
-  const handleDeleteNode = async (nodeId: number, name: string) => {
+  const handleDeleteNode = useCallback(async (nodeId: number, name: string) => {
     if (!window.confirm(t('deleteNodeConfirm'))) {
       return;
     }
@@ -338,44 +342,58 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     } catch (e: any) {
       alert(e.message);
     }
-  };
+  }, [t, fetchNodes]);
 
-  const handleSelectNode = (nodeId: number, checked: boolean) => {
+  // Every callback below is stable across renders so that React.memo on
+  // NodeRow can actually skip work. A closure rebuilt each render looks like a
+  // changed prop, and the memo silently does nothing.
+  const handleSelectNode = useCallback((nodeId: number, checked: boolean) => {
     setSelectedNodeIds(prev => ({ ...prev, [nodeId]: checked }));
-  };
+  }, []);
 
-  const toggleGroup = (groupKey: string) => {
+  const toggleGroup = useCallback((groupKey: string) => {
     setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
-  };
+  }, []);
 
-  const renderNodeRow = (node: Node, depth = 0) => {
-    const group = groups.find(g => g.id === node.group_id);
-    const groupName = group ? group.name : null;
-    return (
-      <NodeRow
-        key={node.id}
-        node={node}
-        depth={depth}
-        bulkDeleteMode={bulkDeleteMode}
-        selectedNodeIds={selectedNodeIds}
-        onSelectNode={handleSelectNode}
-        onRunPrepare={runPrepare}
-        onShowProvision={setShowProvisionModal}
-        onInstantProvision={handleInstantProvision}
-        onShowBackup={(node) => {
-          if (node.is_backup_running && node.backup_task_id) {
-            onViewLogs(node.backup_task_id, `Backing up ${node.hostname}`);
-          } else {
-            setShowBackupModal(node);
-          }
-        }}
-        onDeleteNode={handleDeleteNode}
-        onShowDetails={() => setSelectedNodeDetails(node.id)}
-        groupName={groupName}
-        timezone={timezone}
-      />
-    );
-  };
+  const handleShowDetails = useCallback((nodeId: number) => setSelectedNodeDetails(nodeId), []);
+
+  const handleShowBackup = useCallback((node: Node) => {
+    // A backup already in flight has a log to watch; otherwise ask for a
+    // comment and start one.
+    if (node.is_backup_running && node.backup_task_id) {
+      onViewLogs(node.backup_task_id, `Backing up ${node.hostname}`);
+    } else {
+      setShowBackupModal(node);
+    }
+  }, [onViewLogs]);
+
+  // Was `groups.find(...)` inside the row renderer: O(rows x groups) on every
+  // one of the twelve renders a minute the 5s poll causes. A fleet of 2000
+  // nodes across 50 groups made that 100,000 comparisons a tick to look up a
+  // name that had not changed.
+  const groupNamesById = useMemo(
+    () => new Map(groups.map(g => [g.id, g.name])),
+    [groups],
+  );
+
+  const renderNodeRow = (node: Node, depth = 0) => (
+    <NodeRow
+      key={node.id}
+      node={node}
+      depth={depth}
+      bulkDeleteMode={bulkDeleteMode}
+      isSelected={!!selectedNodeIds[node.id]}
+      onSelectNode={handleSelectNode}
+      onRunPrepare={runPrepare}
+      onShowProvision={setShowProvisionModal}
+      onInstantProvision={handleInstantProvision}
+      onShowBackup={handleShowBackup}
+      onDeleteNode={handleDeleteNode}
+      onShowDetails={handleShowDetails}
+      groupName={node.group_id === null ? null : groupNamesById.get(node.group_id) ?? null}
+      timezone={timezone}
+    />
+  );
 
   const renderGroupedContent = () => {
     if (grouping === 'flat') {

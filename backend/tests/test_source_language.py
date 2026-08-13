@@ -6,7 +6,7 @@ Two different rules that look like one:
   exceptions. Someone debugging a provision at 2am should not need a second
   language to read the code.
 * **Text a user sees is never written inline.** It lives in
-  `frontend/src/i18n/translations.ts` under a key, so all three languages
+  the `frontend/src/i18n/` dictionaries under a key, so all three languages
   change together and none of them can silently drift.
 
 Enforced as a Cyrillic sweep because that is what the violations looked like:
@@ -29,11 +29,15 @@ EXCLUDED_PARTS = {"venv", "node_modules", "__pycache__", "dist", "build", ".mypy
 
 #: The two places non-English text is correct.
 #:
-#: `translations.ts` is the point of the whole exercise. `LanguageSelector`
+#: The i18n dictionaries are the point of the whole exercise -- one file per
+#: language since the bundle split, and en.ts is listed too so a stray
+#: untranslated string there is not excused. `LanguageSelector`
 #: lists each language's endonym — a picker that said "Russian" in English to
 #: someone who cannot read English would be useless.
 SANCTIONED = {
-    "frontend/src/i18n/translations.ts",
+    "frontend/src/i18n/en.ts",
+    "frontend/src/i18n/ru.ts",
+    "frontend/src/i18n/uk.ts",
     "frontend/src/components/LanguageSelector.tsx",
 }
 
@@ -84,6 +88,6 @@ def test_no_source_file_contains_non_english_text():
     assert not offenders, (
         "Non-English text outside the sanctioned files. If it is a comment, "
         "write it in English. If a user reads it, add a key to "
-        "frontend/src/i18n/translations.ts and render it with t():\n  "
+        "a frontend/src/i18n/ dictionary and render it with t():\n  "
         + "\n  ".join(offenders)
     )

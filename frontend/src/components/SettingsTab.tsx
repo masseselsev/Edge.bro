@@ -3,7 +3,7 @@ import { Save, Settings as Gear, CheckCircle, Trash2, AlertTriangle } from 'luci
 import { SearchableSelect, DropdownTextInput } from './SearchableSelect';
 import type { Option } from './SearchableSelect';
 import { useTranslation } from '../context/TranslationContext';
-import type { Language } from '../i18n/translations';
+import type { Language } from '../i18n';
 import AdminsTab from './AdminsTab';
 import AuditLogsTab from './AuditLogsTab';
 import SshKeysTab from './SshKeysTab';

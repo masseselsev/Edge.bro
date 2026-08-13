@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ShieldAlert, RefreshCw, Wifi, Globe, Key, Settings, X, Globe2, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
-import jsQR from 'jsqr';
 
 interface NetworkSettingsModalProps {
   onClose: () => void;
@@ -70,6 +69,11 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null, sh
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  // jsqr is ~26KB and only the kiosk's VPN QR scanner uses it, so it is
+  // imported when the camera opens rather than shipped in the main bundle.
+  // Held in a ref because scanTick runs once per animation frame and must not
+  // await anything.
+  const jsQrRef = useRef<typeof import('jsqr').default | null>(null);
   
   // Wired Form States
   const [wiredMode, setWiredMode] = useState<'auto' | 'manual'>(initialStatus?.wired?.mode || 'auto');
@@ -160,6 +164,9 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null, sh
     setIsScanningQr(true);
     setShowManualInput(false);
     try {
+      if (!jsQrRef.current) {
+        jsQrRef.current = (await import('jsqr')).default;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       streamRef.current = stream;
       if (videoRef.current) {
@@ -187,7 +194,7 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null, sh
   };
 
   const scanTick = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current || !jsQrRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (video.readyState === video.HAVE_ENOUGH_DATA) {
@@ -197,7 +204,7 @@ export default function NetworkSettingsModal({ onClose, initialStatus = null, sh
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        const code = jsQrRef.current(imageData.data, imageData.width, imageData.height, {
           inversionAttempts: "dontInvert",
         });
         if (code) {

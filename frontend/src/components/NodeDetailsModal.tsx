@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Play, Pause, Edit, Cpu, HardDrive, Cpu as MemIcon, Info, RefreshCw, Save, Database, History, Terminal, Calendar, Upload, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
-import type { Language } from '../i18n/translations';
+import type { Language } from '../i18n';
 import NodeConsoleLogs from './NodeConsoleLogs';
 import NodeBackupHistory from './NodeBackupHistory';
 import { SearchableSelect } from './SearchableSelect';
