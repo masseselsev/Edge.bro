@@ -12,6 +12,7 @@ import { SmartBadge, ThermalBadge } from './NodeHealthBadges';
 import type { NodeHealth } from './NodeHealthBadges';
 import NodeHealthModal from './NodeHealthModal';
 import type { NatChoice } from './BackupGroupModal';
+import { kibToMbit, mbitToKib, parseMbitInput, formatMbit } from './rateLimit';
 
 interface Node {
   id: number;
@@ -129,7 +130,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           setNotes(found.notes || '');
           setGroupId(found.group_id || 0);
           setNatChoice(natChoiceFrom(found.orchestrator_behind_nat));
-          setRateLimit(found.upload_rate_limit == null ? '' : String(found.upload_rate_limit));
+          setRateLimit(found.upload_rate_limit == null ? '' : formatMbit(kibToMbit(found.upload_rate_limit)));
           if (found.status === 'RESTORED') {
               setSentinelExpanded(true);
               setTimeout(() => {
@@ -281,10 +282,16 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
   const handleRateLimit = async () => {
     const trimmed = rateLimit.trim();
-    const parsed = trimmed === '' ? null : Number(trimmed);
-    if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0)) {
-      setRateLimit(node?.upload_rate_limit == null ? '' : String(node.upload_rate_limit));
-      return;
+    let parsed: number | null;
+    if (trimmed === '') {
+      parsed = null;
+    } else {
+      const mbit = parseMbitInput(trimmed);
+      if (mbit === null) {
+        setRateLimit(node?.upload_rate_limit == null ? '' : formatMbit(kibToMbit(node.upload_rate_limit)));
+        return;
+      }
+      parsed = mbitToKib(mbit);
     }
     if ((node?.upload_rate_limit ?? null) === parsed) return;
     try {
@@ -579,8 +586,8 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                       className="block text-xs font-semibold text-zinc-400 mb-1.5"
                     />
                     <input
-                      type="number"
-                      min={0}
+                      type="text"
+                      inputMode="decimal"
                       value={rateLimit}
                       onChange={(e) => setRateLimit(e.target.value)}
                       onBlur={handleRateLimit}
@@ -590,7 +597,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                         // the NAT selector above does.
                         const inherited = groups.find(g => g.id === groupId)?.upload_rate_limit;
                         return inherited
-                          ? `${t('rateLimitInherit')} (${inherited} KiB/s)`
+                          ? `${t('rateLimitInherit')} (${formatMbit(kibToMbit(inherited))} Mbit/s)`
                           : `${t('rateLimitInherit')} (${t('rateLimitUnlimited')})`;
                       })()}
                       className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-indigo-500/50"

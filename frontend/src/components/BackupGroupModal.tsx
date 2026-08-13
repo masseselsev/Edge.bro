@@ -5,6 +5,7 @@ import { useTranslation } from '../context/TranslationContext';
 import { SearchableSelect } from './SearchableSelect';
 import type { Option } from './SearchableSelect';
 import { InfoLabel } from './InfoLabel';
+import { kibToMbit, mbitToKib, parseMbitInput, formatMbit } from './rateLimit';
 
 export interface BackupGroup {
   id: number;
@@ -72,7 +73,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
   const [policyWithinValue, setPolicyWithinValue] = useState(3);
   const [policyWithinUnit, setPolicyWithinUnit] = useState<'d' | 'w' | 'm' | 'y'>('m');
   const [natChoice, setNatChoice] = useState<NatChoice>('inherit');
-  const [uploadRateLimit, setUploadRateLimit] = useState<number | ''>('');
+  const [uploadRateLimit, setUploadRateLimit] = useState<string>('');
   const [compression, setCompression] = useState<string>('');
   const [checkpointInterval, setCheckpointInterval] = useState<number | ''>('');
   const [cpuQuota, setCpuQuota] = useState<number | ''>('');
@@ -185,7 +186,9 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
       }
 
       setNatChoice(natChoiceFrom(editingGroup.orchestrator_behind_nat));
-      setUploadRateLimit(editingGroup.upload_rate_limit ?? '');
+      setUploadRateLimit(
+        editingGroup.upload_rate_limit != null ? formatMbit(kibToMbit(editingGroup.upload_rate_limit)) : ''
+      );
       setCompression(editingGroup.compression ?? '');
       setCheckpointInterval(editingGroup.checkpoint_interval ?? '');
       setCpuQuota(editingGroup.cpu_quota ?? '');
@@ -219,7 +222,10 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
+    const parsedRateLimitMbit = parseMbitInput(uploadRateLimit);
+    const uploadRateLimitKib = parsedRateLimitMbit === null ? null : mbitToKib(parsedRateLimitMbit);
+
     const payload = {
       name,
       interval,
@@ -240,7 +246,7 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
         within_unit: policyWithinUnit
       } : null,
       orchestrator_behind_nat: natChoiceToValue(natChoice),
-      upload_rate_limit: uploadRateLimit === '' ? null : Number(uploadRateLimit),
+      upload_rate_limit: uploadRateLimitKib,
       compression: compression === '' ? null : compression,
       checkpoint_interval: checkpointInterval === '' ? null : Number(checkpointInterval),
       cpu_quota: cpuQuota === '' ? null : Number(cpuQuota)
@@ -566,12 +572,12 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                         {t('uploadRateLimit')}
                       </label>
                       <input
-                        type="number"
-                        min={0}
+                        type="text"
+                        inputMode="decimal"
                         value={uploadRateLimit}
-                        onChange={(e) => setUploadRateLimit(e.target.value === '' ? '' : Number(e.target.value))}
+                        onChange={(e) => setUploadRateLimit(e.target.value)}
                         className="w-full px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-xs focus:outline-none focus:border-indigo-500 font-mono"
-                        placeholder="e.g. 250"
+                        placeholder="e.g. 2.5"
                       />
                       <p className="text-[9px] text-zinc-500 mt-1 leading-normal">
                         {t('uploadRateLimitHint')}
