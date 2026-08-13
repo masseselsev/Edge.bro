@@ -2,19 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '../context/TranslationContext';
 import { api } from '../api';
-
-interface Node {
-  id: number;
-  hostname: string;
-  ip_address: string;
-  ssh_port: number;
-  status: string;
-  is_backup_running?: boolean;
-  backup_progress?: number;
-  backup_task_id?: string | null;
-  last_ping_status?: boolean | null;
-  last_available_at?: string | null;
-}
+import type { Node } from '../types';
 
 interface AddNodeModalProps {
   onClose: () => void;

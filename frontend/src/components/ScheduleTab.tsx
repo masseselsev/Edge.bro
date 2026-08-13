@@ -4,18 +4,7 @@ import { useTranslation } from '../context/TranslationContext';
 import BackupGroupModal from './BackupGroupModal';
 import type { BackupGroup } from './BackupGroupModal';
 import { InfoLabel } from './InfoLabel';
-
-interface Node {
-  id: number;
-  hostname: string;
-  group_id: number | null;
-  backup_paused: boolean;
-  is_backup_running?: boolean;
-  backup_progress?: number;
-  backup_task_id?: string | null;
-  last_ping_status?: boolean | null;
-  last_available_at?: string | null;
-}
+import type { Node } from '../types';
 
 interface GroupWindowFit {
   group_id: number;

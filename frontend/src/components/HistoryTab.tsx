@@ -4,33 +4,10 @@ import { useTranslation } from '../context/TranslationContext';
 import ArchiveFilesModal from './ArchiveFilesModal';
 import ArchiveStatsPanel from './ArchiveStatsPanel';
 
-interface BackupHistory {
-  id: number;
-  node_id: number;
-  archive_name: string;
-  timestamp: string;
-  original_size: number;
-  deduplicated_size: number;
-  status: string;
-  comment: string | null;
-  avg_speed_mbps?: number | null;
-  max_speed_mbps?: number | null;
-}
-
-interface Node {
-  id: number;
-  hostname: string;
-  ip_address: string;
-  is_backup_running?: boolean;
-  backup_progress?: number;
-  backup_task_id?: string | null;
-  last_ping_status?: boolean | null;
-  last_available_at?: string | null;
-}
-
 import { formatDate } from './dateUtils';
 import NodeDetailsModal from './NodeDetailsModal';
 import { formatBytes } from './formatBytes';
+import type { BackupHistory, Node } from '../types';
 
 interface HistoryTabProps {
   onViewLogs?: (taskId: string, title: string) => void;

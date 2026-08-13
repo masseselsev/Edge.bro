@@ -2,29 +2,7 @@ import React from 'react';
 import { Cpu, CheckCircle, AlertTriangle, Settings as Gear, ShieldAlert, Trash2 } from 'lucide-react';
 import { formatDate } from './dateUtils';
 import { useTranslation } from '../context/TranslationContext';
-
-export interface Node {
-  id: number;
-  hostname: string;
-  ip_address: string;
-  ssh_port: number;
-  status: string;
-  last_backup: string | null;
-  disk_type: string;
-  network_iface: string | null;
-  efi_uuid: string | null;
-  os_version: string | null;
-  next_retry_at: string | null;
-  group_id: number | null;
-  backup_paused: boolean;
-  backup_today: boolean;
-  missed_window: boolean;
-  is_backup_running?: boolean;
-  backup_progress?: number;
-  backup_task_id?: string | null;
-  last_ping_status?: boolean | null;
-  last_available_at?: string | null;
-}
+import type { Node } from '../types';
 
 interface NodeRowProps {
   node: Node;

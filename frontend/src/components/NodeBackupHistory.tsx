@@ -3,16 +3,7 @@ import { History, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import ArchiveFilesModal from './ArchiveFilesModal';
 import { parseServerDate } from './dateUtils';
 import { formatBytes } from './formatBytes';
-
-interface BackupHistory {
-  id: number;
-  archive_name: string;
-  timestamp: string;
-  original_size: number;
-  deduplicated_size: number;
-  status: string;
-  comment: string | null;
-}
+import type { BackupHistory } from '../types';
 
 interface NodeBackupHistoryProps {
   history: BackupHistory[];

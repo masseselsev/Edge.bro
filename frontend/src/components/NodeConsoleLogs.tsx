@@ -1,14 +1,7 @@
 import React from 'react';
 import { SearchableSelect } from './SearchableSelect';
 import { parseServerDate } from './dateUtils';
-
-interface TaskLog {
-  id: string;
-  task_type: string;
-  status: string;
-  created_at: string;
-  log_output: string;
-}
+import type { TaskLog } from '../types';
 
 interface NodeConsoleLogsProps {
   taskLogs: TaskLog[];

@@ -2,14 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Terminal, Search, CheckCircle2, AlertCircle, RefreshCw, Eye, ShieldAlert, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 
-interface TaskLog {
-  id: string;
-  task_type: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
-}
-
 interface SystemLog {
   id: number;
   level: string;
@@ -18,6 +10,7 @@ interface SystemLog {
 }
 
 import { formatDate } from './dateUtils';
+import type { TaskLog } from '../types';
 
 interface LogsTabProps {
   onViewLogs: (taskId: string, title: string) => void;

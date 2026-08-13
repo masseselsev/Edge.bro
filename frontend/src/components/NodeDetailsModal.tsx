@@ -13,62 +13,13 @@ import type { NodeHealth } from './NodeHealthBadges';
 import NodeHealthModal from './NodeHealthModal';
 import type { NatChoice } from './BackupGroupModal';
 import { kibToMbit, mbitToKib, parseMbitInput, formatMbit } from './rateLimit';
-
-interface Node {
-  id: number;
-  hostname: string;
-  ip_address: string;
-  ssh_port: number;
-  status: string;
-  last_backup: string | null;
-  disk_type: string;
-  network_iface: string | null;
-  efi_uuid: string | null;
-  partition_layout: any[] | null;
-  os_version: string | null;
-  group_id: number | null;
-  backup_paused: boolean;
-  backup_today: boolean;
-  missed_window: boolean;
-  cpu_info: string | null;
-  memory_info: string | null;
-  edge_version: string | null;
-  notes: string | null;
-  hasp_runtime_version: string | null;
-  is_backup_running?: boolean;
-  backup_progress?: number;
-  backup_task_id?: string | null;
-  last_ping_status?: boolean | null;
-  last_available_at?: string | null;
-  // null = inherit from the node's group, then the global setting
-  orchestrator_behind_nat?: boolean | null;
-  // KiB/s. null = inherit the group limit, then unlimited.
-  upload_rate_limit?: number | null;
-}
-
-interface BackupHistory {
-  id: number;
-  archive_name: string;
-  timestamp: string;
-  original_size: number;
-  deduplicated_size: number;
-  status: string;
-  comment: string | null;
-}
+import type { BackupHistory, Node, TaskLog } from '../types';
 
 interface BackupGroup {
   id: number;
   name: string;
   orchestrator_behind_nat?: boolean | null;
   upload_rate_limit?: number | null;
-}
-
-interface TaskLog {
-  id: string;
-  task_type: string;
-  status: string;
-  created_at: string;
-  log_output: string;
 }
 
 interface NodeDetailsModalProps {
