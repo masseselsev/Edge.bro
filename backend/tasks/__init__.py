@@ -64,6 +64,12 @@ celery_app.conf.beat_schedule = {
         'task': 'tasks.db_task_log_prune_task',
         'schedule': crontab(hour=3, minute=30), # Run at 3:30 AM daily
     },
+    'prune-log-tables-task': {
+        'task': 'tasks.prune_log_tables_task',
+        # system_logs and audit_logs had no retention at all; on a large fleet
+        # they outgrow every other table combined.
+        'schedule': crontab(hour=3, minute=50),
+    },
     'ssh-key-audit-task': {
         'task': 'tasks.ssh_key_audit_task',
         'schedule': crontab(hour=3, minute=45), # Run at 3:45 AM daily
@@ -79,6 +85,13 @@ celery_app.conf.beat_schedule = {
     'monitoring-retention-task': {
         'task': 'tasks.monitoring_retention_task',
         'schedule': crontab(hour=4, minute=15), # Run at 4:15 AM daily
+    },
+    'backfill-error-categories-task': {
+        'task': 'tasks.backfill_error_categories_task',
+        # Classifies failures recorded before backups categorised themselves.
+        # Used to run inside GET /api/stats/insights, making a read endpoint
+        # write. Daily is ample: it only ever touches historical rows.
+        'schedule': crontab(hour=4, minute=45),
     },
     'evaluate-alerts-task': {
         'task': 'tasks.evaluate_alerts_task',
@@ -216,7 +229,12 @@ from tasks.bootstrap import run_bootstrap_task, auto_retry_bootstrap_task, revok
 from tasks.ssh_audit import ssh_key_audit_task
 from tasks.ping import ping_all_nodes_task, async_ping_ip
 from tasks.scheduler import scheduler_tick
-from tasks.cleanup import docker_system_cleanup_task, db_task_log_prune_task
+from tasks.cleanup import (
+    docker_system_cleanup_task,
+    db_task_log_prune_task,
+    backfill_error_categories_task,
+    prune_log_tables_task,
+)
 from tasks.monitoring import (
     harvest_node_task,
     monitoring_retention_task,

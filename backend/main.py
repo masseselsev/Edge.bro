@@ -256,7 +256,15 @@ app.include_router(tasks_router.router)
 app.include_router(restore_router.router)
 app.include_router(stats_router.router)
 app.include_router(iso_router.router, prefix="/api/iso", tags=["Client ISO"])
-app.include_router(network_router.router, prefix="/api")
+# The network router carries no auth of its own because the kiosk payload
+# client mounts the same module without a web session. On the orchestrator it
+# reconfigures the host's WiFi, wired interfaces and VPN, so the guard is
+# applied here, at the mount point.
+app.include_router(
+    network_router.router,
+    prefix="/api",
+    dependencies=[Depends(users_router.require_admin)],
+)
 app.include_router(groups_router.router)
 app.include_router(kiosks_router.router)
 app.include_router(users_router.router)

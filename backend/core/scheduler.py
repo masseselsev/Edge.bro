@@ -6,6 +6,7 @@ from typing import Optional
 import logging
 import redis
 import time
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 import models
 from backup_tasks import run_backup_task
@@ -28,15 +29,40 @@ from core.schedule_slots import (  # noqa: F401  (re-exported for existing impor
 )
 
 
-def is_backup_lock_live(node_id: int) -> bool:
+def running_keys_for(node_ids) -> dict:
+    """The `backup_running:` value for many nodes, in one round trip.
+
+    The scheduler tick asks this question about every node it is considering,
+    several times over, and used to issue a Redis GET each time — thousands of
+    round trips per minute on a large fleet.
+    """
+    node_ids = list(node_ids)
+    if not node_ids:
+        return {}
+    keys = [f"backup_running:{n}" for n in node_ids]
+    try:
+        values = redis_client.mget(keys)
+    except Exception as e:
+        logger.warning(f"Could not read backup locks in bulk: {e}")
+        return {}
+    return dict(zip(node_ids, values))
+
+
+def is_backup_lock_live(node_id: int, raw=None, prefetched: bool = False) -> bool:
     """Whether a backup is genuinely still running for this node.
 
     The redis key alone is not enough: if a worker dies the key lingers until
     it expires, blocking the node for hours. The key carries the Celery task
     id, so ask Celery whether that task actually finished and clear the stale
     key if so.
+
+    `prefetched` lets a caller supply a value already fetched via
+    running_keys_for, avoiding a per-node GET. The Celery check below is only
+    reached for nodes that actually hold a key, so it stays bounded by the
+    number of running backups rather than by fleet size.
     """
-    raw = redis_client.get(f"backup_running:{node_id}")
+    if not prefetched:
+        raw = redis_client.get(f"backup_running:{node_id}")
     if not raw:
         return False
 
@@ -78,6 +104,12 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
     # Pre-fetch groups
     groups = {g.id: g for g in db.query(models.BackupGroup).all()}
 
+    # Every Redis lock this tick will need, in one round trip. Read once and
+    # reused for the running counts, the missed-window check and the
+    # admission check below; each of those used to issue its own GET per node,
+    # so a tick cost several thousand round trips on a large fleet.
+    running_raw = running_keys_for(n.id for n in nodes)
+
     # Concurrency tracker (currently running counts)
     group_running_counts = {}
     for gid in groups:
@@ -85,7 +117,7 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
 
     # Count currently running backups per group
     for node in nodes:
-        if redis_client.get(f"backup_running:{node.id}"):
+        if running_raw.get(node.id):
             group_running_counts[node.group_id] = group_running_counts.get(node.group_id, 0) + 1
 
     # Precompute group-level variables to optimize execution speed and implement dynamic concurrency
@@ -170,6 +202,20 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
         bandwidth_cap = g_data["bandwidth_cap"]
         remaining_minutes = g_data["remaining_minutes"]
 
+        # Which of this group's nodes already have a successful backup inside
+        # the current window. One grouped query for the group, rather than the
+        # per-node `.first()` this replaces in both branches below.
+        group_node_ids = [n.id for n in group_nodes]
+        succeeded_in_window = {
+            row[0] for row in db.query(models.BackupHistory.node_id)
+            .filter(
+                models.BackupHistory.node_id.in_(group_node_ids),
+                models.BackupHistory.status == "SUCCESS",
+                models.BackupHistory.timestamp >= window_start_dt,
+            )
+            .group_by(models.BackupHistory.node_id)
+        }
+
         # 1. Out of Window marking
         if not in_window:
             # Judged against THIS group's own local clock — see local_mins above.
@@ -180,17 +226,11 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
 
                 if is_past_window and was_supposed_to_run:
                     # If currently executing, allow completion; do not mark missed yet!
-                    if redis_client.get(f"backup_running:{node.id}"):
+                    if running_raw.get(node.id):
                         continue
 
                     # Did we complete a successful backup since window started?
-                    successful_backup = db.query(models.BackupHistory).filter(
-                        models.BackupHistory.node_id == node.id,
-                        models.BackupHistory.status == "SUCCESS",
-                        models.BackupHistory.timestamp >= window_start_dt
-                    ).first()
-                    
-                    if not successful_backup:
+                    if node.id not in succeeded_in_window:
                         if not node.missed_window:
                             logger.info(f"Node {node.hostname} missed its execution window. Marking missed_window=True.")
                             node.missed_window = True
@@ -211,13 +251,7 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
                 continue
 
             # Verify if already finished successfully
-            successful_backup = db.query(models.BackupHistory).filter(
-                models.BackupHistory.node_id == node.id,
-                models.BackupHistory.status == "SUCCESS",
-                models.BackupHistory.timestamp >= window_start_dt
-            ).first()
-
-            if successful_backup:
+            if node.id in succeeded_in_window:
                 # Successfully completed! Clean up flags
                 if node.backup_today or node.missed_window:
                     logger.info(f"Backup succeeded for {node.hostname}. Resetting backup_today/missed_window flags.")
@@ -230,11 +264,17 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
             # the last ping says is down — common on sites with unstable power.
             # None means "never pinged", which we treat as worth attempting.
             if node.last_ping_status is False:
-                logger.info(f"Skipping {node.hostname}: last ping failed, node appears offline.")
+                # debug, not info: this fires once per unreachable node per
+                # tick — every 60 seconds, forever — and each INFO record
+                # becomes a row in system_logs. A site with 200 nodes down
+                # was writing ~288k rows a day to say nothing had changed.
+                logger.debug(f"Skipping {node.hostname}: last ping failed, node appears offline.")
                 continue
 
             # If not running yet, add to pending list with stagger offset for sorting
-            if not is_backup_lock_live(node.id):
+            if not is_backup_lock_live(
+                node.id, raw=running_raw.get(node.id), prefetched=True
+            ):
                 pending_nodes_stagger.append((node, stagger_offset_mins))
 
         # If no pending nodes, we are done with this group
@@ -260,6 +300,37 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
         # Sort queue sequentially by stagger offset (earlier staggered nodes first)
         pending_nodes_stagger.sort(key=lambda x: x[1])
 
+        # Most recent failure per pending node, for the retry cooldown below.
+        # The cooldown differs by interval but is the same for every node in
+        # the group, so one grouped query covers the whole queue instead of a
+        # `.first()` per node inside the trigger loop.
+        if group.interval == "10min":
+            retry_cooldown_s = 600
+        elif group.interval == "30min":
+            retry_cooldown_s = 1800
+        else:
+            retry_cooldown_s = 3600
+
+        # Use the *wider* lookback so the cooldown is not bypassed when
+        # window_start_dt is a short rolling window (e.g. now-10min for
+        # "10min" groups). Without this a failure 11 minutes old falls outside
+        # window_start_dt, no row is found, and the node retries immediately.
+        fail_lookback_dt = min(window_start_dt, now - timedelta(seconds=retry_cooldown_s))
+        pending_ids = [n.id for n, _ in pending_nodes_stagger]
+        latest_failure_at = dict(
+            db.query(
+                models.BackupHistory.node_id,
+                func.max(models.BackupHistory.timestamp),
+            )
+            .filter(
+                models.BackupHistory.node_id.in_(pending_ids),
+                models.BackupHistory.status == "FAILED",
+                models.BackupHistory.timestamp >= fail_lookback_dt,
+            )
+            .group_by(models.BackupHistory.node_id)
+            .all()
+        )
+
         # Current running backups in this group
         running_count = group_running_counts.get(gid, 0)
         free_slots = effective_concurrency - running_count
@@ -274,36 +345,15 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
             if triggered_count >= free_slots:
                 break
 
-            # Determine retry cooldown based on interval type.
-            # For test intervals the cooldown matches the window period;
-            # for production intervals enforce at least 1 hour between retries.
-            if group.interval == "10min":
-                RETRY_COOLDOWN_S = 600    # 10 min
-            elif group.interval == "30min":
-                RETRY_COOLDOWN_S = 1800   # 30 min
-            else:
-                RETRY_COOLDOWN_S = 3600   # 1 hour
-
-            # BUG-FIX: use the *wider* lookback window so that the cooldown
-            # is not bypassed when window_start_dt is a short rolling window
-            # (e.g. now-10min for "10min" groups).  Without this, a failure
-            # just 11 min old falls outside window_start_dt and latest_fail
-            # returns None, letting the scheduler re-trigger immediately.
-            fail_lookback_dt = min(window_start_dt, now - timedelta(seconds=RETRY_COOLDOWN_S))
-
-            latest_fail = db.query(models.BackupHistory).filter(
-                models.BackupHistory.node_id == node.id,
-                models.BackupHistory.status == "FAILED",
-                models.BackupHistory.timestamp >= fail_lookback_dt
-            ).order_by(models.BackupHistory.timestamp.desc()).first()
-
-            if latest_fail:
-                time_since_fail = (now - latest_fail.timestamp).total_seconds()
-                if time_since_fail < RETRY_COOLDOWN_S:
+            # Retry cooldown, resolved from the batch fetched before this loop.
+            last_failed_at = latest_failure_at.get(node.id)
+            if last_failed_at:
+                time_since_fail = (now - last_failed_at).total_seconds()
+                if time_since_fail < retry_cooldown_s:
                     # Enforce cooldown delay — do not retry yet
                     continue
                 else:
-                    logger.info(f"Retrying failed backup for {node.hostname} (last failed at {latest_fail.timestamp})")
+                    logger.info(f"Retrying failed backup for {node.hostname} (last failed at {last_failed_at})")
 
 
             # Trigger backup task

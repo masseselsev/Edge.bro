@@ -248,6 +248,13 @@ class TaskLogResponse(BaseModel):
     updated_at: datetime
     log_output: str
 
+    # Set by the single-task endpoint when the caller passes ?since=. The
+    # console polls once a second, so it asks only for the part it does not
+    # already have; these let it splice the tail on and notice a log that was
+    # reset underneath it.
+    log_offset: int = 0
+    log_length: Optional[int] = None
+
     class Config:
         from_attributes = True
 

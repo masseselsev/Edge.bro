@@ -6,14 +6,26 @@ from sqlalchemy.orm import Session
 from models import Node, TaskLog, Settings
 from celery_app import celery_app
 from core import known_hosts, ssh_keys
+from core.db_session import session_scope
 import tasks
 
 
-def sync_node_key(task_id: str, node, new_pubkey: str) -> None:
+#: How many offline nodes one auto-retry pass may re-bootstrap. Each retry is
+#: a separate ansible-playbook process, and this task runs every 5 minutes.
+AUTO_RETRY_BATCH_SIZE = int(os.getenv("AUTO_RETRY_BATCH_SIZE", "20"))
+
+
+def sync_node_key(
+    task_id: str, node_id: int, hostname: str, old_pubkey: Optional[str], new_pubkey: str
+) -> None:
     """Point the orchestrator's authorized_keys at the node's current key.
 
     A node that was re-imaged presents a new key; the grant for its previous
     key is revoked first, so a re-image cannot leave a live entry behind.
+
+    Takes the node's fields rather than the node, because it runs outside any
+    session — `fix_ssh_permissions` shells out to chown, and this is called
+    from a task that must not be holding a connection.
     """
     if not new_pubkey:
         tasks.log_to_task(
@@ -22,7 +34,6 @@ def sync_node_key(task_id: str, node, new_pubkey: str) -> None:
         return
 
     new_fp = ssh_keys.fingerprint(new_pubkey)
-    old_pubkey = node.ssh_pub_key
 
     if old_pubkey:
         try:
@@ -42,18 +53,20 @@ def sync_node_key(task_id: str, node, new_pubkey: str) -> None:
         ssh_keys.ORCHESTRATOR_AUTHORIZED_KEYS,
         new_pubkey,
         options=ssh_keys.BORG_SERVE_OPTIONS,
-        tag=ssh_keys.node_tag(node.id),
+        tag=ssh_keys.node_tag(node_id),
     )
     tasks.fix_ssh_permissions()
     tasks.log_to_task(
         task_id,
-        f"Borg access for {node.hostname}: {action.value} {new_fp} "
-        f"tag={ssh_keys.node_tag(node.id)}",
+        f"Borg access for {hostname}: {action.value} {new_fp} "
+        f"tag={ssh_keys.node_tag(node_id)}",
         status="SUCCESS",
     )
 
 
-def deploy_monitoring(task_id: str, node, ssh_password: Optional[str] = None) -> bool:
+def deploy_monitoring(
+    task_id: str, host_ip: str, ssh_port: int, ssh_password: Optional[str] = None
+) -> bool:
     """Install the telemetry collector on a node that has just been provisioned.
 
     Never raises and never fails the caller. Monitoring is an addition to a
@@ -66,8 +79,8 @@ def deploy_monitoring(task_id: str, node, ssh_password: Optional[str] = None) ->
         result = tasks.run_ansible_playbook(
             task_id=task_id,
             playbook_name="deploy_monitoring.yml",
-            host_ip=node.ip_address,
-            ssh_port=node.ssh_port,
+            host_ip=host_ip,
+            ssh_port=ssh_port,
             extra_vars={},
             ssh_key_path=ssh_keys.ORCHESTRATOR_PRIVATE_KEY,
             ssh_password=ssh_password,
@@ -90,41 +103,45 @@ def run_bootstrap_task(self, node_id: int, ssh_password: str, bootstrap_user: st
     """
     Celery task to run the Node bootstrapping process using Ansible.
     """
-    task_id = self.request.id
-    db: Session = tasks.SessionLocal()
-    try:
-        return _run_bootstrap(
-            db, node_id, task_id, ssh_password, bootstrap_user, force_orchestrator_proxy
-        )
-    finally:
-        # In a finally rather than at the end of the body. Bootstrap reads
-        # Settings early and runs Ansible for minutes afterwards, so an
-        # exception in between used to strand this session idle in transaction
-        # holding a lock on `settings`.
-        db.close()
+    return _run_bootstrap(
+        node_id, self.request.id, ssh_password, bootstrap_user, force_orchestrator_proxy
+    )
 
 
 def _run_bootstrap(
-    db, node_id, task_id, ssh_password, bootstrap_user, force_orchestrator_proxy
+    node_id, task_id, ssh_password, bootstrap_user, force_orchestrator_proxy
 ) -> Dict[str, Any]:
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        return {"status": "FAILED", "error": "Node not found"}
+    # Three phases, and the session lifetime is what separates them: read what
+    # the playbook needs, run the playbook holding no connection, then record
+    # the outcome. Bootstrap used to hold one session across all three, which
+    # meant a pooled connection sat idle in transaction on `settings` for the
+    # several minutes a playbook takes — see core.db_session.
+    with session_scope() as db:
+        node = db.query(Node).filter(Node.id == node_id).first()
+        if not node:
+            return {"status": "FAILED", "error": "Node not found"}
+        node_ip = node.ip_address
+        node_port = node.ssh_port
+        node_hostname = node.hostname
 
-    task_log = TaskLog(id=task_id, task_type="BOOTSTRAP", status="RUNNING", node_id=node_id, log_output="")
-    db.add(task_log)
-    db.commit()
-    tasks.log_to_task(task_id, f"Starting bootstrap for {node.hostname} ({node.ip_address})")
+        db.add(TaskLog(
+            id=task_id, task_type="BOOTSTRAP", status="RUNNING", node_id=node_id, log_output=""
+        ))
+
+        settings = db.query(Settings).first()
+        orchestrator_ip = settings.orchestrator_ip if settings else None
+
+    tasks.log_to_task(task_id, f"Starting bootstrap for {node_hostname} ({node_ip})")
 
     # A (re)install regenerates the node's SSH host keys. Forgetting the old
     # entry unconditionally means the next connection just relearns the new
     # one quietly instead of every backup afterwards printing a full "REMOTE
     # HOST IDENTIFICATION HAS CHANGED" warning for a change that was expected.
     try:
-        if known_hosts.forget(node.ip_address, node.ssh_port):
+        if known_hosts.forget(node_ip, node_port):
             tasks.log_to_task(
                 task_id,
-                f"Cleared the previous SSH host key for {node.ip_address}:{node.ssh_port} "
+                f"Cleared the previous SSH host key for {node_ip}:{node_port} "
                 f"— (re)install generates a new one",
             )
     except Exception as e:
@@ -141,13 +158,12 @@ def _run_bootstrap(
     except Exception as e:
         tasks.log_to_task(task_id, f"WARNING: Failed to ensure orchestrator SSH key: {str(e)}")
         orchestrator_pub_key = ""
-    settings = db.query(Settings).first()
-    orchestrator_ip = settings.orchestrator_ip if settings else None
+
     if not orchestrator_ip:
         orchestrator_ip = os.getenv("ORCHESTRATOR_IP")
     if not orchestrator_ip:
         try:
-            route_cmd = f"ip route get {node.ip_address}"
+            route_cmd = f"ip route get {node_ip}"
             route_out = subprocess.check_output(route_cmd, shell=True, text=True)
             orchestrator_ip = route_out.split("src")[1].split()[0]
         except Exception:
@@ -156,8 +172,8 @@ def _run_bootstrap(
     res = tasks.run_ansible_playbook(
         task_id=task_id,
         playbook_name="bootstrap.yml",
-        host_ip=node.ip_address,
-        ssh_port=node.ssh_port,
+        host_ip=node_ip,
+        ssh_port=node_port,
         extra_vars={
             "bootstrap_user": bootstrap_user,
             "orchestrator_ssh_pub_key": orchestrator_pub_key,
@@ -168,109 +184,140 @@ def _run_bootstrap(
     )
 
     if res["status"] == "SUCCESS":
-        ssh_pub_key = res["parsed_data"].get("ssh_pub_key")
-        try:
-            sync_node_key(task_id, node, ssh_pub_key)
-        except Exception as e:
-            tasks.log_to_task(
-                task_id, f"WARNING: Failed to sync node SSH key: {str(e)}", status="FAILED"
-            )
+        return _record_bootstrap_success(
+            node_id, task_id, res, ssh_password, node_ip, node_port
+        )
+    return _record_bootstrap_failure(node_id, task_id, res)
+
+
+def _record_bootstrap_success(
+    node_id, task_id, res, ssh_password, node_ip, node_port
+) -> Dict[str, Any]:
+    """Persist what the playbook reported, then do the post-provision work.
+
+    Split out so the session covers only the writes: everything after the
+    `with` block shells out — chown, ssh-keyscan, another whole playbook.
+    """
+    parsed = res["parsed_data"]
+    ssh_pub_key = parsed.get("ssh_pub_key")
+
+    with session_scope() as db:
+        node = db.query(Node).filter(Node.id == node_id).first()
+        if not node:
+            return res
+
+        # Captured before the overwrite: syncing the key needs to know which
+        # grant to revoke, and that runs after this session has closed.
+        old_pubkey = node.ssh_pub_key
         node.ssh_pub_key = ssh_pub_key
 
-        node_keys = res["parsed_data"].get("node_authorized_keys")
+        node_keys = parsed.get("node_authorized_keys")
         if node_keys:
             node.node_authorized_keys = node_keys
-            tasks.log_to_task(
-                task_id,
-                f"Recorded {len(node_keys)} authorized_keys entrie(s) from the node",
-            )
-
 
         # Save os_version and hardware details
-        os_ver = res["parsed_data"].get("os_version")
-        if os_ver:
-            node.os_version = os_ver
-        
-        cpu_info = res["parsed_data"].get("cpu_info")
-        if cpu_info:
-            node.cpu_info = cpu_info
-            
-        mem_info = res["parsed_data"].get("memory_info")
-        if mem_info:
-            node.memory_info = mem_info
-            
-        edge_ver = res["parsed_data"].get("edge_version")
-        if edge_ver:
-            node.edge_version = edge_ver
-
-        hasp_ver = res["parsed_data"].get("hasp_runtime_version")
-        if hasp_ver:
-            node.hasp_runtime_version = hasp_ver
+        for field, key in (
+            ("os_version", "os_version"),
+            ("cpu_info", "cpu_info"),
+            ("memory_info", "memory_info"),
+            ("edge_version", "edge_version"),
+            ("hasp_runtime_version", "hasp_runtime_version"),
+        ):
+            value = parsed.get(key)
+            if value:
+                setattr(node, field, value)
 
         # Update hostname if detected
-        detected_hostname = res["parsed_data"].get("hostname")
+        detected_hostname = parsed.get("hostname")
         if detected_hostname:
-            existing_host = db.query(Node).filter(Node.hostname == detected_hostname, Node.id != node.id).first()
-            if existing_host:
-                node.hostname = f"{detected_hostname}-{node.id}"
-            else:
-                node.hostname = detected_hostname
+            existing_host = db.query(Node).filter(
+                Node.hostname == detected_hostname, Node.id != node.id
+            ).first()
+            node.hostname = (
+                f"{detected_hostname}-{node.id}" if existing_host else detected_hostname
+            )
 
-        # Remove temporary credentials from Redis
-        try:
-            tasks.redis_client.delete(f"bootstrap_creds:{node.id}")
-        except Exception as e:
-            tasks.logger.error(f"Error deleting Redis credentials: {str(e)}")
-
-        is_prep = res["parsed_data"].get("prepared") == "true"
+        is_prep = parsed.get("prepared") == "true"
         if is_prep:
-            node.disk_type = res["parsed_data"].get("disk_type", "UNKNOWN")
-            node.network_iface = res["parsed_data"].get("network_iface")
-            node.efi_uuid = res["parsed_data"].get("efi_uuid")
-            if "partition_layout" in res["parsed_data"]:
-                node.partition_layout = res["parsed_data"]["partition_layout"]
+            node.disk_type = parsed.get("disk_type", "UNKNOWN")
+            node.network_iface = parsed.get("network_iface")
+            node.efi_uuid = parsed.get("efi_uuid")
+            if "partition_layout" in parsed:
+                node.partition_layout = parsed["partition_layout"]
         node.status = "READY" if is_prep else "NEEDS_FIX"
-        db.commit()
-        tasks.log_to_task(task_id, f"Bootstrap completed. {'Already prepared.' if is_prep else 'Key fetched.'}")
+        hostname = node.hostname
 
-        try:
-            known_hosts.record(node.ip_address, node.ssh_port)
-        except Exception as e:
-            tasks.log_to_task(task_id, f"WARNING: Could not record node SSH host key: {str(e)}")
+    if node_keys:
+        tasks.log_to_task(
+            task_id, f"Recorded {len(node_keys)} authorized_keys entrie(s) from the node"
+        )
 
-        # Install the telemetry collector so a freshly provisioned node starts
-        # sampling without a second visit. Deliberately after the commit and
-        # non-fatal: monitoring is an addition to a node that is already
-        # working, and a failure to install it must never turn a successful
-        # bootstrap into a failed one.
-        deploy_monitoring(task_id, node, ssh_password=ssh_password)
+    # Remove temporary credentials from Redis
+    try:
+        tasks.redis_client.delete(f"bootstrap_creds:{node_id}")
+    except Exception as e:
+        tasks.logger.error(f"Error deleting Redis credentials: {str(e)}")
 
-    else:
-        is_offline = False
+    try:
+        sync_node_key(task_id, node_id, hostname, old_pubkey, ssh_pub_key)
+    except Exception as e:
+        tasks.log_to_task(
+            task_id, f"WARNING: Failed to sync node SSH key: {str(e)}", status="FAILED"
+        )
+
+    tasks.log_to_task(
+        task_id, f"Bootstrap completed. {'Already prepared.' if is_prep else 'Key fetched.'}"
+    )
+
+    try:
+        known_hosts.record(node_ip, node_port)
+    except Exception as e:
+        tasks.log_to_task(task_id, f"WARNING: Could not record node SSH host key: {str(e)}")
+
+    # Install the telemetry collector so a freshly provisioned node starts
+    # sampling without a second visit. Deliberately after the commit and
+    # non-fatal: monitoring is an addition to a node that is already
+    # working, and a failure to install it must never turn a successful
+    # bootstrap into a failed one.
+    deploy_monitoring(task_id, node_ip, node_port, ssh_password=ssh_password)
+    return res
+
+
+def _record_bootstrap_failure(node_id, task_id, res) -> Dict[str, Any]:
+    """Classify why the playbook failed and park the node accordingly."""
+    error_msg = "Bootstrap task failed."
+
+    with session_scope() as db:
+        node = db.query(Node).filter(Node.id == node_id).first()
+        if not node:
+            return res
+
         task_log_obj = db.query(TaskLog).filter(TaskLog.id == task_id).first()
-        if task_log_obj and task_log_obj.log_output:
-            log_out_upper = task_log_obj.log_output.upper()
-            if "UNREACHABLE" in log_out_upper or "COULD NOT RESOLVE" in log_out_upper or "CONNECTION TIMEOUT" in log_out_upper or "CONNECT TO HOST" in log_out_upper:
+        log_output = task_log_obj.log_output if task_log_obj else None
+
+        is_offline = False
+        if log_output:
+            log_out_upper = log_output.upper()
+            if ("UNREACHABLE" in log_out_upper or "COULD NOT RESOLVE" in log_out_upper
+                    or "CONNECTION TIMEOUT" in log_out_upper or "CONNECT TO HOST" in log_out_upper):
                 is_offline = True
-        
-        if is_offline:
-            node.status = "OFFLINE"
-            try:
-                import time
-                tasks.redis_client.set(f"node_next_retry:{node.id}", int(time.time() + 300), ex=300)
-            except Exception as e:
-                tasks.logger.error(f"Error setting node_next_retry: {str(e)}")
-        else:
-            node.status = "NEEDS_BOOTSTRAP"
-        db.commit()
-        error_msg = "Bootstrap task failed."
-        if task_log_obj and task_log_obj.log_output and "OS_UNSUPPORTED" in task_log_obj.log_output:
-            for line in task_log_obj.log_output.splitlines():
+
+        node.status = "OFFLINE" if is_offline else "NEEDS_BOOTSTRAP"
+
+        if log_output and "OS_UNSUPPORTED" in log_output:
+            for line in log_output.splitlines():
                 if "OS_UNSUPPORTED" in line:
                     error_msg = f"Bootstrap rejected: {line.strip()}"
                     break
-        tasks.log_to_task(task_id, error_msg, status="FAILED")
 
+    if is_offline:
+        try:
+            import time
+            tasks.redis_client.set(f"node_next_retry:{node_id}", int(time.time() + 300), ex=300)
+        except Exception as e:
+            tasks.logger.error(f"Error setting node_next_retry: {str(e)}")
+
+    tasks.log_to_task(task_id, error_msg, status="FAILED")
     return res
 
 @celery_app.task(name="tasks.auto_retry_bootstrap_task")
@@ -281,7 +328,18 @@ def auto_retry_bootstrap_task() -> Dict[str, Any]:
     """
     db: Session = tasks.SessionLocal()
     try:
-        offline_nodes = db.query(Node).filter(Node.status == "OFFLINE").all()
+        # Capped per run. Each retry spawns a full ansible-playbook process
+        # (~150 MB resident), and this fires every five minutes — so after a
+        # site-wide outage an uncapped sweep would queue hundreds of them at
+        # once, then hundreds more before the first batch had finished.
+        # Whatever is left over is picked up by the next run.
+        offline_nodes = (
+            db.query(Node)
+            .filter(Node.status == "OFFLINE")
+            .order_by(Node.id)
+            .limit(AUTO_RETRY_BATCH_SIZE)
+            .all()
+        )
         triggered = []
         for node in offline_nodes:
             creds_json = tasks.redis_client.get(f"bootstrap_creds:{node.id}")
@@ -316,15 +374,10 @@ def revoke_node_access_task(self, hostname: str, ip_address: str, ssh_port: int)
     is a logged outcome, not an error.
     """
     task_id = self.request.id
-    db: Session = tasks.SessionLocal()
-    try:
-        task_log = TaskLog(
+    with session_scope() as db:
+        db.add(TaskLog(
             id=task_id, task_type="REVOKE_ACCESS", status="RUNNING", log_output=""
-        )
-        db.add(task_log)
-        db.commit()
-    finally:
-        db.close()
+        ))
 
     tasks.log_to_task(task_id, f"Revoking orchestrator access from {hostname} ({ip_address})")
     try:

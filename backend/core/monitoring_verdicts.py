@@ -22,6 +22,13 @@ RECENT_WINDOW_DAYS = 30
 BASELINE_WINDOW_DAYS = 60
 
 
+#: Safety cap on how many of a node's earliest fits are considered when
+#: establishing its baseline. At the observed ~0.6 accepted fits per node per
+#: day, BASELINE_WINDOW_DAYS covers roughly 36 fits, so this only bites on a
+#: node that was sampled far more aggressively than the default cadence.
+BASELINE_MAX_FITS = 200
+
+
 @dataclass
 class ThermalVerdict:
     status: str
@@ -42,71 +49,142 @@ class ThermalVerdict:
     last_rejection: Optional[str] = None
 
 
-def thermal_verdict(db: Session, node: "models.Node", now: datetime) -> ThermalVerdict:
-    """Run both detectors for one node against the current fleet."""
+@dataclass
+class ThermalContext:
+    """Everything the thermal detectors need about the whole fleet, read once.
+
+    The cohort detector is inherently fleet-wide: judging one node means
+    comparing it against every peer with the same CPU. That made the obvious
+    implementation — call `thermal_verdict(node)` in a loop — quadratic, since
+    each call re-read every fit in the fleet and then threw away all but one
+    of the verdicts it computed. At 2000 nodes the hourly alert sweep was
+    materialising tens of millions of rows to produce a few hundred alerts.
+
+    Building this once and reading per node makes the sweep a fixed three
+    queries regardless of fleet size.
+    """
+    now: datetime
+    cohort_keys: Dict[int, str] = field(default_factory=dict)
+    cohort_verdicts: Dict[int, "cohort.CohortVerdict"] = field(default_factory=dict)
+    #: node_id -> recent accepted fits, as cohort observations
+    recent_by_node: Dict[int, List["cohort.Observation"]] = field(default_factory=dict)
+    #: node_id -> earliest-service accepted fits, as cohort observations
+    baseline_by_node: Dict[int, List["cohort.Observation"]] = field(default_factory=dict)
+    #: node_id -> (accepted count, rejected count, most recent rejection reason)
+    window_counts: Dict[int, tuple] = field(default_factory=dict)
+
+
+def build_thermal_context(db: Session, now: datetime) -> ThermalContext:
+    """Read the fleet's thermal state in a fixed number of queries."""
     recent_cutoff = now - timedelta(days=RECENT_WINDOW_DAYS)
 
-    own = (
-        db.query(models.ThermalFit)
-        .filter(models.ThermalFit.node_id == node.id,
-                models.ThermalFit.window_start >= recent_cutoff)
-        .all()
-    )
-    fitted = [f for f in own if f.rejection == "OK"]
-    rejected = [f for f in own if f.rejection != "OK"]
+    ctx = ThermalContext(now=now)
 
-    last_rejection = None
-    if rejected:
-        last_rejection = max(rejected, key=lambda f: f.window_start).rejection
-
-    # Cohort: every node's recent fits, grouped by hardware. Pulled in one
-    # query rather than per node — a thousand-node fleet would otherwise make
-    # this endpoint a thousand round trips.
-    peer_rows = (
-        db.query(models.ThermalFit.node_id, models.ThermalFit.theta_c_per_w,
-                 models.ThermalFit.theta_normalised)
-        .filter(models.ThermalFit.window_start >= recent_cutoff,
-                models.ThermalFit.rejection == "OK")
-        .all()
-    )
-    observations: Dict[int, list] = {}
-    for row in peer_rows:
-        observations.setdefault(row.node_id, []).append(
-            cohort.Observation(node_id=row.node_id, theta=row.theta_c_per_w,
-                               theta_normalised=row.theta_normalised)
-        )
-
-    keys = {
+    # 1. Cohort keys for every node.
+    ctx.cohort_keys = {
         n.id: cohort.cohort_key(n.cpu_info)
         for n in db.query(models.Node.id, models.Node.cpu_info).all()
     }
 
-    cohort_verdict = None
-    if node.id in observations:
-        verdicts = cohort.assess_cohort(observations, keys)
-        cohort_verdict = next((v for v in verdicts if v.node_id == node.id), None)
-
-    # Drift: the node's own first weeks against its recent ones.
-    baseline_rows = (
-        db.query(models.ThermalFit)
-        .filter(models.ThermalFit.node_id == node.id, models.ThermalFit.rejection == "OK")
-        .order_by(models.ThermalFit.window_start.asc())
-        .limit(200)
+    # 2. Every fit inside the recent window, accepted or not. Serves the
+    #    cohort comparison, each node's recent θ, and the fitted/rejected
+    #    counts shown in the UI.
+    recent_rows = (
+        db.query(
+            models.ThermalFit.node_id,
+            models.ThermalFit.theta_c_per_w,
+            models.ThermalFit.theta_normalised,
+            models.ThermalFit.rejection,
+            models.ThermalFit.window_start,
+        )
+        .filter(models.ThermalFit.window_start >= recent_cutoff)
         .all()
     )
-    baseline_cutoff = (
-        baseline_rows[0].window_start + timedelta(days=BASELINE_WINDOW_DAYS)
-        if baseline_rows else None
+
+    accepted: Dict[int, int] = {}
+    rejected: Dict[int, int] = {}
+    last_rejection: Dict[int, tuple] = {}
+    for row in recent_rows:
+        if row.rejection == "OK":
+            accepted[row.node_id] = accepted.get(row.node_id, 0) + 1
+            ctx.recent_by_node.setdefault(row.node_id, []).append(
+                cohort.Observation(
+                    node_id=row.node_id,
+                    theta=row.theta_c_per_w,
+                    theta_normalised=row.theta_normalised,
+                )
+            )
+        else:
+            rejected[row.node_id] = rejected.get(row.node_id, 0) + 1
+            prev = last_rejection.get(row.node_id)
+            if prev is None or row.window_start > prev[0]:
+                last_rejection[row.node_id] = (row.window_start, row.rejection)
+
+    for node_id in set(accepted) | set(rejected):
+        ctx.window_counts[node_id] = (
+            accepted.get(node_id, 0),
+            rejected.get(node_id, 0),
+            (last_rejection.get(node_id) or (None, None))[1],
+        )
+
+    # 3. Baseline fits — each node's first weeks of service.
+    #
+    #    Streamed with yield_per and cut off per node rather than pulled into
+    #    memory whole: accepted fits are deliberately never pruned, so this
+    #    table is the one that grows without bound, and a fleet with years of
+    #    history would otherwise load all of it to read the first month of each.
+    #    Ordering by (node_id, window_start) lets us stop collecting for a node
+    #    as soon as it leaves its baseline window.
+    baseline_cutoffs: Dict[int, datetime] = {}
+    query = (
+        db.query(
+            models.ThermalFit.node_id,
+            models.ThermalFit.theta_c_per_w,
+            models.ThermalFit.theta_normalised,
+            models.ThermalFit.window_start,
+        )
+        .filter(models.ThermalFit.rejection == "OK")
+        .order_by(models.ThermalFit.node_id.asc(), models.ThermalFit.window_start.asc())
     )
-    baseline = [
-        cohort.Observation(node.id, f.theta_c_per_w, f.theta_normalised)
-        for f in baseline_rows
-        if baseline_cutoff and f.window_start <= baseline_cutoff
-    ]
-    recent = [
-        cohort.Observation(node.id, f.theta_c_per_w, f.theta_normalised) for f in fitted
-    ]
-    drift_verdict = cohort.assess_drift(node.id, baseline, recent)
+    for row in query.yield_per(1000):
+        cutoff = baseline_cutoffs.get(row.node_id)
+        if cutoff is None:
+            # First row for this node is, by the ordering, its earliest fit.
+            cutoff = row.window_start + timedelta(days=BASELINE_WINDOW_DAYS)
+            baseline_cutoffs[row.node_id] = cutoff
+        if row.window_start > cutoff:
+            continue
+        bucket = ctx.baseline_by_node.setdefault(row.node_id, [])
+        if len(bucket) >= BASELINE_MAX_FITS:
+            continue
+        bucket.append(
+            cohort.Observation(
+                node_id=row.node_id,
+                theta=row.theta_c_per_w,
+                theta_normalised=row.theta_normalised,
+            )
+        )
+
+    # 4. One cohort pass for the entire fleet, indexed for O(1) lookup.
+    if ctx.recent_by_node:
+        ctx.cohort_verdicts = {
+            v.node_id: v
+            for v in cohort.assess_cohort(ctx.recent_by_node, ctx.cohort_keys)
+        }
+
+    return ctx
+
+
+def verdict_from_context(ctx: ThermalContext, node_id: int) -> ThermalVerdict:
+    """One node's verdict, read out of a prebuilt context. Issues no queries."""
+    cohort_verdict = ctx.cohort_verdicts.get(node_id)
+    baseline = ctx.baseline_by_node.get(node_id, [])
+    recent = ctx.recent_by_node.get(node_id, [])
+    drift_verdict = cohort.assess_drift(node_id, baseline, recent)
+
+    fitted_count, rejected_count, last_rejection = ctx.window_counts.get(
+        node_id, (0, 0, None)
+    )
 
     combined = cohort.combine(cohort_verdict, drift_verdict)
     reasons = [
@@ -118,7 +196,9 @@ def thermal_verdict(db: Session, node: "models.Node", now: datetime) -> ThermalV
         cohort_status=cohort_verdict.status.value if cohort_verdict else None,
         drift_status=drift_verdict.status.value,
         theta_c_per_w=cohort_verdict.theta if cohort_verdict else None,
-        cohort_key=cohort_verdict.cohort_key if cohort_verdict else keys.get(node.id),
+        cohort_key=(
+            cohort_verdict.cohort_key if cohort_verdict else ctx.cohort_keys.get(node_id)
+        ),
         cohort_size=cohort_verdict.cohort_size if cohort_verdict else 0,
         cohort_median=cohort_verdict.cohort_median if cohort_verdict else None,
         z_score=cohort_verdict.z_score if cohort_verdict else None,
@@ -127,7 +207,18 @@ def thermal_verdict(db: Session, node: "models.Node", now: datetime) -> ThermalV
         recent_theta=drift_verdict.recent_theta,
         drift_ratio=drift_verdict.ratio,
         reasons=reasons,
-        windows_fitted=len(fitted),
-        windows_rejected=len(rejected),
+        windows_fitted=fitted_count,
+        windows_rejected=rejected_count,
         last_rejection=last_rejection,
     )
+
+
+def thermal_verdict(db: Session, node: "models.Node", now: datetime) -> ThermalVerdict:
+    """Run both detectors for one node against the current fleet.
+
+    Convenience wrapper for single-node callers such as the node health
+    endpoint. Anything iterating more than a handful of nodes should build a
+    ThermalContext once and call verdict_from_context, or it pays the
+    fleet-wide read per node.
+    """
+    return verdict_from_context(build_thermal_context(db, now), node.id)

@@ -69,7 +69,7 @@ def _run_playbook(task_id, playbook_name, lines):
 
 def test_log_output_accumulates_across_playbook_runs_sharing_a_task_id(monkeypatch, db_session):
     db, session_local = db_session
-    monkeypatch.setattr(ansible_utils, "SessionLocal", session_local)
+    monkeypatch.setattr("database.SessionLocal", session_local)
     db.add(models.TaskLog(id="shared-task", task_type="BOOTSTRAP", status="RUNNING", log_output=""))
     db.commit()
 
@@ -93,7 +93,7 @@ def test_log_output_accumulates_across_playbook_runs_sharing_a_task_id(monkeypat
 
 def test_play_recap_progress_line_is_not_emitted_for_unrecognised_playbooks(monkeypatch, db_session):
     db, session_local = db_session
-    monkeypatch.setattr(ansible_utils, "SessionLocal", session_local)
+    monkeypatch.setattr("database.SessionLocal", session_local)
     db.add(models.TaskLog(id="progress-task", task_type="BOOTSTRAP", status="RUNNING", log_output=""))
     db.commit()
 
@@ -110,7 +110,7 @@ def test_play_recap_progress_line_is_not_emitted_for_unrecognised_playbooks(monk
 
 def test_play_recap_progress_line_is_emitted_for_monitoring(monkeypatch, db_session):
     db, session_local = db_session
-    monkeypatch.setattr(ansible_utils, "SessionLocal", session_local)
+    monkeypatch.setattr("database.SessionLocal", session_local)
     db.add(models.TaskLog(id="monitoring-progress-task", task_type="BOOTSTRAP", status="RUNNING", log_output=""))
     db.commit()
 
@@ -128,7 +128,7 @@ def test_play_recap_progress_line_is_emitted_for_monitoring(monkeypatch, db_sess
 
 def test_play_recap_progress_line_is_still_emitted_for_bootstrap(monkeypatch, db_session):
     db, session_local = db_session
-    monkeypatch.setattr(ansible_utils, "SessionLocal", session_local)
+    monkeypatch.setattr("database.SessionLocal", session_local)
     db.add(models.TaskLog(id="bootstrap-progress-task", task_type="BOOTSTRAP", status="RUNNING", log_output=""))
     db.commit()
 

@@ -2,9 +2,8 @@ import os
 import subprocess
 import tempfile
 import logging
-from typing import Dict, Any, Optional
-from sqlalchemy.orm import Session
-from database import SessionLocal
+from typing import Dict, Any, Optional, Tuple
+from core.db_session import session_scope
 from models import TaskLog, Settings
 from core import ssh_keys
 import re
@@ -53,6 +52,218 @@ def clean_memory_info(mem: str) -> str:
     except Exception:
         return mem
 
+# Play names, as written in playbooks/*.yml, mapped to the progress percentage
+# and translation key to show while that play runs. This is an undocumented
+# contract with the playbooks: renaming a play's `name:` silently stops its
+# progress step from ever firing, with no test failure and no log line.
+BOOTSTRAP_TASKS = {
+    "Verify OS type and version compatibility": (10, "verifying_os"),
+    "Ensure python3/pip are installed": (25, "installing_python"),
+    "Install dependencies": (50, "installing_deps"),
+    "Create borg system user": (65, "creating_user"),
+    "Generate SSH key for borg user": (70, "generating_ssh"),
+    "Authorize orchestrator SSH public key on edge node": (75, "authorizing_keys"),
+    "Configure SSH to allow root login with keys": (80, "configuring_ssh"),
+    "Gather partition and system details": (90, "gathering_system"),
+    "Restore proxy configurations and clean up orchestrator proxy": (95, "cleaning_up"),
+}
+
+PREPARE_TASKS = {
+    "Backup remote fstab": (10, "backup_fstab"),
+    "Gather partition and system details": (20, "gather_details"),
+    "Label root filesystem": (50, "labeling_fs"),
+    "Rewrite target /etc/fstab with 5-line template": (70, "writing_fstab"),
+    "Verify mount configuration live": (85, "verifying_mount"),
+    "Update GRUB bootloader configuration": (90, "updating_grub"),
+}
+
+MONITORING_TASKS = {
+    "Ensure the telemetry buffer directory exists": (10, "buffer_dir"),
+    "Install the collector script": (30, "collector_script"),
+    "Install the systemd service unit": (40, "service_unit"),
+    "Install the systemd timer unit": (50, "timer_unit"),
+    "Expose SATA drive temperature via the drivetemp module": (60, "drivetemp"),
+    "Enable and start the collection timer": (75, "enable_timer"),
+    "Restart the timer if the collector or its units changed": (80, "restart_timer"),
+    "Take one sample immediately": (85, "immediate_sample"),
+    "Report what the node can actually measure": (90, "capability_report"),
+    "Show the capability report": (95, "show_capability"),
+}
+
+
+PROGRESS_TASKS = {
+    "bootstrap": BOOTSTRAP_TASKS,
+    "prepare": PREPARE_TASKS,
+    "monitoring": MONITORING_TASKS,
+}
+
+# TODO(phase-2): these belong in frontend/src/i18n/translations.ts, keyed by
+# the trans_key above and resolved at render time. Keeping them here means the
+# language is baked into the stored log at write time, so switching languages
+# does not re-render past logs, and it costs a Settings read per playbook run.
+PROGRESS_TRANSLATIONS = {
+    "bootstrap": {
+        "en": {
+            "verifying_os": "Connecting to node via SSH & verifying OS compatibility (please wait)...",
+            "installing_python": "Ensuring Python3/Pip are installed (Downloading/Installing - this may take several minutes)...",
+            "installing_deps": "Installing system dependencies (parted, borgbackup, udev... this may take a moment)...",
+            "creating_user": "Creating borg system user...",
+            "generating_ssh": "Generating SSH keys for borg...",
+            "authorizing_keys": "Authorizing orchestrator SSH key...",
+            "configuring_ssh": "Configuring SSH server settings...",
+            "gathering_system": "Gathering partition and system details...",
+            "cleaning_up": "Restoring proxy configurations & cleaning up...",
+            "complete": "Bootstrap completed successfully!"
+        },
+        "ru": {
+            "verifying_os": "Подключение к узлу по SSH и проверка совместимости ОС (пожалуйста, подождите)...",
+            "installing_python": "Установка Python3/Pip (скачивание и установка пакетов, может занять несколько минут)...",
+            "installing_deps": "Установка системных зависимостей (parted, borgbackup, udev... это может занять некоторое время)...",
+            "creating_user": "Создание системного пользователя borg...",
+            "generating_ssh": "Генерация SSH-ключей для borg...",
+            "authorizing_keys": "Авторизация SSH-ключа оркестратора...",
+            "configuring_ssh": "Настройка SSH-сервера...",
+            "gathering_system": "Сбор сведений о разделах и системе...",
+            "cleaning_up": "Восстановление настроек прокси и очистка...",
+            "complete": "Начальная настройка успешно завершена!"
+        },
+        "uk": {
+            "verifying_os": "Підключення до вузла по SSH та перевірка сумісності ОС (будь ласка, зачекайте)...",
+            "installing_python": "Встановлення Python3/Pip (завантаження та встановлення пакетів, може зайняти кілька хвилин)...",
+            "installing_deps": "Встановлення системних залежностей (parted, borgbackup, udev... це може зайняти деякий час)...",
+            "creating_user": "Створення системного користувача borg...",
+            "generating_ssh": "Генерація SSH-ключів для borg...",
+            "authorizing_keys": "Авторизація SSH-ключа оркестратора...",
+            "configuring_ssh": "Налаштування SSH-сервера...",
+            "gathering_system": "Збір відомостей про розділи та систему...",
+            "cleaning_up": "Відновлення налаштувань проксі та очищення...",
+            "complete": "Початкове налаштування успішно завершено!"
+        }
+    },
+    "prepare": {
+        "en": {
+            "backup_fstab": "Backing up fstab...",
+            "gather_details": "Gathering partition and system details...",
+            "labeling_fs": "Labeling filesystems (root, boot, log, storage)...",
+            "writing_fstab": "Writing standardized fstab configuration...",
+            "verifying_mount": "Verifying new mount configuration...",
+            "updating_grub": "Updating GRUB bootloader and initramfs...",
+            "complete": "Auto-prepare completed successfully!"
+        },
+        "ru": {
+            "backup_fstab": "Резервное копирование fstab...",
+            "gather_details": "Сбор сведений о разделах и системе...",
+            "labeling_fs": "Маркировка файловых систем...",
+            "writing_fstab": "Запись стандартизированной конфигурации fstab...",
+            "verifying_mount": "Проверка новой конфигурации монтирования...",
+            "updating_grub": "Обновление загрузчика GRUB и initramfs...",
+            "complete": "Автоподготовка успешно завершена!"
+        },
+        "uk": {
+            "backup_fstab": "Резервне копіювання fstab...",
+            "gather_details": "Збір відомостей про розділи та систему...",
+            "labeling_fs": "Маркування файлових систем...",
+            "writing_fstab": "Запис стандартизованої конфігурації fstab...",
+            "verifying_mount": "Перевірка нової конфігурації монтування...",
+            "updating_grub": "Оновлення завантажувача GRUB та initramfs...",
+            "complete": "Автопідготовка успішно завершена!"
+        }
+    },
+    "monitoring": {
+        "en": {
+            "buffer_dir": "Ensuring telemetry buffer directory...",
+            "collector_script": "Installing telemetry collector script...",
+            "service_unit": "Installing systemd service unit...",
+            "timer_unit": "Installing systemd timer unit...",
+            "drivetemp": "Configuring drivetemp kernel module for SSD monitoring...",
+            "enable_timer": "Enabling telemetry collection timer...",
+            "restart_timer": "Restarting telemetry collection timer...",
+            "immediate_sample": "Taking initial telemetry sample...",
+            "capability_report": "Checking hardware sensors & capability report...",
+            "show_capability": "Displaying telemetry capability report...",
+            "complete": "Telemetry collector installed successfully!"
+        },
+        "ru": {
+            "buffer_dir": "Проверка директории буфера телеметрии...",
+            "collector_script": "Установка скрипта сборщика телеметрии...",
+            "service_unit": "Установка службы systemd...",
+            "timer_unit": "Установка таймера systemd...",
+            "drivetemp": "Настройка модуля ядра drivetemp для мониторинга SSD...",
+            "enable_timer": "Включение таймера сбора телеметрии...",
+            "restart_timer": "Перезапуск таймера сбора телеметрии...",
+            "immediate_sample": "Снятие первого образца телеметрии...",
+            "capability_report": "Проверка аппаратных датчиков и возможностей...",
+            "show_capability": "Отображение отчета о возможностях телеметрии...",
+            "complete": "Сборщик телеметрии успешно установлен!"
+        },
+        "uk": {
+            "buffer_dir": "Перевірка директорії буфера телеметрії...",
+            "collector_script": "Встановлення скрипта збирача телеметрії...",
+            "service_unit": "Встановлення служби systemd...",
+            "timer_unit": "Встановлення таймера systemd...",
+            "drivetemp": "Налаштування модуля ядра drivetemp для моніторингу SSD...",
+            "enable_timer": "Увімкнення таймера збору телеметрії...",
+            "restart_timer": "Перезапуск таймера збору телеметрії...",
+            "immediate_sample": "Зняття першого зразка телеметрії...",
+            "capability_report": "Перевірка апаратних датчиків та можливостей...",
+            "show_capability": "Відображення звіту про можливості телеметрії...",
+            "complete": "Збирач телеметрії успішно встановлено!"
+        }
+    }
+}
+
+
+def playbook_kind(playbook_name: str) -> Optional[str]:
+    """Which progress table, if any, applies to this playbook.
+
+    Matched on the filename rather than declared per call, because the same
+    three playbooks are launched from several places and none of them should
+    have to remember to pass a kind.
+    """
+    for kind in ("bootstrap", "prepare", "monitoring"):
+        if kind in playbook_name:
+            return kind
+    return None
+
+
+def _load_log_prefix_and_language(task_id: str) -> Tuple[str, str]:
+    """What this run needs from the database before it starts — and nothing more.
+
+    A single task_id can drive more than one playbook run in sequence
+    (bootstrap.yml, then deploy_monitoring.yml). `log_accumulator` only holds
+    what *this* run has printed, so every write is layered on top of whatever
+    this task_id already logged — never a replacement, or the earlier
+    playbook's output would vanish the moment this one starts writing.
+    """
+    log_prefix = ""
+    lang = "en"
+    try:
+        with session_scope() as db:
+            existing_log = db.query(TaskLog).filter(TaskLog.id == task_id).first()
+            if existing_log and existing_log.log_output:
+                log_prefix = existing_log.log_output
+            settings = db.query(Settings).first()
+            if settings and settings.language in ("en", "ru", "uk"):
+                lang = settings.language
+    except Exception as e:
+        logger.warning("Could not read task log prefix or language for %s: %s", task_id, e)
+    return log_prefix, lang
+
+
+def _write_task_log(task_id: str, log_output: str, status: str) -> None:
+    """Persist the log so far. One short session per write, deliberately.
+
+    The playbook runs for minutes; holding a connection open across it is the
+    failure core.db_session exists to prevent. Writes are frequent but cheap —
+    the connection comes straight back out of the pool.
+    """
+    with session_scope() as db:
+        db.query(TaskLog).filter(TaskLog.id == task_id).update({
+            "log_output": log_output,
+            "status": status,
+        })
+
+
 def run_ansible_playbook(
     task_id: str,
     playbook_name: str,
@@ -78,7 +289,12 @@ def run_ansible_playbook(
     Returns:
         A dictionary containing the return code, parsed outputs, and status.
     """
-    db: Session = SessionLocal()
+    log_prefix, lang = _load_log_prefix_and_language(task_id)
+    kind = playbook_kind(playbook_name)
+    progress_tasks = PROGRESS_TASKS.get(kind, {})
+    translations = PROGRESS_TRANSLATIONS.get(kind, {}).get(lang, {})
+
+    inv_path = None
     try:
         # Resolve playbook path
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -134,163 +350,6 @@ def run_ansible_playbook(
         parsed_data: Dict[str, Any] = {}
         log_accumulator = []
 
-        # A single task_id can drive more than one playbook run in sequence
-        # (bootstrap.yml, then deploy_monitoring.yml). log_accumulator only
-        # holds what *this* run has printed so far, so every write below is
-        # layered on top of whatever this task_id already logged — never a
-        # replacement, or the earlier playbook's output would vanish the
-        # moment this one starts writing.
-        existing_log = db.query(TaskLog).filter(TaskLog.id == task_id).first()
-        log_prefix = existing_log.log_output if existing_log and existing_log.log_output else ""
-
-        is_bootstrap = "bootstrap" in playbook_name
-        is_prepare = "prepare" in playbook_name
-        is_monitoring = "monitoring" in playbook_name
-        
-        lang = "en"
-        try:
-            settings = db.query(Settings).first()
-            if settings and settings.language in ("en", "ru", "uk"):
-                lang = settings.language
-        except Exception:
-            pass
-
-        BOOTSTRAP_TASKS = {
-            "Verify OS type and version compatibility": (10, "verifying_os"),
-            "Ensure python3/pip are installed": (25, "installing_python"),
-            "Install dependencies": (50, "installing_deps"),
-            "Create borg system user": (65, "creating_user"),
-            "Generate SSH key for borg user": (70, "generating_ssh"),
-            "Authorize orchestrator SSH public key on edge node": (75, "authorizing_keys"),
-            "Configure SSH to allow root login with keys": (80, "configuring_ssh"),
-            "Gather partition and system details": (90, "gathering_system"),
-            "Restore proxy configurations and clean up orchestrator proxy": (95, "cleaning_up")
-        }
-
-        MONITORING_TASKS = {
-            "Ensure the telemetry buffer directory exists": (10, "buffer_dir"),
-            "Install the collector script": (30, "collector_script"),
-            "Install the systemd service unit": (40, "service_unit"),
-            "Install the systemd timer unit": (50, "timer_unit"),
-            "Expose SATA drive temperature via the drivetemp module": (60, "drivetemp"),
-            "Enable and start the collection timer": (75, "enable_timer"),
-            "Restart the timer if the collector or its units changed": (80, "restart_timer"),
-            "Take one sample immediately": (85, "immediate_sample"),
-            "Report what the node can actually measure": (90, "capability_report"),
-            "Show the capability report": (95, "show_capability")
-        }
-
-        PROGRESS_TRANSLATIONS = {
-            "bootstrap": {
-                "en": {
-                    "verifying_os": "Connecting to node via SSH & verifying OS compatibility (please wait)...",
-                    "installing_python": "Ensuring Python3/Pip are installed (Downloading/Installing - this may take several minutes)...",
-                    "installing_deps": "Installing system dependencies (parted, borgbackup, udev... this may take a moment)...",
-                    "creating_user": "Creating borg system user...",
-                    "generating_ssh": "Generating SSH keys for borg...",
-                    "authorizing_keys": "Authorizing orchestrator SSH key...",
-                    "configuring_ssh": "Configuring SSH server settings...",
-                    "gathering_system": "Gathering partition and system details...",
-                    "cleaning_up": "Restoring proxy configurations & cleaning up...",
-                    "complete": "Bootstrap completed successfully!"
-                },
-                "ru": {
-                    "verifying_os": "Подключение к узлу по SSH и проверка совместимости ОС (пожалуйста, подождите)...",
-                    "installing_python": "Установка Python3/Pip (скачивание и установка пакетов, может занять несколько минут)...",
-                    "installing_deps": "Установка системных зависимостей (parted, borgbackup, udev... это может занять некоторое время)...",
-                    "creating_user": "Создание системного пользователя borg...",
-                    "generating_ssh": "Генерация SSH-ключей для borg...",
-                    "authorizing_keys": "Авторизация SSH-ключа оркестратора...",
-                    "configuring_ssh": "Настройка SSH-сервера...",
-                    "gathering_system": "Сбор сведений о разделах и системе...",
-                    "cleaning_up": "Восстановление настроек прокси и очистка...",
-                    "complete": "Начальная настройка успешно завершена!"
-                },
-                "uk": {
-                    "verifying_os": "Підключення до вузла по SSH та перевірка сумісності ОС (будь ласка, зачекайте)...",
-                    "installing_python": "Встановлення Python3/Pip (завантаження та встановлення пакетів, може зайняти кілька хвилин)...",
-                    "installing_deps": "Встановлення системних залежностей (parted, borgbackup, udev... це може зайняти деякий час)...",
-                    "creating_user": "Створення системного користувача borg...",
-                    "generating_ssh": "Генерація SSH-ключів для borg...",
-                    "authorizing_keys": "Авторизація SSH-ключа оркестратора...",
-                    "configuring_ssh": "Налаштування SSH-сервера...",
-                    "gathering_system": "Збір відомостей про розділи та систему...",
-                    "cleaning_up": "Відновлення налаштувань проксі та очищення...",
-                    "complete": "Початкове налаштування успішно завершено!"
-                }
-            },
-            "prepare": {
-                "en": {
-                    "backup_fstab": "Backing up fstab...",
-                    "gather_details": "Gathering partition and system details...",
-                    "labeling_fs": "Labeling filesystems (root, boot, log, storage)...",
-                    "writing_fstab": "Writing standardized fstab configuration...",
-                    "verifying_mount": "Verifying new mount configuration...",
-                    "updating_grub": "Updating GRUB bootloader and initramfs...",
-                    "complete": "Auto-prepare completed successfully!"
-                },
-                "ru": {
-                    "backup_fstab": "Резервное копирование fstab...",
-                    "gather_details": "Сбор сведений о разделах и системе...",
-                    "labeling_fs": "Маркировка файловых систем...",
-                    "writing_fstab": "Запись стандартизированной конфигурации fstab...",
-                    "verifying_mount": "Проверка новой конфигурации монтирования...",
-                    "updating_grub": "Обновление загрузчика GRUB и initramfs...",
-                    "complete": "Автоподготовка успешно завершена!"
-                },
-                "uk": {
-                    "backup_fstab": "Резервне копіювання fstab...",
-                    "gather_details": "Збір відомостей про розділи та систему...",
-                    "labeling_fs": "Маркування файлових систем...",
-                    "writing_fstab": "Запис стандартизованої конфігурації fstab...",
-                    "verifying_mount": "Перевірка нової конфігурації монтування...",
-                    "updating_grub": "Оновлення завантажувача GRUB та initramfs...",
-                    "complete": "Автопідготовка успішно завершена!"
-                }
-            },
-            "monitoring": {
-                "en": {
-                    "buffer_dir": "Ensuring telemetry buffer directory...",
-                    "collector_script": "Installing telemetry collector script...",
-                    "service_unit": "Installing systemd service unit...",
-                    "timer_unit": "Installing systemd timer unit...",
-                    "drivetemp": "Configuring drivetemp kernel module for SSD monitoring...",
-                    "enable_timer": "Enabling telemetry collection timer...",
-                    "restart_timer": "Restarting telemetry collection timer...",
-                    "immediate_sample": "Taking initial telemetry sample...",
-                    "capability_report": "Checking hardware sensors & capability report...",
-                    "show_capability": "Displaying telemetry capability report...",
-                    "complete": "Telemetry collector installed successfully!"
-                },
-                "ru": {
-                    "buffer_dir": "Проверка директории буфера телеметрии...",
-                    "collector_script": "Установка скрипта сборщика телеметрии...",
-                    "service_unit": "Установка службы systemd...",
-                    "timer_unit": "Установка таймера systemd...",
-                    "drivetemp": "Настройка модуля ядра drivetemp для мониторинга SSD...",
-                    "enable_timer": "Включение таймера сбора телеметрии...",
-                    "restart_timer": "Перезапуск таймера сбора телеметрии...",
-                    "immediate_sample": "Снятие первого образца телеметрии...",
-                    "capability_report": "Проверка аппаратных датчиков и возможностей...",
-                    "show_capability": "Отображение отчета о возможностях телеметрии...",
-                    "complete": "Сборщик телеметрии успешно установлен!"
-                },
-                "uk": {
-                    "buffer_dir": "Перевірка директорії буфера телеметрії...",
-                    "collector_script": "Встановлення скрипта збирача телеметрії...",
-                    "service_unit": "Встановлення службы systemd...",
-                    "timer_unit": "Встановлення таймера systemd...",
-                    "drivetemp": "Налаштування модуля ядра drivetemp для моніторингу SSD...",
-                    "enable_timer": "Увімкнення таймера збору телеметрії...",
-                    "restart_timer": "Перезапуск таймера збору телеметрії...",
-                    "immediate_sample": "Зняття першого зразка телеметрії...",
-                    "capability_report": "Перевірка апаратних датчиків та возможностей...",
-                    "show_capability": "Відображення звіту про можливості телеметрії...",
-                    "complete": "Збирач телеметрії успішно встановлено!"
-                }
-            }
-        }
-
         # Read line by line and update DB TaskLog
         while True:
             line = process.stdout.readline()
@@ -298,38 +357,23 @@ def run_ansible_playbook(
                 break
             if line:
                 log_accumulator.append(line)
-                
+
                 # Check for progress updates
                 percent = None
                 desc = None
                 if "TASK [" in line:
                     try:
                         task_title = line.split("TASK [")[1].split("]")[0]
-                        if is_bootstrap:
-                            for key, (pct, trans_key) in BOOTSTRAP_TASKS.items():
-                                if key in task_title:
-                                    percent = pct
-                                    desc = PROGRESS_TRANSLATIONS["bootstrap"][lang].get(trans_key)
-                                    break
-                        elif is_prepare:
-                            for key, (pct, trans_key) in PREPARE_TASKS.items():
-                                if key in task_title:
-                                    percent = pct
-                                    desc = PROGRESS_TRANSLATIONS["prepare"][lang].get(trans_key)
-                                    break
-                        elif is_monitoring:
-                            for key, (pct, trans_key) in MONITORING_TASKS.items():
-                                if key in task_title:
-                                    percent = pct
-                                    desc = PROGRESS_TRANSLATIONS["monitoring"][lang].get(trans_key)
-                                    break
+                        for key, (pct, trans_key) in progress_tasks.items():
+                            if key in task_title:
+                                percent = pct
+                                desc = translations.get(trans_key)
+                                break
                     except Exception:
                         pass
-                elif "PLAY RECAP" in line:
+                elif "PLAY RECAP" in line and kind:
                     percent = 100
-                    p_type = "bootstrap" if is_bootstrap else ("prepare" if is_prepare else ("monitoring" if is_monitoring else None))
-                    if p_type:
-                        desc = PROGRESS_TRANSLATIONS[p_type][lang].get("complete")
+                    desc = translations.get("complete")
 
                 if percent is not None and desc is not None:
                     log_accumulator.append(f"[PROGRESS] {percent}:{desc}\n")
@@ -372,124 +416,21 @@ def run_ansible_playbook(
                 if "PARTITION_LAYOUT_JSON:" in line:
                     parsed_data["partition_layout_raw"] = line.split("PARTITION_LAYOUT_JSON:")[1].strip()
 
-                # Periodic write to DB to avoid overloading database connections
+                # Periodic write to DB so the console has something to show
+                # while the playbook runs. Every write is its own short
+                # session — see _write_task_log.
                 if len(log_accumulator) % 5 == 0:
-                    current_log = log_prefix + "".join(log_accumulator)
-                    db.query(TaskLog).filter(TaskLog.id == task_id).update({
-                        "log_output": current_log,
-                        "status": "RUNNING"
-                    })
-                    db.commit()
+                    _write_task_log(task_id, log_prefix + "".join(log_accumulator), "RUNNING")
 
-        # Final write to DB
         return_code = process.wait()
 
-        # Transform partition_layout if present
         if "partition_layout_raw" in parsed_data:
-            try:
-                import json
-                import re
-                raw_json = parsed_data["partition_layout_raw"].strip()
-                
-                # Extract the JSON block between the first '{' and the last '}'
-                start_idx = raw_json.find('{')
-                end_idx = raw_json.rfind('}')
-                if start_idx != -1 and end_idx != -1:
-                    raw_json = raw_json[start_idx:end_idx+1]
-                
-                # Replace escaped quotes back to normal quotes
-                raw_json = raw_json.replace('\\"', '"')
-                
-                lsblk_data = json.loads(raw_json)
-                devices = lsblk_data.get("blockdevices", [])
-                
-                root_disk_name = None
-                all_parts = []
-                
-                def traverse_devices(devs):
-                    for dev in devs:
-                        dev_type = dev.get("type", "")
-                        mount = dev.get("mountpoint") or ""
-                        name = dev.get("name", "")
-                        
-                        if dev_type == "part" and mount:
-                            all_parts.append(dev)
-                        
-                        children = dev.get("children", [])
-                        if children:
-                            traverse_devices(children)
-                
-                traverse_devices(devices)
-                
-                root_part = None
-                for p in all_parts:
-                    if p.get("mountpoint") == "/":
-                        root_part = p
-                        break
-                
-                if root_part:
-                    root_part_name = root_part.get("name", "")
-                    if "nvme" in root_part_name:
-                        match = re.match(r'(nvme\d+n\d+)', root_part_name)
-                        if match:
-                            root_disk_name = match.group(1)
-                    else:
-                        match = re.match(r'([a-zA-Z]+)', root_part_name)
-                        if match:
-                            root_disk_name = match.group(1)
-                
-                filtered_layout = []
-                if root_disk_name:
-                    for p in all_parts:
-                        p_name = p.get("name", "")
-                        if root_disk_name in p_name:
-                            filtered_layout.append({
-                                "name": p_name,
-                                "mount": p.get("mountpoint"),
-                                "fstype": p.get("fstype", "ext4"),
-                                "label": p.get("label"),
-                                "uuid": p.get("uuid"),
-                                "partuuid": p.get("partuuid"),
-                                "size_bytes": int(p.get("size", 0))
-                            })
-                
-                def get_partition_index(part_dict):
-                    name = part_dict["name"]
-                    match = re.search(r'p?(\d+)$', name)
-                    return int(match.group(1)) if match else 99
-                
-                filtered_layout.sort(key=get_partition_index)
-                
-                if filtered_layout:
-                    parsed_data["partition_layout"] = filtered_layout
-            except Exception as e:
-                import traceback
-                print(f"Error parsing partition layout: {str(e)}")
-                traceback.print_exc()
-
-        current_log_obj = db.query(TaskLog).filter(TaskLog.id == task_id).first()
-        current_text = current_log_obj.log_output if current_log_obj and current_log_obj.log_output else log_prefix
-        accumulated_text = "".join(log_accumulator)
-        if accumulated_text and not current_text.endswith(accumulated_text):
-            if current_text and not current_text.endswith("\n"):
-                current_text += "\n"
-            final_log = current_text + accumulated_text
-        else:
-            final_log = current_text
+            layout = _parse_partition_layout(parsed_data["partition_layout_raw"])
+            if layout:
+                parsed_data["partition_layout"] = layout
 
         status = "SUCCESS" if return_code == 0 else "FAILED"
-
-        db.query(TaskLog).filter(TaskLog.id == task_id).update({
-            "log_output": final_log,
-            "status": status
-        })
-        db.commit()
-
-        # Cleanup temporary files
-        try:
-            os.remove(inv_path)
-        except OSError:
-            pass
+        _finalise_task_log(task_id, log_prefix, "".join(log_accumulator), status)
 
         return {
             "return_code": return_code,
@@ -499,13 +440,10 @@ def run_ansible_playbook(
 
     except Exception as e:
         error_msg = f"Exception occurred during execution: {str(e)}"
-        prior_log = db.query(TaskLog).filter(TaskLog.id == task_id).first()
-        prior_text = prior_log.log_output if prior_log and prior_log.log_output else ""
-        db.query(TaskLog).filter(TaskLog.id == task_id).update({
-            "log_output": prior_text + error_msg,
-            "status": "FAILED"
-        })
-        db.commit()
+        try:
+            _append_task_log(task_id, error_msg, "FAILED")
+        except Exception:
+            logger.exception("Could not record playbook failure for task %s", task_id)
         return {
             "return_code": -1,
             "status": "FAILED",
@@ -513,4 +451,121 @@ def run_ansible_playbook(
             "parsed_data": {}
         }
     finally:
-        db.close()
+        # In a finally now: a playbook that raised used to leave its inventory
+        # file — which contains the bootstrap password — behind in /tmp.
+        if inv_path:
+            try:
+                os.remove(inv_path)
+            except OSError:
+                pass
+
+
+def _parse_partition_layout(raw_json: str):
+    """Reduce the node's lsblk dump to the partitions on its root disk.
+
+    Everything else — USB sticks, the installer medium, a second data disk —
+    is deliberately dropped: this layout is what a bare-metal restore
+    reconstructs, and restoring onto anything but the root disk would be a
+    mistake rather than a feature.
+    """
+    try:
+        import json
+        raw_json = raw_json.strip()
+
+        # Extract the JSON block between the first '{' and the last '}'
+        start_idx = raw_json.find('{')
+        end_idx = raw_json.rfind('}')
+        if start_idx != -1 and end_idx != -1:
+            raw_json = raw_json[start_idx:end_idx + 1]
+
+        # Replace escaped quotes back to normal quotes
+        raw_json = raw_json.replace('\\"', '"')
+
+        lsblk_data = json.loads(raw_json)
+        devices = lsblk_data.get("blockdevices", [])
+
+        all_parts = []
+
+        def traverse_devices(devs):
+            for dev in devs:
+                mount = dev.get("mountpoint") or ""
+                if dev.get("type", "") == "part" and mount:
+                    all_parts.append(dev)
+                children = dev.get("children", [])
+                if children:
+                    traverse_devices(children)
+
+        traverse_devices(devices)
+
+        root_part = next((p for p in all_parts if p.get("mountpoint") == "/"), None)
+        if not root_part:
+            return None
+
+        # nvme0n1p2 -> nvme0n1, sda2 -> sda. The two naming schemes need
+        # different patterns; matching letters alone would truncate an NVMe
+        # name to "nvme".
+        root_part_name = root_part.get("name", "")
+        if "nvme" in root_part_name:
+            match = re.match(r'(nvme\d+n\d+)', root_part_name)
+        else:
+            match = re.match(r'([a-zA-Z]+)', root_part_name)
+        if not match:
+            return None
+        root_disk_name = match.group(1)
+
+        filtered_layout = [
+            {
+                "name": p.get("name", ""),
+                "mount": p.get("mountpoint"),
+                "fstype": p.get("fstype", "ext4"),
+                "label": p.get("label"),
+                "uuid": p.get("uuid"),
+                "partuuid": p.get("partuuid"),
+                "size_bytes": int(p.get("size", 0)),
+            }
+            for p in all_parts
+            if root_disk_name in p.get("name", "")
+        ]
+
+        def get_partition_index(part_dict):
+            match = re.search(r'p?(\d+)$', part_dict["name"])
+            return int(match.group(1)) if match else 99
+
+        filtered_layout.sort(key=get_partition_index)
+        return filtered_layout or None
+    except Exception:
+        logger.exception("Error parsing partition layout")
+        return None
+
+
+def _finalise_task_log(task_id: str, log_prefix: str, accumulated_text: str, status: str) -> None:
+    """Write the run's complete output, without duplicating what is already there.
+
+    The periodic writes during the run may already have persisted everything,
+    so this appends only if the stored text does not already end with it.
+    """
+    with session_scope() as db:
+        current_log_obj = db.query(TaskLog).filter(TaskLog.id == task_id).first()
+        current_text = current_log_obj.log_output if current_log_obj and current_log_obj.log_output else log_prefix
+        if accumulated_text and not current_text.endswith(accumulated_text):
+            if current_text and not current_text.endswith("\n"):
+                current_text += "\n"
+            final_log = current_text + accumulated_text
+        else:
+            final_log = current_text
+
+        db.query(TaskLog).filter(TaskLog.id == task_id).update({
+            "log_output": final_log,
+            "status": status,
+        })
+
+
+def _append_task_log(task_id: str, message: str, status: str) -> None:
+    """Append one message to a task's log, preserving what is already stored."""
+    with session_scope() as db:
+        prior_log = db.query(TaskLog).filter(TaskLog.id == task_id).first()
+        prior_text = prior_log.log_output if prior_log and prior_log.log_output else ""
+        db.query(TaskLog).filter(TaskLog.id == task_id).update({
+            "log_output": prior_text + message,
+            "status": status,
+        })

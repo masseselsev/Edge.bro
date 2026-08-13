@@ -172,7 +172,7 @@ def test_cleanup_locks_direct_mode_unchanged(mock_run, mock_log):
 # --- run_backup_task: full wiring, NAT mode vs. direct mode ---
 
 class _SessionProxy:
-    """Wraps a real test session so backup_tasks.SessionLocal() returns it,
+    """Wraps a real test session so every session_scope() in the task returns it,
     while the code's own db.close() calls don't tear down the shared fixture."""
     def __init__(self, s):
         self.s = s
@@ -221,7 +221,7 @@ def test_run_backup_task_nat_mode_tunnels_through_node(mock_run, mock_popen, moc
     from backup_tasks import run_backup_task
     from celery.app.task import Task
 
-    monkeypatch.setattr("backup_tasks.SessionLocal", lambda: _SessionProxy(db_session))
+    monkeypatch.setattr("database.SessionLocal", lambda: _SessionProxy(db_session))
     mock_redis.return_value = MagicMock()
 
     settings = db_session.query(models.Settings).first()
@@ -261,7 +261,7 @@ def test_run_backup_task_direct_mode_unchanged(mock_run, mock_popen, mock_log, m
     from backup_tasks import run_backup_task
     from celery.app.task import Task
 
-    monkeypatch.setattr("backup_tasks.SessionLocal", lambda: _SessionProxy(db_session))
+    monkeypatch.setattr("database.SessionLocal", lambda: _SessionProxy(db_session))
     mock_redis.return_value = MagicMock()
 
     settings = db_session.query(models.Settings).first()

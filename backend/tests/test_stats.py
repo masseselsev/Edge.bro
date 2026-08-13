@@ -295,21 +295,56 @@ def test_failure_categories_are_counted(client, db_session):
     add_history(db_session, node, "f3", status="FAILED", days_ago=3,
                 log="Permission denied (publickey).")
 
+    # Categorisation is a scheduled task now, not something a GET does.
+    _classify_pending(db_session)
+
     top = client.get("/api/stats/insights").json()["reliability"]["top_failures"]
 
     assert top[0] == {"category": "UNREACHABLE", "count": 2}
     assert {"category": "AUTH", "count": 1} in top
 
 
-def test_old_failures_get_their_category_written_back_once(client, db_session):
-    """Deriving it on every request would mean reading every failed log each
-    time the page is opened."""
+def _classify_pending(db_session):
+    """Stand in for tasks.backfill_error_categories_task.
+
+    The task itself opens its own session via tasks.SessionLocal, which these
+    tests do not wire up; the classification logic it runs is this.
+    """
+    from core import backup_stats
+    for row in (db_session.query(models.BackupHistory)
+                .filter(models.BackupHistory.status != "SUCCESS",
+                        models.BackupHistory.error_category.is_(None))
+                .all()):
+        row.error_category = backup_stats.classify_failure(row.log_output)
+    db_session.commit()
+
+
+def test_reading_insights_does_not_write_to_the_database(client, db_session):
+    """A GET must not classify rows.
+
+    This used to happen inline: opening the Archives page wrote up to 500 rows,
+    reading each one's log_output, and concurrent loads raced over overlapping
+    sets. Categorisation moved to tasks.backfill_error_categories_task.
+    """
     node = add_node(db_session, "node-1", "192.168.1.101")
     row = add_history(db_session, node, "f1", status="FAILED", days_ago=1,
                       log="OSError: [Errno 28] No space left on device")
     assert row.error_category is None
 
     client.get("/api/stats/insights")
+
+    db_session.expire_all()
+    assert db_session.query(models.BackupHistory).first().error_category is None, (
+        "the insights endpoint wrote to backup_history during a GET"
+    )
+
+
+def test_the_backfill_classifies_old_failures(db_session):
+    node = add_node(db_session, "node-1", "192.168.1.101")
+    add_history(db_session, node, "f1", status="FAILED", days_ago=1,
+                log="OSError: [Errno 28] No space left on device")
+
+    _classify_pending(db_session)
 
     db_session.expire_all()
     assert db_session.query(models.BackupHistory).first().error_category == "DISK_FULL"

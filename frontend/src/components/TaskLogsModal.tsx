@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Terminal as TermIcon, CheckCircle, AlertCircle, Loader, ArrowDown, ArrowUp } from 'lucide-react';
 import { formatDate } from './dateUtils';
 import { useTranslation } from '../context/TranslationContext';
@@ -28,10 +28,17 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const notFoundCountRef = useRef(0);
+  //: How many characters of this task's log we already hold, so each poll can
+  //: ask for the remainder instead of the whole thing.
+  const receivedRef = useRef(0);
+  const errorCountRef = useRef(0);
 
   const fetchLogs = async () => {
     try {
-      const res = await fetch(`/api/tasks/${taskId}`);
+      // Ask only for the part we do not already have. Re-fetching the whole
+      // log once a second is quadratic in its length, and a long provision
+      // produces megabytes of it.
+      const res = await fetch(`/api/tasks/${taskId}?since=${receivedRef.current}`);
       if (!res.ok) {
         if (res.status === 404) {
           notFoundCountRef.current += 1;
@@ -45,20 +52,62 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
               'Check `docker compose logs worker` on the server for details.'
             );
           }
+          return;
+        }
+        // Anything other than a 404 used to fall straight through, leaving the
+        // poll running at 1 Hz forever against an endpoint that was refusing
+        // it. Give up after a few consecutive failures and say so.
+        errorCountRef.current += 1;
+        if (errorCountRef.current >= 5) {
+          setStatus('FAILED');
+          setLogs((prev) => prev + `\n[SYSTEM] Lost contact with the server (HTTP ${res.status}). Stopped following this task.`);
         }
         return;
       }
-      // Reset counter on successful fetch
       notFoundCountRef.current = 0;
+      errorCountRef.current = 0;
+
       const data = await res.json();
       setStatus(data.status);
-      setLogs(data.log_output || data.logs || '');
+
+      // This modal is served by two different backends. The orchestrator's
+      // TaskLogResponse carries only log_output; the kiosk payload client also
+      // returns `logs`, `download_speed` and `eta` for restore transfers. The
+      // fallbacks are for the kiosk, not dead code — the speed/ETA badge below
+      // simply never appears on the orchestrator, which has nothing to put in it.
+      const chunk: string = data.log_output ?? data.logs ?? '';
+      if (typeof data.log_length === 'number') {
+        // Incremental protocol. log_offset is 0 when the server sent the whole
+        // log — either the first poll or a log that was reset behind us.
+        if (data.log_offset > 0) {
+          if (chunk) setLogs((prev) => prev + chunk);
+        } else {
+          setLogs(chunk);
+        }
+        receivedRef.current = data.log_length;
+      } else {
+        // Kiosk payload client: no incremental support, always the full log.
+        setLogs(chunk);
+      }
+
       setDownloadSpeed(data.download_speed || '');
       setEta(data.eta || '');
     } catch (e) {
       console.error(e);
+      errorCountRef.current += 1;
+      if (errorCountRef.current >= 5) {
+        setStatus('FAILED');
+      }
     }
   };
+
+  // A new task means a new log; forget how much of the previous one we had.
+  useEffect(() => {
+    receivedRef.current = 0;
+    errorCountRef.current = 0;
+    notFoundCountRef.current = 0;
+    setLogs('');
+  }, [taskId]);
 
   useEffect(() => {
     fetchLogs();
@@ -97,27 +146,33 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
     }
   };
 
-  // Parse percentage and description
-  const getProgressInfo = () => {
-    const progressLines = logs.split('\n').filter(line => line.includes('[PROGRESS]'));
-    if (progressLines.length === 0) return null;
-    const lastLine = progressLines[progressLines.length - 1];
-    const match = lastLine.match(/\[PROGRESS\]\s*(\d+):(.*)/);
-    if (match) {
-      return {
-        percent: Math.min(100, Math.max(0, parseInt(match[1], 10))),
-        description: match[2].trim()
-      };
+  // The log is split once per change, not three times per render. This
+  // component re-renders every second while a task runs, and a long provision
+  // produces tens of thousands of lines — splitting the whole buffer twice to
+  // compute a progress bar and again to draw it was the bulk of the work.
+  const { logLines, progressInfo } = useMemo(() => {
+    const lines = logs.split('\n');
+    const kept: string[] = [];
+    let progress: { percent: number; description: string } | null = null;
+
+    for (const line of lines) {
+      if (line.includes('[PROGRESS]')) {
+        // Last one wins: progress is cumulative, not a list.
+        const match = line.match(/\[PROGRESS\]\s*(\d+):(.*)/);
+        if (match) {
+          progress = {
+            percent: Math.min(100, Math.max(0, parseInt(match[1], 10))),
+            description: match[2].trim(),
+          };
+        }
+        continue;
+      }
+      kept.push(line);
     }
-    return null;
-  };
+    return { logLines: kept, progressInfo: progress };
+  }, [logs]);
 
-  // Filter out [PROGRESS] lines for a clean terminal look
-  const cleanLogs = logs.split('\n')
-    .filter(line => !line.includes('[PROGRESS]'))
-    .join('\n');
-
-  const progressInfo = getProgressInfo();
+  const cleanLogs = logLines.length ? logLines.join('\n') : '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
@@ -185,7 +240,7 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
         {/* Console logs */}
         <div ref={terminalContainerRef} className="flex-1 p-4 overflow-y-auto font-mono text-xs text-zinc-300 bg-zinc-950 select-text space-y-1">
           {cleanLogs ? (
-            cleanLogs.split('\n').map((line, idx) => {
+            logLines.map((line, idx) => {
               const match = line.match(/^\[(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})\](.*)/);
               if (match) {
                 const utcDateStr = `${match[1]}T${match[2]}Z`;

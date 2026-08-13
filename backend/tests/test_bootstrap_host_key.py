@@ -47,6 +47,10 @@ def make_node(db, hostname="test-node", ip="192.168.100.9", port=2222):
 
 def stub_out_everything_except_the_host_key_call(monkeypatch, session_local, task_id="host-key-task"):
     monkeypatch.setattr("tasks.SessionLocal", session_local)
+    # `tasks.SessionLocal` is a separate binding from the one core.db_session
+    # resolves, so a scope inside the task would otherwise reach the real
+    # Postgres factory.
+    monkeypatch.setattr("database.SessionLocal", session_local)
     monkeypatch.setattr("tasks.run_ansible_playbook",
                         lambda **kwargs: {"status": "SUCCESS", "parsed_data": {}})
     monkeypatch.setattr("tasks.ensure_orchestrator_ssh_key", lambda: "ssh-ed25519 AAA...")

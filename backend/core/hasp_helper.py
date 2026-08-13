@@ -17,10 +17,15 @@ def parse_sentinel_json_blocks(raw_text: str) -> List[Dict[str, Any]]:
             continue
     return objs
 
-def check_hasp_status_on_node(node: models.Node) -> str:
+def check_hasp_status_on_node(node) -> str:
     """
     Checks the Sentinel HASP license activation status on the given node.
     Returns one of: "active", "no_license", "clone_detected", "disabled", "expired", "unreachable", "inactive"
+
+    Takes anything carrying `hasp_runtime_version`, `ssh_port` and
+    `ip_address` rather than a Node specifically. It shells out over SSH, so
+    its callers must not be holding a database session — backup_tasks passes a
+    detached BackupPlan for exactly that reason.
     """
     if not node.hasp_runtime_version or node.hasp_runtime_version == "None":
         return "inactive"

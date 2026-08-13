@@ -2,6 +2,11 @@ services:
   db:
     image: postgres:15-alpine
     restart: always
+    # The default max_connections of 100 is tight once Celery prefork is in
+    # play: every worker child carries its own SQLAlchemy pool, and long tasks
+    # hold a connection for the duration of a borg transfer.
+    command: >
+      postgres -c max_connections=${POSTGRES_MAX_CONNECTIONS:-200}
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -61,7 +66,57 @@ services:
       dockerfile: ../docker/backend/Dockerfile
     restart: always
     privileged: true
-    command: celery -A tasks.celery_app worker --loglevel=info
+    # Long work only: borg transfers, ansible runs, ISO builds. Kept off the
+    # periodic queue so a multi-hour backup can never delay a 60s scheduler
+    # tick — which is what a single undifferentiated worker allowed, since a
+    # few long tasks could hold every prefetched slot.
+    # -Ofair stops a free child being skipped because another is mid-task.
+    command: >
+      celery -A tasks.celery_app worker -Q backups,iso
+      --concurrency=${CELERY_BACKUP_CONCURRENCY:-8} -Ofair
+      --hostname=backups@%h --loglevel=info
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      BORG_PASSPHRASE: ${BORG_PASSPHRASE}
+      ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
+      PYTHONPATH: /app
+      SUPERADMIN_USERNAME: ${SUPERADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      SSH_KEEPALIVE_INTERVAL: ${SSH_KEEPALIVE_INTERVAL:-30}
+      SSH_KEEPALIVE_COUNT: ${SSH_KEEPALIVE_COUNT:-3}
+    volumes:
+      - ./backend:/app
+      - /dev:/dev
+      - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
+      - ssh-keys:/root/.ssh
+      - ${ISO_CACHE_HOST_PATH:-iso-cache}:/opt/data/iso_cache
+      - frontend-build:/opt/frontend_build
+      - ./payload_client:/payload_client
+      - /proc:/host/proc:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - db
+      - redis
+    dns:
+      - 8.8.8.8
+      - 10.102.1.21
+
+  worker-periodic:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend/Dockerfile
+    restart: always
+    privileged: true
+    # Short, timer-driven work: the scheduler tick, the reachability sweep,
+    # the monitoring and alert sweeps, the nightly prunes. Its own pool so it
+    # stays responsive no matter how backed up the backup queue is.
+    command: >
+      celery -A tasks.celery_app worker -Q periodic
+      --concurrency=${CELERY_PERIODIC_CONCURRENCY:-4} -Ofair
+      --hostname=periodic@%h --loglevel=info
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}

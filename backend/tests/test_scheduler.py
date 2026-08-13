@@ -29,6 +29,7 @@ def test_db():
 @patch('core.scheduler.run_backup_task')
 def test_scheduler_trigger_normal_window(mock_run_backup_task, mock_redis, test_db):
     mock_redis.get.return_value = None
+    mock_redis.mget.side_effect = lambda keys: [None] * len(keys)
     
     group = models.BackupGroup(
         name="NightlyGroup",
@@ -77,6 +78,7 @@ def test_scheduler_trigger_normal_window(mock_run_backup_task, mock_redis, test_
 @patch('core.scheduler.run_backup_task')
 def test_scheduler_paused_node(mock_run_backup_task, mock_redis, test_db):
     mock_redis.get.return_value = None
+    mock_redis.mget.side_effect = lambda keys: [None] * len(keys)
     
     group = models.BackupGroup(
         name="NightlyGroup",
@@ -153,11 +155,13 @@ def test_scheduler_concurrency_limit(mock_run_backup_task, mock_redis, test_db):
     test_db.refresh(node1)
     test_db.refresh(node2)
     
-    def redis_get(key):
-        if str(node1.id) in key:
-            return b"1"
-        return None
-    mock_redis.get.side_effect = redis_get
+    # node1 is mid-backup. The scheduler reads these locks with one MGET now,
+    # so both accessors have to answer from the same rule.
+    def lock_for(key):
+        return b"1" if str(node1.id) in key else None
+
+    mock_redis.get.side_effect = lock_for
+    mock_redis.mget.side_effect = lambda keys: [lock_for(k) for k in keys]
     
     node2_hash = deterministic_hash(node2.hostname)
     day_index = node2_hash % 7
@@ -179,6 +183,7 @@ def test_scheduler_concurrency_limit(mock_run_backup_task, mock_redis, test_db):
 @patch('core.scheduler.run_backup_task')
 def test_scheduler_backup_today_outside_schedule_but_in_window(mock_run_backup_task, mock_redis, test_db):
     mock_redis.get.return_value = None
+    mock_redis.mget.side_effect = lambda keys: [None] * len(keys)
     
     group = models.BackupGroup(
         name="NightlyGroup",
@@ -221,6 +226,7 @@ def test_scheduler_backup_today_outside_schedule_but_in_window(mock_run_backup_t
 @patch('core.scheduler.run_backup_task')
 def test_scheduler_missed_window_marking(mock_run_backup_task, mock_redis, test_db):
     mock_redis.get.return_value = None
+    mock_redis.mget.side_effect = lambda keys: [None] * len(keys)
     
     group = models.BackupGroup(
         name="NightlyGroup",
@@ -270,6 +276,7 @@ def test_check_and_trigger_backups_accepts_now(test_db):
 @patch('core.scheduler.run_backup_task')
 def test_scheduler_retry_delay(mock_run_backup_task, mock_redis, test_db):
     mock_redis.get.return_value = None
+    mock_redis.mget.side_effect = lambda keys: [None] * len(keys)
     
     group = models.BackupGroup(
         name="NightlyGroup",

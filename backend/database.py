@@ -5,7 +5,38 @@ from sqlalchemy.orm import sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:securepassword@localhost:5432/borg_orchestrator")
 
-engine = create_engine(DATABASE_URL)
+# Pool sizing has to account for how many processes exist, not just how busy
+# one of them is. Celery's prefork model gives every worker child its own pool
+# after the fork, so the ceiling is
+#   (API workers + backup children + periodic children) x (pool_size + overflow)
+# against Postgres's max_connections, which defaults to 100.
+#
+# Each Celery child runs one task at a time (prefetch is 1 and the children are
+# single-threaded), so a worker child needs one or two connections, not ten —
+# a large per-process pool here buys nothing and risks exhausting the server.
+# The API process is the one that benefits from a pool, and it is a single
+# process. So: modest pool, generous overflow for the API's concurrency.
+#
+# pool_pre_ping matters more than any of the sizes. Without it a connection
+# that died while idle — a database restart, a network blip, an idle timeout
+# on a pooler — is handed out and fails on first use, and tasks here hold
+# sessions across multi-minute ansible runs and multi-hour borg transfers,
+# which is exactly when connections go stale.
+#
+# SQLite, used by the test suite, takes none of these arguments.
+_engine_kwargs = {}
+if not DATABASE_URL.startswith("sqlite"):
+    _engine_kwargs = {
+        "pool_size": int(os.getenv("DB_POOL_SIZE", "5")),
+        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "10")),
+        "pool_pre_ping": True,
+        # Recycle below any typical server-side idle timeout so we retire
+        # connections before the far end does.
+        "pool_recycle": int(os.getenv("DB_POOL_RECYCLE", "1800")),
+        "pool_timeout": int(os.getenv("DB_POOL_TIMEOUT", "30")),
+    }
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -83,11 +114,17 @@ def setup_db_logging():
         handler.setFormatter(formatter)
         root.addHandler(handler)
 
-    # Attach handler to specific loggers to ensure their logs are captured
+    # Attach handler to specific loggers to ensure their logs are captured.
+    #
+    # `uvicorn.access` is deliberately absent. Every HTTP request emits an
+    # access line, and this handler turns each record into its own session,
+    # INSERT and COMMIT — so with the UI polling several endpoints on timers,
+    # a single open browser was writing hundreds of rows a minute to
+    # system_logs purely to record that it had polled. Request logging belongs
+    # in the container's stdout, which already has it.
     loggers_to_attach = [
         "uvicorn",
         "uvicorn.error",
-        "uvicorn.access",
         "fastapi",
         "celery",
         "celery.task",

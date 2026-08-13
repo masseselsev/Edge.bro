@@ -178,19 +178,36 @@ def ensure_ssh_keypair() -> None:
             detail=f"Failed to generate SSH keypair: {e.stderr.decode() if e.stderr else str(e)}"
         )
 
-# Try to register the shared network configurations router if available
+# Register the shared network configuration router.
+#
+# Mounted without an auth dependency on purpose: the kiosk has no web session,
+# and whoever is standing at the terminal already has physical access to the
+# machine whose network they are configuring. The orchestrator mounts the same
+# module behind require_admin.
+#
+# The import is still guarded, because a payload built before this router
+# existed will not have the file — but the failure is logged rather than
+# swallowed. Silence here previously hid a shipping bug for a month: the ISO
+# builder copied network.py without the two sub-routers it imports, so this
+# raised ImportError on every kiosk and the entire network UI 404'd with no
+# trace of why.
 try:
     from routers.network import router as network_router
     app.include_router(network_router, prefix="/api")
-except ImportError:
-    pass
+except ImportError as e:
+    logging.getLogger(__name__).error(
+        "Network configuration router unavailable — /api/network/* will 404. "
+        "This usually means the payload is missing a routers/ file. Cause: %s", e
+    )
 
 # Register Kiosk Watchdog router
 try:
     from routers.watchdog import router as watchdog_router
     app.include_router(watchdog_router, prefix="/api")
-except ImportError:
-    pass
+except ImportError as e:
+    logging.getLogger(__name__).error(
+        "Watchdog router unavailable — /api/watchdog/* will 404. Cause: %s", e
+    )
 
 # Local state to track task progress
 task_logs: Dict[str, str] = {}

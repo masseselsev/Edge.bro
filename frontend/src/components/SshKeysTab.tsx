@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw, Trash2, ShieldAlert } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
+import { formatDate } from './dateUtils';
 
 interface Finding {
   id: number;
@@ -165,12 +166,12 @@ export default function SshKeysTab() {
                     </span>
                     {f.pruned_at && (
                       <span className="ml-2 text-xs text-zinc-600">
-                        {t('sshKeysPruned')} {new Date(f.pruned_at).toLocaleDateString()}
+                        {t('sshKeysPruned')} {formatDate(f.pruned_at)}
                       </span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-xs">
-                    {new Date(f.first_seen).toLocaleString()}
+                    {formatDate(f.first_seen)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {!f.pruned_at

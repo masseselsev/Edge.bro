@@ -53,11 +53,32 @@ def get_debug_logs(db: Session = Depends(get_db), current_user = Depends(require
     return db.query(models.SystemLog).order_by(models.SystemLog.created_at.desc()).limit(500).all()
 
 @router.get("/{task_id}", response_model=schemas.TaskLogResponse)
-def get_task_logs(task_id: str, db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
-    """
-    Fetches execution logs and status of a background task.
+def get_task_logs(
+    task_id: str,
+    since: int = Query(0, ge=0, description="Return only log output past this character offset"),
+    db: Session = Depends(get_db),
+    current_user = Depends(require_kiosk_or_admin),
+):
+    """Execution status and log output of a background task.
+
+    `since` makes the console poll incremental. The log viewer refreshes once a
+    second while a task runs, and re-sending the whole log each time is
+    quadratic in its length — a long provision or restore would end up
+    transferring hundreds of megabytes to display a few hundred kilobytes.
+    The client tracks how much it already has and asks for the remainder.
+
+    `log_length` is always the full length, so a client can tell whether it is
+    behind and detect a log that was truncated or replaced underneath it.
     """
     task = db.query(models.TaskLog).filter(models.TaskLog.id == task_id).first()
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
-    return task
+
+    full = task.log_output or ""
+    payload = schemas.TaskLogResponse.model_validate(task, from_attributes=True)
+    # `since` past the end means the client is ahead of us — a restarted task
+    # whose log was reset. Send the whole thing rather than an empty tail.
+    payload.log_output = full[since:] if 0 < since <= len(full) else full
+    payload.log_offset = since if 0 < since <= len(full) else 0
+    payload.log_length = len(full)
+    return payload

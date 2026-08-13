@@ -18,6 +18,7 @@ from core.schedule_slots import (
     parse_window,
     week_of_month,
 )
+from core import scheduler
 from core.schedule_estimate import DEFAULT_BACKUP_MINUTES, estimate_node_backup_minutes
 
 from routers.users import require_admin
@@ -127,18 +128,43 @@ def trigger_group_backup(group_id: int, request: Request = None, db: Session = D
         models.Node.group_id == group_id,
         models.Node.backup_paused == False
     ).all()
-    
+
+    # Respect the group's concurrency limit. This used to fire every node in
+    # the group at once, bypassing the limit the scheduler works hard to
+    # honour — on a large group that meant hundreds of simultaneous borg
+    # streams over one uplink, each too slow to finish. Nodes past the limit
+    # are left to the scheduler, which will pick them up as slots free.
+    limit = group.concurrency_limit or 5
+    already_running = sum(
+        1 for n in nodes if scheduler.is_backup_lock_live(n.id)
+    )
+    free_slots = max(0, limit - already_running)
+    to_trigger = nodes[:free_slots]
+
     task_ids = []
-    for node in nodes:
+    for node in to_trigger:
         task = run_backup_task.delay(node.id, comment=f"Manual trigger for group: {group.name}")
         task_ids.append(task.id)
-        
-    from database import log_user_action
-    log_user_action(db, current_user.username, "Backup Group", f"Triggered manual backups for {len(nodes)} node(s) in group '{group.name}'", request)
 
+    deferred = len(nodes) - len(to_trigger)
+    from database import log_user_action
+    log_user_action(
+        db, current_user.username, "Backup Group",
+        f"Triggered manual backups for {len(to_trigger)} node(s) in group "
+        f"'{group.name}'" + (f"; {deferred} deferred to the scheduler" if deferred else ""),
+        request,
+    )
+
+    message = f"Triggered manual backups for {len(to_trigger)} node(s) in group '{group.name}'."
+    if deferred:
+        message += (
+            f" {deferred} more queued behind the group's concurrency limit of "
+            f"{limit}; the scheduler will start them as slots free up."
+        )
     return {
-        "message": f"Triggered manual backups for {len(nodes)} node(s) in group '{group.name}'.",
-        "task_ids": task_ids
+        "message": message,
+        "task_ids": task_ids,
+        "deferred": deferred,
     }
 
 @router.get("/scheduler-load", response_model=schemas.SchedulerLoadResponse)

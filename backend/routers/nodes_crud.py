@@ -9,15 +9,15 @@ import shutil
 import zipfile
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 from database import get_db
 import models
 import schemas
 from tasks import run_bootstrap_task, purge_node_archives
 from tasks.bootstrap import revoke_node_access_task
-from core import ssh_keys
+from core import repo_usage, ssh_keys
 from core.borg_local import borg_kwargs, grant_workdir
 from routers.users import require_admin, require_kiosk_or_admin
 
@@ -27,6 +27,146 @@ router = APIRouter(prefix="/api/nodes", tags=["Nodes"])
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 redis_client = redis.Redis.from_url(REDIS_URL)
+
+
+def _mget(keys):
+    """One round trip for many keys, tolerating a Redis that is unavailable."""
+    if not keys:
+        return {}
+    try:
+        values = redis_client.mget(keys)
+    except Exception:
+        return {}
+    return dict(zip(keys, values))
+
+
+def _backup_run_state(node_id: int, raw=None, _prefetched: bool = False):
+    """Whether a backup is in flight for this node, and how far along it looks.
+
+    Reads the `backup_running:` key, then confirms against Celery, because the
+    key outlives a worker that died mid-backup. Stale keys are deleted on
+    sight so the next caller does not pay for the same check.
+
+    `raw` lets a caller that already fetched the key in a batch pass it in,
+    so listing a page of nodes costs one MGET instead of one GET per node.
+
+    The progress figure is a fabrication and is labelled as one here so nobody
+    mistakes it for a byte count: borg does not report percentage-complete over
+    this path, so we render an exponential curve that approaches but never
+    reaches 100% over roughly a 45-second time constant. It exists to show
+    that something is happening, not how much is left.
+    """
+    import math
+    import time
+
+    is_running = False
+    progress = 0
+    running_task_id = None
+    try:
+        val = raw if _prefetched else redis_client.get(f"backup_running:{node_id}")
+        if not val:
+            return False, 0, None
+
+        val_str = val.decode('utf-8') if isinstance(val, bytes) else str(val)
+        is_running = True
+        if ":" in val_str:
+            parts = val_str.split(":", 1)
+            try:
+                start_time = int(parts[0])
+            except ValueError:
+                start_time = 1
+            running_task_id = parts[1]
+        else:
+            try:
+                start_time = int(val_str)
+            except ValueError:
+                start_time = 1
+            running_task_id = None
+
+        # Auto-clear legacy placeholder "1" keys or old keys lacking task IDs (older than 10 mins)
+        if start_time == 1 or (not running_task_id and (int(time.time()) - start_time > 600)):
+            redis_client.delete(f"backup_running:{node_id}")
+            return False, 0, None
+
+        if running_task_id:
+            from celery_app import celery_app
+            if celery_app.AsyncResult(running_task_id).ready():
+                redis_client.delete(f"backup_running:{node_id}")
+                return False, 0, None
+
+        elapsed = max(0, int(time.time()) - start_time)
+        progress = max(0, min(99, int(100 * (1 - math.exp(-elapsed / 45.0)))))
+    except Exception:
+        return False, 0, None
+
+    return is_running, progress, running_task_id
+
+
+def _serialize_node(
+    node: models.Node,
+    repo_size: int,
+    running_raw=None,
+    retry_raw=None,
+    prefetched: bool = False,
+) -> dict:
+    """Shape a Node row the way the API returns it.
+
+    Shared by the list endpoint and the single-node endpoint so the two cannot
+    drift into describing the same node differently.
+
+    When `prefetched` is set, the two Redis values have already been fetched in
+    bulk by the caller and no per-node round trip is made.
+    """
+    is_running, progress, running_task_id = _backup_run_state(
+        node.id, raw=running_raw, _prefetched=prefetched
+    )
+
+    node_dict = {
+        "id": node.id,
+        "hostname": node.hostname,
+        "ip_address": node.ip_address,
+        "ssh_port": node.ssh_port,
+        "status": node.status,
+        "last_backup": node.last_backup,
+        "disk_type": node.disk_type or "Unknown",
+        "network_iface": node.network_iface,
+        "efi_uuid": node.efi_uuid,
+        "partition_layout": node.partition_layout,
+        "os_version": node.os_version,
+        "next_retry_at": None,
+        "repo_size_bytes": repo_size,
+        "group_id": node.group_id,
+        "backup_paused": node.backup_paused,
+        "backup_today": node.backup_today,
+        "missed_window": node.missed_window,
+        "cpu_info": node.cpu_info,
+        "memory_info": node.memory_info,
+        "edge_version": node.edge_version,
+        "hasp_runtime_version": node.hasp_runtime_version,
+        "notes": node.notes,
+        "orchestrator_behind_nat": node.orchestrator_behind_nat,
+        "upload_rate_limit": node.upload_rate_limit,
+        "is_backup_running": is_running,
+        "backup_progress": progress,
+        "backup_task_id": running_task_id,
+        "last_ping_status": node.last_ping_status,
+        "last_available_at": node.last_available_at,
+    }
+
+    if node.status == "OFFLINE":
+        try:
+            next_retry = (
+                retry_raw if prefetched
+                else redis_client.get(f"node_next_retry:{node.id}")
+            )
+            if next_retry:
+                node_dict["next_retry_at"] = datetime.datetime.fromtimestamp(
+                    int(next_retry), tz=datetime.timezone.utc
+                )
+        except Exception:
+            pass
+
+    return node_dict
 
 def parse_ip_input(ip_input: str) -> List[str]:
     """
@@ -76,8 +216,11 @@ def parse_ip_input(ip_input: str) -> List[str]:
 
 @router.get("", response_model=schemas.PaginatedNodesResponse)
 def get_nodes(
-    page: int = 1,
-    limit: int = 50,
+    page: int = Query(1, ge=1),
+    # Bounded, unlike the bare `limit: int = 50` this replaced: each node in
+    # the page costs Redis and Celery lookups, so an unbounded limit let one
+    # request fan out across the entire fleet.
+    limit: int = Query(50, ge=1, le=200),
     q: Optional[str] = None,
     group_id: Optional[int] = None,
     status: Optional[str] = None,
@@ -120,105 +263,33 @@ def get_nodes(
     offset = (page - 1) * limit
     nodes = query.offset(offset).limit(limit).all()
 
-    # Calculate shared repository size once
-    shared_repo_size = 0
-    repo_dir = "/data/borg/fleet"
-    if os.path.exists(repo_dir):
-        try:
-            for root, dirs, files in os.walk(repo_dir):
-                for file in files:
-                    shared_repo_size += os.path.getsize(os.path.join(root, file))
-        except Exception:
-            shared_repo_size = 0
+    # Shared repository size, from the memoised `du` in core.repo_usage.
+    #
+    # This used to be an os.walk + getsize over the whole fleet repository,
+    # inline in the handler, uncached. The fleet tab polls this endpoint every
+    # five seconds per open browser and re-fires it on every search keystroke,
+    # so a repository with a few hundred thousand segment files turned the node
+    # list into seconds of stat() calls — and, being a sync handler, it did
+    # that inside Starlette's bounded threadpool, stalling unrelated requests
+    # once enough of them piled up.
+    shared_repo_size = repo_usage.repo_size_bytes() or 0
 
-    results = []
-    for node in nodes:
-        # Calculate repository size on disk
-        repo_size = shared_repo_size if node.last_backup else 0
+    # Two MGETs for the whole page instead of one or two GETs per node.
+    running_raw = _mget([f"backup_running:{n.id}" for n in nodes])
+    retry_raw = _mget([
+        f"node_next_retry:{n.id}" for n in nodes if n.status == "OFFLINE"
+    ])
 
-        # Check if backup is running
-        is_running = False
-        progress = 0
-        running_task_id = None
-        try:
-            val = redis_client.get(f"backup_running:{node.id}")
-            if val:
-                val_str = val.decode('utf-8') if isinstance(val, bytes) else str(val)
-                is_running = True
-                if ":" in val_str:
-                    parts = val_str.split(":", 1)
-                    try:
-                        start_time = int(parts[0])
-                    except ValueError:
-                        start_time = 1
-                    running_task_id = parts[1]
-                else:
-                    try:
-                        start_time = int(val_str)
-                    except ValueError:
-                        start_time = 1
-                    running_task_id = None
-                
-                # Auto-clear legacy placeholder "1" keys or old keys lacking task IDs (older than 10 mins)
-                import time
-                if start_time == 1 or (not running_task_id and (int(time.time()) - start_time > 600)):
-                    redis_client.delete(f"backup_running:{node.id}")
-                    is_running = False
-                
-                if is_running and running_task_id:
-                    from celery_app import celery_app
-                    res = celery_app.AsyncResult(running_task_id)
-                    if res.ready():
-                        redis_client.delete(f"backup_running:{node.id}")
-                        is_running = False
-                
-                if is_running:
-                    import time
-                    import math
-                    elapsed = max(0, int(time.time()) - start_time)
-                    progress = max(0, min(99, int(100 * (1 - math.exp(-elapsed / 45.0)))))
-        except Exception:
-            pass
-
-        node_dict = {
-            "id": node.id,
-            "hostname": node.hostname,
-            "ip_address": node.ip_address,
-            "ssh_port": node.ssh_port,
-            "status": node.status,
-            "last_backup": node.last_backup,
-            "disk_type": node.disk_type or "Unknown",
-            "network_iface": node.network_iface,
-            "efi_uuid": node.efi_uuid,
-            "partition_layout": node.partition_layout,
-            "os_version": node.os_version,
-            "next_retry_at": None,
-            "repo_size_bytes": repo_size,
-            "group_id": node.group_id,
-            "backup_paused": node.backup_paused,
-            "backup_today": node.backup_today,
-            "missed_window": node.missed_window,
-            "cpu_info": node.cpu_info,
-            "memory_info": node.memory_info,
-            "edge_version": node.edge_version,
-            "hasp_runtime_version": node.hasp_runtime_version,
-            "notes": node.notes,
-            "orchestrator_behind_nat": node.orchestrator_behind_nat,
-            "is_backup_running": is_running,
-            "backup_progress": progress,
-            "backup_task_id": running_task_id,
-            "last_ping_status": node.last_ping_status,
-            "last_available_at": node.last_available_at
-        }
-        if node.status == "OFFLINE":
-            try:
-                next_retry = redis_client.get(f"node_next_retry:{node.id}")
-                if next_retry:
-                    import datetime
-                    node_dict["next_retry_at"] = datetime.datetime.fromtimestamp(int(next_retry), tz=datetime.timezone.utc)
-            except Exception:
-                pass
-        results.append(node_dict)
+    results = [
+        _serialize_node(
+            node,
+            shared_repo_size if node.last_backup else 0,
+            running_raw=running_raw.get(f"backup_running:{node.id}"),
+            retry_raw=retry_raw.get(f"node_next_retry:{node.id}"),
+            prefetched=True,
+        )
+        for node in nodes
+    ]
 
     return {
         "nodes": results,
@@ -242,7 +313,14 @@ def get_all_history(
     """
     Retrieves backup snapshot history records for all nodes.
     """
-    query = db.query(models.BackupHistory).outerjoin(models.Node, models.BackupHistory.node_id == models.Node.id)
+    # log_output deferred: it holds the full borg output of every run and the
+    # history table never renders it, so shipping it multiplied each page by
+    # several megabytes.
+    query = (
+        db.query(models.BackupHistory)
+        .options(defer(models.BackupHistory.log_output))
+        .outerjoin(models.Node, models.BackupHistory.node_id == models.Node.id)
+    )
     
     if q:
         query = query.filter(
@@ -365,11 +443,28 @@ def add_node(payload: schemas.NodeCreate, request: Request = None, db: Session =
 
 
 @router.get("/{node_id}/history", response_model=List[schemas.BackupHistoryResponse])
-def get_node_history(node_id: int, db: Session = Depends(get_db), current_user = Depends(require_kiosk_or_admin)):
+def get_node_history(
+    node_id: int,
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    current_user = Depends(require_kiosk_or_admin),
+):
+    """Backup snapshot history for one node, newest first.
+
+    Bounded and log-free. This used to return every row a node had ever
+    produced, `log_output` included — that column holds the full borg output
+    of each run, so a node with a year of dailies answered a details-modal
+    open with several megabytes of text the UI never renders. The kiosk
+    fetches this over the WAN during a restore, where it hurt most.
     """
-    Retrieves the backup snapshot history records for a specific node.
-    """
-    return db.query(models.BackupHistory).filter(models.BackupHistory.node_id == node_id).all()
+    return (
+        db.query(models.BackupHistory)
+        .options(defer(models.BackupHistory.log_output))
+        .filter(models.BackupHistory.node_id == node_id)
+        .order_by(models.BackupHistory.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/history/{history_id}/files", response_model=schemas.ArchiveFileListResponse)
@@ -688,3 +783,34 @@ def delete_node(node_id: int, request: Request = None, db: Session = Depends(get
     from database import log_user_action
     username = getattr(current_user, "username", "test_admin")
     log_user_action(db, username, "Delete Node", f"Deleted node '{node.hostname}' (IP: {node.ip_address})", request)
+
+
+@router.get("/{node_id}", response_model=schemas.NodeResponse)
+def get_node(
+    node_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_kiosk_or_admin),
+):
+    """One node, in the same shape the list endpoint returns.
+
+    Registered last on purpose: `/{node_id}` would otherwise swallow the
+    literal sibling paths under this prefix (`/history`, and the
+    `/history/{history_id}/...` family), which FastAPI matches in
+    registration order.
+
+    This exists because the details view used to fetch the *list* and search
+    it for one node. The list is paginated at 50, so opening any node beyond
+    the first page found nothing and left the modal stuck on its loading
+    state — for a 2000-node fleet, that was 97% of them.
+
+    The repository size is deliberately not computed here: it is a
+    fleet-shared figure that costs a full walk of the borg repo, and no
+    single-node view has ever displayed it.
+    """
+    node = db.query(models.Node).filter(models.Node.id == node_id).first()
+    if not node:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Node not found",
+        )
+    return _serialize_node(node, 0)

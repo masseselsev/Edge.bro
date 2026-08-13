@@ -38,7 +38,7 @@ def session_factory():
 
 @pytest.fixture
 def db(session_factory, monkeypatch):
-    monkeypatch.setattr(monitoring, "SessionLocal", session_factory)
+    monkeypatch.setattr("database.SessionLocal", session_factory)
     session = session_factory()
     try:
         yield session

@@ -6,6 +6,7 @@ import logging
 import hashlib
 from celery_app import celery_app
 from core import ssh_keys
+from core.db_session import session_scope
 from typing import Dict, Any
 
 import paths
@@ -140,12 +141,8 @@ def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
         # is now stale — or, on a fresh install, was never built at all. Nothing
         # else triggers that first build, so it must happen here.
         try:
-            from database import SessionLocal
-            trigger_db = SessionLocal()
-            try:
+            with session_scope() as trigger_db:
                 trigger_base_iso_rebuild(trigger_db)
-            finally:
-                trigger_db.close()
         except Exception as trigger_err:
             logger.error(f"Failed to trigger client template rebuild after base ISO download: {trigger_err}")
 
@@ -184,7 +181,6 @@ def generate_kiosk_id() -> str:
 @celery_app.task(bind=True)
 def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str, Any]:
     from tasks import log_to_task, run_command_with_logging
-    from database import SessionLocal
     from models import TaskLog
     import redis
     import os
@@ -198,15 +194,10 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
     except Exception as re:
         logger.error(f"Failed to clear base_iso_dirty in Celery task: {re}")
 
-    # close in a finally: a failure to insert the task log used to leave this
-    # session open with a transaction attached for the whole ISO build.
-    db = SessionLocal()
-    try:
-        task_log = TaskLog(id=task_id, task_type="ISO_GEN", status="RUNNING", log_output="")
-        db.add(task_log)
-        db.commit()
-    finally:
-        db.close()
+    # A scope rather than a session for the whole task: the build that follows
+    # is many minutes of xorriso and cpio, and none of it needs a connection.
+    with session_scope() as db:
+        db.add(TaskLog(id=task_id, task_type="ISO_GEN", status="RUNNING", log_output=""))
 
     # Validate cached ISO size
     if os.path.exists(BASE_ISO_PATH):
@@ -296,10 +287,19 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         # Inject Shared Disk Ops Module
         shutil.copy2("/app/core/disk_ops.py", os.path.join(opt_offline, "backend", "core", "disk_ops.py"))
 
-        # Inject Shared Network settings router
+        # Inject Shared Network settings router.
+        # network.py imports both sub-routers at module scope, so all three
+        # files have to ship together. When they were split out of network.py
+        # this list was not updated, and the kiosk's whole /api/network/*
+        # surface — WiFi, wired, VPN — silently 404'd, because the payload
+        # client swallows the resulting ImportError.
         os.makedirs(os.path.join(opt_offline, "backend", "routers"), exist_ok=True)
         open(os.path.join(opt_offline, "backend", "routers", "__init__.py"), "w").close()
-        shutil.copy2("/app/routers/network.py", os.path.join(opt_offline, "backend", "routers", "network.py"))
+        for _router_file in ("network.py", "network_dhcp.py", "network_wg.py"):
+            shutil.copy2(
+                f"/app/routers/{_router_file}",
+                os.path.join(opt_offline, "backend", "routers", _router_file),
+            )
 
         # Inject Unified version configuration
         shutil.copy2("/app/version.py", os.path.join(opt_offline, "backend", "version.py"))
@@ -410,10 +410,13 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         # Write Config JSON
         log_to_task(task_id, "[PROGRESS] 42:Generating kiosk configuration...")
         import models
-        settings = db.query(models.Settings).first()
-        lang = settings.language if settings else "en"
+        # Reads through the session opened at the top of this task, which was
+        # closed long before the build reached here.
+        with session_scope() as db:
+            settings = db.query(models.Settings).first()
+            lang = settings.language if settings else "en"
+            server_ips = list(settings.server_ips) if (settings and settings.server_ips) else []
         kiosk_id = generate_kiosk_id()
-        server_ips = settings.server_ips if (settings and settings.server_ips) else []
         config_data = {
             "orchestrator_ip": target_ip,
             "available_server_ips": server_ips,
@@ -576,16 +579,17 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
         # Auto-regenerate any existing approved kiosks to build on top of the new base ISO
         try:
-            db_reg = SessionLocal()
             from models import Kiosk
-            approved_kiosks = db_reg.query(Kiosk).filter(Kiosk.status == "APPROVED").all()
-            for kiosk in approved_kiosks:
-                kiosk.rebuild_required = True
-            db_reg.commit()
-            for kiosk in approved_kiosks:
-                logger.info(f"Auto-triggering rebuild for approved kiosk {kiosk.kiosk_id} after base ISO update.")
-                repack_kiosk_iso_task.delay(kiosk.id)
-            db_reg.close()
+            with session_scope() as db_reg:
+                approved_kiosks = db_reg.query(Kiosk).filter(Kiosk.status == "APPROVED").all()
+                for kiosk in approved_kiosks:
+                    kiosk.rebuild_required = True
+                # Read out before the scope closes: committing expires the
+                # instances, and dispatching happens outside the session.
+                to_rebuild = [(k.id, k.kiosk_id) for k in approved_kiosks]
+            for kiosk_pk, kiosk_label in to_rebuild:
+                logger.info(f"Auto-triggering rebuild for approved kiosk {kiosk_label} after base ISO update.")
+                repack_kiosk_iso_task.delay(kiosk_pk)
         except Exception as e_kiosk:
             logger.error(f"Failed to auto-trigger kiosk ISO rebuild: {e_kiosk}")
 
@@ -611,32 +615,38 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 @celery_app.task(bind=True)
 def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
     from tasks import log_to_task, run_command_with_logging
-    from database import SessionLocal
     from models import TaskLog, Kiosk, Settings
-    
-    task_id = self.request.id
 
-    db = SessionLocal()
-    task_log = TaskLog(id=task_id, task_type=f"KIOSK_ISO_GEN_{kiosk_id}", status="RUNNING", log_output="")
-    db.add(task_log)
-    db.commit()
+    task_id = self.request.id
 
     work_dir = None
     try:
-        kiosk = db.query(Kiosk).filter(Kiosk.id == kiosk_id).first()
-        if not kiosk:
-            raise Exception(f"Kiosk record {kiosk_id} not found")
-
+        # Everything the repack needs, read once. What follows is minutes of
+        # xorriso, cpio and gzip; holding a connection across it is the bug
+        # core.db_session exists to prevent.
         from routers.settings import get_local_ips
-        settings = db.query(Settings).first()
-        max_kiosk_isos = settings.max_kiosk_isos if settings else 5
-        target_ip = kiosk.target_ip if kiosk.target_ip else (settings.orchestrator_ip if settings else "127.0.0.1")
-        
-        auto_ips = get_local_ips()
-        manual_ips = settings.server_ips if (settings and settings.server_ips) else []
-        available_ips = sorted(list(set(auto_ips + manual_ips)))
-        
-        lang = settings.language if settings else "en"
+        with session_scope() as db:
+            db.add(TaskLog(
+                id=task_id, task_type=f"KIOSK_ISO_GEN_{kiosk_id}",
+                status="RUNNING", log_output="",
+            ))
+
+            kiosk = db.query(Kiosk).filter(Kiosk.id == kiosk_id).first()
+            if not kiosk:
+                raise Exception(f"Kiosk record {kiosk_id} not found")
+
+            settings = db.query(Settings).first()
+            max_kiosk_isos = settings.max_kiosk_isos if settings else 5
+            target_ip = kiosk.target_ip if kiosk.target_ip else (settings.orchestrator_ip if settings else "127.0.0.1")
+
+            manual_ips = settings.server_ips if (settings and settings.server_ips) else []
+            lang = settings.language if settings else "en"
+            server_name = settings.server_name if (settings and settings.server_name) else "edge-bro"
+            kiosk_auth_token = kiosk.auth_token
+            kiosk_label = kiosk.kiosk_id
+
+        # get_local_ips shells out to `ip`, so it stays outside the scope.
+        available_ips = sorted(set(get_local_ips() + list(manual_ips)))
 
         template_iso = os.path.join(CACHE_DIR, "technician_client_v1.iso")
         if not os.path.exists(template_iso):
@@ -644,11 +654,10 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
 
         history_dir = os.path.join(CACHE_DIR, "history")
         os.makedirs(history_dir, exist_ok=True)
-        server_name = settings.server_name if (settings and settings.server_name) else "edge-bro"
-        
+
         # Clean up any existing ISO files for this kiosk token first to ensure clean generation and save space
         for file in os.listdir(history_dir):
-            if file.endswith(f"-{kiosk.auth_token}.iso") and "-kiosk-" in file:
+            if file.endswith(f"-{kiosk_auth_token}.iso") and "-kiosk-" in file:
                 try:
                     os.remove(os.path.join(history_dir, file))
                 except Exception:
@@ -656,7 +665,7 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
                     
         from datetime import datetime
         created_date = datetime.now().strftime("%Y%m%d")
-        output_kiosk_iso = os.path.join(history_dir, f"{server_name}-kiosk-{created_date}-{kiosk.auth_token}.iso")
+        output_kiosk_iso = os.path.join(history_dir, f"{server_name}-kiosk-{created_date}-{kiosk_auth_token}.iso")
 
         # Same reasoning as generate_client_iso_task: keep multi-GB scratch
         # space off the root disk and on the configured ISO storage.
@@ -694,8 +703,8 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
             with open(config_path, "r") as f:
                 config_data = json.load(f)
                 
-        config_data["auth_token"] = kiosk.auth_token
-        config_data["kiosk_id"] = kiosk.kiosk_id
+        config_data["auth_token"] = kiosk_auth_token
+        config_data["kiosk_id"] = kiosk_label
         config_data["available_server_ips"] = available_ips
         config_data["orchestrator_ip"] = target_ip
         config_data["language"] = lang
@@ -754,10 +763,11 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
                     logger.error(f"Failed to prune old ISO {iso_files[i][0]}: {pe}")
 
         from datetime import datetime
-        kiosk.iso_built_at = datetime.utcnow()
-        kiosk.rebuild_required = False
-        db.commit()
-
+        with session_scope() as db:
+            kiosk = db.query(Kiosk).filter(Kiosk.id == kiosk_id).first()
+            if kiosk:
+                kiosk.iso_built_at = datetime.utcnow()
+                kiosk.rebuild_required = False
 
         log_to_task(task_id, "[PROGRESS] 100:Kiosk custom ISO generated successfully!", status="SUCCESS")
         return {"status": "SUCCESS", "iso_path": output_kiosk_iso}
@@ -769,7 +779,6 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
     finally:
         if work_dir:
             shutil.rmtree(work_dir, ignore_errors=True)
-        db.close()
 
 
 def trigger_base_iso_rebuild(db):

@@ -108,12 +108,17 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const [applyingLicense, setApplyingLicense] = useState(false);
   const [licenseMessage, setLicenseMessage] = useState<{ text: string; isError: boolean } | null>(null);
   const [sentinelExpanded, setSentinelExpanded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchNodeDetails = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
+      // Fetch this one node directly. This used to pull the paginated node
+      // list and search it, which meant any node past the first page of 50
+      // was simply not in the response and the modal hung on its spinner.
       const [nRes, hRes, gRes, tlRes, haspRes, sRes] = await Promise.all([
-        fetch('/api/nodes'),
+        fetch(`/api/nodes/${nodeId}`),
         fetch(`/api/nodes/${nodeId}/history`),
         fetch('/api/groups'),
         fetch(`/api/nodes/${nodeId}/task-logs`),
@@ -122,27 +127,29 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
       ]);
 
       if (nRes.ok) {
-        const data = await nRes.json();
-        const allNodes = Array.isArray(data) ? data : (data.nodes || []);
-        const found = allNodes.find((n: Node) => n.id === nodeId);
-        if (found) {
-          setNode(found);
-          setNotes(found.notes || '');
-          setGroupId(found.group_id || 0);
-          setNatChoice(natChoiceFrom(found.orchestrator_behind_nat));
-          setRateLimit(found.upload_rate_limit == null ? '' : formatMbit(kibToMbit(found.upload_rate_limit)));
-          if (found.status === 'RESTORED') {
-              setSentinelExpanded(true);
-              setTimeout(() => {
-                const el = document.getElementById('sentinel-licensing-section');
-                if (el) {
-                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-              }, 150);
+        const found: Node = await nRes.json();
+        setNode(found);
+        setNotes(found.notes || '');
+        setGroupId(found.group_id || 0);
+        setNatChoice(natChoiceFrom(found.orchestrator_behind_nat));
+        setRateLimit(found.upload_rate_limit == null ? '' : formatMbit(kibToMbit(found.upload_rate_limit)));
+        if (found.status === 'RESTORED') {
+          setSentinelExpanded(true);
+          setTimeout(() => {
+            const el = document.getElementById('sentinel-licensing-section');
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
-          }
+          }, 150);
         }
-      
+      } else {
+        setLoadError(
+          nRes.status === 404
+            ? t('nodeDetailsNotFound')
+            : t('nodeDetailsLoadFailed')
+        );
+      }
+
       if (hRes.ok) {
         const histData = await hRes.json();
         if (Array.isArray(histData)) {
@@ -220,6 +227,16 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   useEffect(() => {
     fetchNodeDetails();
   }, [nodeId]);
+
+  // Escape closes the modal from any state, including while it is still
+  // loading or showing a load error.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   // Kept out of fetchNodeDetails deliberately: the health endpoint reads
   // several monitoring tables and runs the cohort comparison across the
@@ -384,12 +401,39 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  // Every pre-load state is dismissible. This branch used to render a bare
+  // spinner with no close button, no backdrop handler and no Escape key, so
+  // whenever the node could not be loaded the only way out was a page reload.
   if (!node) {
     return createPortal(
-      <div className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 flex items-center gap-3">
-          <RefreshCw className="h-6 w-6 text-indigo-400 animate-spin" />
-          <span className="text-zinc-200">Loading node details...</span>
+      <div
+        className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
+        onClick={onClose}
+      >
+        <div
+          className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl min-w-[320px]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-6">
+            {loadError ? (
+              <div className="flex items-center gap-3">
+                <Info className="h-6 w-6 text-rose-400 shrink-0" />
+                <span className="text-zinc-200 text-sm">{loadError}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <RefreshCw className="h-6 w-6 text-indigo-400 animate-spin" />
+                <span className="text-zinc-200 text-sm">{t('nodeDetailsLoading')}</span>
+              </div>
+            )}
+            <button
+              onClick={onClose}
+              aria-label={t('close')}
+              className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition shrink-0"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </div>,
       document.body

@@ -15,7 +15,7 @@ import models
 import schemas
 from core import smart, monitoring_verdicts
 from database import get_db, log_user_action
-from routers.users import get_current_auth, require_admin
+from routers.users import get_current_auth, require_admin, require_user
 from tasks.monitoring import resolve_setting
 
 router = APIRouter(prefix="/api/monitoring", tags=["Monitoring"])
@@ -275,13 +275,13 @@ def trigger_harvest(node_id: int, request: Request = None, db: Session = Depends
 # --- per-user UI state --------------------------------------------------------
 
 @router.get("/preferences", response_model=schemas.UiPreferencesResponse)
-def get_preferences(current_auth=Depends(get_current_auth)):
+def get_preferences(current_user: models.User = Depends(require_user)):
     """Graph choices for the current user, falling back to the defaults.
 
     A user who has never chosen gets the defaults rather than an empty object,
     so the frontend never has to carry a second copy of them.
     """
-    stored = getattr(current_auth, "ui_preferences", None) or {}
+    stored = current_user.ui_preferences or {}
     return schemas.UiPreferencesResponse(preferences={**DEFAULT_UI_PREFERENCES, **stored})
 
 
@@ -289,20 +289,19 @@ def get_preferences(current_auth=Depends(get_current_auth)):
 def set_preferences(
     payload: schemas.UiPreferencesResponse,
     db: Session = Depends(get_db),
-    current_auth=Depends(get_current_auth),
+    current_user: models.User = Depends(require_user),
 ):
     """Merge into the current user's stored preferences.
 
     Merged rather than replaced so a client that knows about one graph does
     not wipe the settings of another it has never heard of.
-    """
-    user = db.query(models.User).filter(models.User.id == getattr(current_auth, "id", None)).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Preferences belong to a user account.",
-        )
 
+    Depends on require_user, not get_current_auth: this used to re-query a
+    User by `current_auth.id`, and kiosk ids come from a separate sequence
+    that can collide with user ids, so a kiosk token could rewrite an
+    unrelated user's preferences.
+    """
+    user = current_user
     merged = {**(user.ui_preferences or {}), **(payload.preferences or {})}
     user.ui_preferences = merged
     db.commit()

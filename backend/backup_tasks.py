@@ -4,15 +4,15 @@ import json
 import logging
 import threading
 import time as time_module
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Any, Optional
-from sqlalchemy.orm import Session
 from celery_app import celery_app
 
-from database import SessionLocal
 from models import Node, TaskLog, BackupHistory, Settings, BackupGroup
 from ansible_utils import run_ansible_playbook
 from core.borg_local import borg_kwargs
+from core.db_session import session_scope
 from core import backup_stats, transfer_speed
 
 # Re-use logging configuration from tasks
@@ -279,9 +279,6 @@ def cleanup_locks_and_resolve_ip(
         return None
 
     resolved_ip = None
-
-
-    resolved_ip = None
     if is_reachable and test_ip:
         resolved_ip = test_ip
         log_to_task(task_id, f"Using configured orchestrator IP: {resolved_ip}")
@@ -310,57 +307,66 @@ def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
     Returns:
         Status result dictionary.
     """
-    task_id = self.request.id
     from tasks import log_to_task
-    db: Session = SessionLocal()
-    try:
-        return _run_prepare(self, db, node_id, task_id, log_to_task)
-    finally:
-        # In a finally rather than at the end of the body: an exception midway
-        # used to leave this session open with a transaction attached.
-        db.close()
+    return _run_prepare(node_id, self.request.id, log_to_task)
 
 
-def _run_prepare(self, db, node_id, task_id, log_to_task) -> Dict[str, Any]:
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        db.close()
-        return {"status": "FAILED", "error": "Node not found"}
+def _run_prepare(node_id, task_id, log_to_task) -> Dict[str, Any]:
+    # Read, run, write — with no session held across the playbook. See
+    # core.db_session for why that separation matters here.
+    with session_scope() as db:
+        node = db.query(Node).filter(Node.id == node_id).first()
+        if not node:
+            return {"status": "FAILED", "error": "Node not found"}
+        node_ip, node_port, node_hostname = node.ip_address, node.ssh_port, node.hostname
+        db.add(TaskLog(
+            id=task_id, task_type="PREPARE", status="RUNNING", node_id=node_id, log_output=""
+        ))
 
-    task_log = TaskLog(id=task_id, task_type="PREPARE", status="RUNNING", node_id=node_id, log_output="")
-    db.add(task_log)
-    db.commit()
-
-    log_to_task(task_id, f"Starting auto-prepare for {node.hostname} ({node.ip_address})")
+    log_to_task(task_id, f"Starting auto-prepare for {node_hostname} ({node_ip})")
 
     res = run_ansible_playbook(
         task_id=task_id,
         playbook_name="prepare.yml",
-        host_ip=node.ip_address,
-        ssh_port=node.ssh_port,
+        host_ip=node_ip,
+        ssh_port=node_port,
         extra_vars={},
         ssh_key_path="/root/.ssh/id_ed25519"
     )
 
-    if res["status"] == "SUCCESS":
-        node.disk_type = res["parsed_data"].get("disk_type", "UNKNOWN")
-        node.network_iface = res["parsed_data"].get("network_iface")
-        node.efi_uuid = res["parsed_data"].get("efi_uuid")
-        if "partition_layout" in res["parsed_data"]:
-            node.partition_layout = res["parsed_data"]["partition_layout"]
-        if "os_version" in res["parsed_data"]:
-            node.os_version = res["parsed_data"]["os_version"]
-        if "hostname" in res["parsed_data"]:
-            node.hostname = res["parsed_data"]["hostname"]
-        node.cpu_info = res["parsed_data"].get("cpu_info")
-        node.memory_info = res["parsed_data"].get("memory_info")
-        node.edge_version = res["parsed_data"].get("edge_version")
-        node.status = "READY"
-        db.commit()
-        log_to_task(task_id, f"Auto-prepare finished. Disk type: {node.disk_type}, EFI UUID: {node.efi_uuid}, Interface: {node.network_iface}, CPU: {node.cpu_info}, RAM: {node.memory_info}, Edge Version: {node.edge_version}", status="SUCCESS")
+    with session_scope() as db:
+        node = db.query(Node).filter(Node.id == node_id).first()
+        if not node:
+            return res
+
+        if res["status"] == "SUCCESS":
+            parsed = res["parsed_data"]
+            node.disk_type = parsed.get("disk_type", "UNKNOWN")
+            node.network_iface = parsed.get("network_iface")
+            node.efi_uuid = parsed.get("efi_uuid")
+            if "partition_layout" in parsed:
+                node.partition_layout = parsed["partition_layout"]
+            if "os_version" in parsed:
+                node.os_version = parsed["os_version"]
+            if "hostname" in parsed:
+                node.hostname = parsed["hostname"]
+            node.cpu_info = parsed.get("cpu_info")
+            node.memory_info = parsed.get("memory_info")
+            node.edge_version = parsed.get("edge_version")
+            node.status = "READY"
+            summary = (
+                f"Auto-prepare finished. Disk type: {node.disk_type}, "
+                f"EFI UUID: {node.efi_uuid}, Interface: {node.network_iface}, "
+                f"CPU: {node.cpu_info}, RAM: {node.memory_info}, "
+                f"Edge Version: {node.edge_version}"
+            )
+        else:
+            node.status = "NEEDS_FIX"
+            summary = None
+
+    if summary:
+        log_to_task(task_id, summary, status="SUCCESS")
     else:
-        node.status = "NEEDS_FIX"
-        db.commit()
         log_to_task(task_id, "Auto-prepare task failed.", status="FAILED")
 
     return res
@@ -381,88 +387,212 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
     """
     task_id = self.request.id
     from tasks import log_to_task, fix_repo_permissions
-    db: Session = SessionLocal()
-    node = db.query(Node).filter(Node.id == node_id).first()
-    settings = db.query(Settings).first()
-    if not settings:
-        settings = Settings()
-        db.add(settings)
-        db.commit()
-
-    if not node:
-        db.close()
-        return {"status": "FAILED", "error": "Node not found"}
-
     import redis
     import time
-    from core.schedule_estimate import backup_lock_ttl_seconds
+
     redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
-    # Sized from this node's history rather than a flat 4h: on slow links a
-    # backup that outlives its lock gets killed by the next scheduler tick.
-    group = db.query(BackupGroup).filter(BackupGroup.id == node.group_id).first() if node.group_id else None
-    rate_limit_kib, rate_limit_source = transfer_speed.resolve_rate_limit(
-        node.upload_rate_limit, group.upload_rate_limit if group else None
+
+    plan = _plan_backup(node_id)
+    if plan is None:
+        return {"status": "FAILED", "error": "Node not found"}
+
+    redis_client.setex(
+        f"backup_running:{plan.node_id}", plan.lock_ttl, f"{int(time.time())}:{task_id}"
     )
-    # Size the lock from the limit that will actually apply, otherwise a node
-    # capped slower than its group outlives its own lock and gets killed.
-    _lock_ttl = backup_lock_ttl_seconds(db, node.id, rate_limit_kib or None)
-    redis_client.setex(f"backup_running:{node.id}", _lock_ttl, f"{int(time.time())}:{task_id}")
 
-    # Check Sentinel HASP license for READY nodes
-    if node.status == "READY":
-        # Wait if there's an active license lock (e.g. fingerprint download or license update in progress)
-        lock_key = f"license_lock:{node.id}"
-        for _ in range(5):
-            if not redis_client.exists(lock_key):
-                break
-            time.sleep(1)
-            
-        from core.hasp_helper import check_hasp_status_on_node
-        hasp_status = check_hasp_status_on_node(node)
-        if hasp_status in ("no_license", "clone_detected", "disabled", "expired"):
+    try:
+        # Check Sentinel HASP license for READY nodes
+        if plan.status == "READY":
+            refusal = _refuse_unlicensed_node(plan, task_id, redis_client, log_to_task)
+            if refusal is not None:
+                return refusal
+
+        with session_scope() as db:
+            db.add(TaskLog(
+                id=task_id, task_type="BACKUP", status="RUNNING",
+                node_id=node_id, log_output="",
+            ))
+
+        return _transfer_and_record(plan, task_id, comment, log_to_task, fix_repo_permissions)
+    except Exception as e:
+        log_to_task(task_id, f"Exception occurred during backup task: {str(e)}", status="FAILED")
+        return {"status": "FAILED", "error": str(e)}
+    finally:
+        try:
+            redis_client.delete(f"backup_running:{plan.node_id}")
+        except Exception:
+            pass
+
+
+@dataclass
+class BackupPlan:
+    """Everything a backup needs from the database, resolved up front.
+
+    A `borg create` runs for hours. Reading node, group and settings into
+    plain values means the transfer holds no connection and no transaction
+    while it runs — which is the whole point, but it also has to be complete:
+    anything missing here cannot be fetched later without reopening the very
+    session this exists to avoid. See core.db_session.
+    """
+    node_id: int
+    hostname: str
+    ip_address: str
+    ssh_port: int
+    status: str
+    hasp_runtime_version: Optional[str]
+    group_id: Optional[int]
+    orchestrator_ip: Optional[str]
+    borg_ssh_port: int
+    behind_nat: bool
+    global_exclusions: Any
+    rate_limit_kib: Optional[int]
+    rate_limit_source: str
+    compression: str
+    checkpoint_secs: int
+    cpu_quota: Optional[int]
+    lock_ttl: int
+
+
+def _plan_backup(node_id: int) -> Optional[BackupPlan]:
+    """Resolve node, group and global settings into one flat, detached record."""
+    from core.schedule_estimate import backup_lock_ttl_seconds
+
+    with session_scope() as db:
+        node = db.query(Node).filter(Node.id == node_id).first()
+        if not node:
+            return None
+
+        settings = db.query(Settings).first()
+        if not settings:
+            settings = Settings()
+            db.add(settings)
+            db.flush()
+
+        group = (
+            db.query(BackupGroup).filter(BackupGroup.id == node.group_id).first()
+            if node.group_id else None
+        )
+
+        rate_limit_kib, rate_limit_source = transfer_speed.resolve_rate_limit(
+            node.upload_rate_limit, group.upload_rate_limit if group else None
+        )
+
+        return BackupPlan(
+            node_id=node.id,
+            hostname=node.hostname,
+            ip_address=node.ip_address,
+            ssh_port=node.ssh_port,
+            status=node.status,
+            hasp_runtime_version=node.hasp_runtime_version,
+            group_id=node.group_id,
+            orchestrator_ip=settings.orchestrator_ip,
+            borg_ssh_port=settings.borg_ssh_port,
+            # Effective NAT mode for THIS node: node override -> group -> global.
+            behind_nat=resolve_behind_nat(node, group, settings),
+            global_exclusions=list(settings.global_exclusions or []),
+            rate_limit_kib=rate_limit_kib,
+            rate_limit_source=rate_limit_source,
+            compression=(
+                (group.compression if group and group.compression else None)
+                or getattr(settings, 'default_compression', None)
+                or 'zstd:3'
+            ),
+            checkpoint_secs=(
+                group.checkpoint_interval
+                if group and group.checkpoint_interval is not None
+                else compute_checkpoint_interval(rate_limit_kib)
+            ),
+            cpu_quota=(
+                group.cpu_quota
+                if group and group.cpu_quota is not None
+                else getattr(settings, 'default_cpu_quota', None)
+            ),
+            # Sized from this node's history rather than a flat 4h: on slow
+            # links a backup that outlives its lock gets killed by the next
+            # scheduler tick. Sized from the limit that will actually apply,
+            # otherwise a node capped slower than its group outlives its own
+            # lock and gets killed.
+            lock_ttl=backup_lock_ttl_seconds(db, node.id, rate_limit_kib or None),
+        )
+
+
+def _refuse_unlicensed_node(
+    plan: BackupPlan, task_id: str, redis_client, log_to_task
+) -> Optional[Dict[str, Any]]:
+    """Abort the backup if the node's HASP license has lapsed.
+
+    Returns a result dict when the backup must not proceed, None otherwise.
+    A node whose license died is demoted out of READY: backing it up would
+    capture a machine that cannot run, and the demotion is what surfaces the
+    problem to an operator.
+    """
+    import time
+    from core.hasp_helper import check_hasp_status_on_node
+
+    # Wait if there's an active license lock (e.g. fingerprint download or
+    # license update in progress)
+    lock_key = f"license_lock:{plan.node_id}"
+    for _ in range(5):
+        if not redis_client.exists(lock_key):
+            break
+        time.sleep(1)
+
+    hasp_status = check_hasp_status_on_node(plan)
+    if hasp_status not in ("no_license", "clone_detected", "disabled", "expired"):
+        return None
+
+    from database import log_user_action
+    with session_scope() as db:
+        node = db.query(Node).filter(Node.id == plan.node_id).first()
+        if node:
             node.status = "RESTORED"
-            db.commit()
-            from database import log_user_action
-            log_user_action(db, "System: License Monitor", "Node Status Demoted", f"Ready node '{node.hostname}' detected with inactive/expired license ({hasp_status}) during backup. Status demoted to RESTORED.", None)
-            
-            # Create task log entry and mark it as failed
-            task_log = TaskLog(id=task_id, task_type="BACKUP", status="FAILED", node_id=node_id, log_output="")
-            db.add(task_log)
-            db.commit()
-            log_to_task(task_id, f"Backup aborted: Node HASP license status is inactive ({hasp_status}). Licence update is required.", status="FAILED")
-            db.close()
-            try:
-                redis_client.delete(f"backup_running:{node.id}")
-            except Exception:
-                pass
-            return {"status": "FAILED", "error": f"Inactive license status: {hasp_status}"}
+        db.add(TaskLog(
+            id=task_id, task_type="BACKUP", status="FAILED",
+            node_id=plan.node_id, log_output="",
+        ))
+        db.flush()
+        log_user_action(
+            db, "System: License Monitor", "Node Status Demoted",
+            f"Ready node '{plan.hostname}' detected with inactive/expired license "
+            f"({hasp_status}) during backup. Status demoted to RESTORED.", None,
+        )
 
-    task_log = TaskLog(id=task_id, task_type="BACKUP", status="RUNNING", node_id=node_id, log_output="")
-    db.add(task_log)
-    db.commit()
+    log_to_task(
+        task_id,
+        f"Backup aborted: Node HASP license status is inactive ({hasp_status}). "
+        f"Licence update is required.",
+        status="FAILED",
+    )
+    return {"status": "FAILED", "error": f"Inactive license status: {hasp_status}"}
 
-    log_to_task(task_id, f"Initiating Borg backup for {node.hostname}...")
 
-    # Effective NAT mode for THIS node: node override -> group -> global.
-    behind_nat = resolve_behind_nat(node, group, settings)
+def _transfer_and_record(
+    plan: BackupPlan, task_id: str, comment: Optional[str], log_to_task, fix_repo_permissions
+) -> Dict[str, Any]:
+    """Run `borg create` against the node and record the outcome.
+
+    Holds no database session for the duration — the only writes are the two
+    short scopes at the end. Everything it needs is already in `plan`.
+    """
+    log_to_task(task_id, f"Initiating Borg backup for {plan.hostname}...")
 
     # --- Pre-backup check: resolve orchestrator IP and clean locks ---
     orchestrator_ip = cleanup_locks_and_resolve_ip(
         task_id=task_id,
-        node_ip=node.ip_address,
-        node_ssh_port=node.ssh_port,
+        node_ip=plan.ip_address,
+        node_ssh_port=plan.ssh_port,
         repo_path="/data/borg/fleet",
         borg_passphrase=os.getenv("BORG_PASSPHRASE", ""),
-        configured_ip=settings.orchestrator_ip,
-        borg_ssh_port=settings.borg_ssh_port,
-        orchestrator_behind_nat=behind_nat,
+        configured_ip=plan.orchestrator_ip,
+        borg_ssh_port=plan.borg_ssh_port,
+        orchestrator_behind_nat=plan.behind_nat,
     )
 
-    archive_name = f"{node.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    archive_name = f"{plan.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     extra_ssh_args, borg_repo_url = resolve_borg_target(
-        orchestrator_behind_nat=behind_nat,
+        orchestrator_behind_nat=plan.behind_nat,
         direct_ip=orchestrator_ip,
-        borg_ssh_port=settings.borg_ssh_port,
+        borg_ssh_port=plan.borg_ssh_port,
     )
 
     fix_repo_permissions("/data/borg/fleet")
@@ -475,10 +605,10 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         "-o", "StrictHostKeyChecking=no",
         "-o", f"ServerAliveInterval={interval}",
         "-o", f"ServerAliveCountMax={count}",
-        "-p", str(node.ssh_port),
+        "-p", str(plan.ssh_port),
         "-i", "/root/.ssh/id_ed25519",
         *extra_ssh_args,
-        f"root@{node.ip_address}",
+        f"root@{plan.ip_address}",
         f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ServerAliveInterval={interval} -o ServerAliveCountMax={count}' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' BORG_RELOCATED_REPO_ACCESS_IS_OK=yes borg init --encryption=repokey {borg_repo_url}"
     ]
     log_to_task(task_id, "Checking/Initializing Borg repository...")
@@ -490,64 +620,46 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         log_to_task(task_id, f"Repository initialization check warning: {str(e)}")
 
     exclude_args = []
-    if settings.global_exclusions:
-        for ex in settings.global_exclusions:
-            pattern = None
-            if isinstance(ex, dict):
-                pattern = ex.get("pattern")
-            elif isinstance(ex, str):
-                pattern = ex
-                
-            if pattern:
-                pat_stripped = pattern.strip()
-                if pat_stripped:
-                    exclude_args.append(f"--exclude '{pat_stripped}'")
+    for ex in plan.global_exclusions:
+        pattern = None
+        if isinstance(ex, dict):
+            pattern = ex.get("pattern")
+        elif isinstance(ex, str):
+            pattern = ex
+
+        if pattern:
+            pat_stripped = pattern.strip()
+            if pat_stripped:
+                exclude_args.append(f"--exclude '{pat_stripped}'")
     exclude_str = " ".join(exclude_args)
 
-    # --- Resolve resource settings (group -> global -> hardcoded fallback) ---
-    # `group` was already loaded above when sizing the running-lock TTL.
-    compression = (
-        (group.compression if group and group.compression else None)
-        or getattr(settings, 'default_compression', None)
-        or 'zstd:3'
-    )
-    checkpoint_secs = (
-        group.checkpoint_interval
-        if group and group.checkpoint_interval is not None
-        else compute_checkpoint_interval(rate_limit_kib)
-    )
-    cpu_quota = (
-        group.cpu_quota
-        if group and group.cpu_quota is not None
-        else getattr(settings, 'default_cpu_quota', None)
-    )
-
+    rate_limit_kib = plan.rate_limit_kib
     limit_mbps = transfer_speed.kib_s_to_mbps(rate_limit_kib) if rate_limit_kib else None
     if rate_limit_kib:
         rate_text = (
             f"{rate_limit_kib} KiB/s ({transfer_speed.format_mbps(limit_mbps)}), "
-            f"set on the {rate_limit_source}"
+            f"set on the {plan.rate_limit_source}"
         )
     else:
         rate_text = "unlimited"
 
     log_to_task(task_id, (
-        f"Resource limits — compression: {compression}, "
+        f"Resource limits — compression: {plan.compression}, "
         f"upload rate: {rate_text}, "
-        f"checkpoint: {checkpoint_secs}s, "
-        f"cpu_quota: {cpu_quota}%"
+        f"checkpoint: {plan.checkpoint_secs}s, "
+        f"cpu_quota: {plan.cpu_quota}%"
     ))
 
     ssh_cmd = build_borg_create_cmd(
-        node_ip=node.ip_address,
-        node_ssh_port=node.ssh_port,
+        node_ip=plan.ip_address,
+        node_ssh_port=plan.ssh_port,
         borg_repo_url=borg_repo_url,
         archive_name=archive_name,
         exclude_str=exclude_str,
-        compression=compression,
+        compression=plan.compression,
         rate_limit_kib=rate_limit_kib,
-        checkpoint_secs=checkpoint_secs,
-        cpu_quota=cpu_quota,
+        checkpoint_secs=plan.checkpoint_secs,
+        cpu_quota=plan.cpu_quota,
         borg_passphrase=os.getenv('BORG_PASSPHRASE', ''),
         extra_ssh_args=extra_ssh_args,
     )
@@ -556,131 +668,56 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
 
     # Locks have been cleaned up and IP resolved at the start of the task
 
-    try:
-        # stderr is consumed line by line: borg reports cumulative byte counters
-        # there several times a second, which is the only way to see how fast
-        # the transfer actually ran rather than just its average.
-        process = subprocess.Popen(
-            ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
-        )
+    # stderr is consumed line by line: borg reports cumulative byte counters
+    # there several times a second, which is the only way to see how fast
+    # the transfer actually ran rather than just its average.
+    process = subprocess.Popen(
+        ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
+    )
 
-        tracker = transfer_speed.SpeedTracker()
-        stdout_chunks: list = []
-        stderr_lines: list = []
-        started_at = time_module.monotonic()
+    tracker = transfer_speed.SpeedTracker()
+    stdout_chunks: list = []
+    stderr_lines: list = []
+    started_at = time_module.monotonic()
 
-        def _drain_stdout() -> None:
-            # Read concurrently, otherwise a full stdout pipe deadlocks the
-            # child while we are still blocked reading stderr.
-            for chunk in process.stdout:
-                stdout_chunks.append(chunk)
+    def _drain_stdout() -> None:
+        # Read concurrently, otherwise a full stdout pipe deadlocks the
+        # child while we are still blocked reading stderr.
+        for chunk in process.stdout:
+            stdout_chunks.append(chunk)
 
-        stdout_reader = threading.Thread(target=_drain_stdout, daemon=True)
-        stdout_reader.start()
+    stdout_reader = threading.Thread(target=_drain_stdout, daemon=True)
+    stdout_reader.start()
 
-        for raw_line in process.stderr:
-            kind, payload = transfer_speed.parse_borg_log_line(raw_line)
-            if kind is transfer_speed.LineKind.PROGRESS:
-                tracker.sample(payload.get("time"), payload.get("deduplicated_size"))
-            elif kind is transfer_speed.LineKind.MESSAGE:
-                stderr_lines.append(transfer_speed.render_message(payload))
-            elif kind is transfer_speed.LineKind.PLAIN:
-                stderr_lines.append(payload["message"])
+    for raw_line in process.stderr:
+        kind, payload = transfer_speed.parse_borg_log_line(raw_line)
+        if kind is transfer_speed.LineKind.PROGRESS:
+            tracker.sample(payload.get("time"), payload.get("deduplicated_size"))
+        elif kind is transfer_speed.LineKind.MESSAGE:
+            stderr_lines.append(transfer_speed.render_message(payload))
+        elif kind is transfer_speed.LineKind.PLAIN:
+            stderr_lines.append(payload["message"])
 
-        process.wait()
-        stdout_reader.join(timeout=30)
-        stdout = "".join(stdout_chunks)
-        stderr = "\n".join(stderr_lines)
-        wall_seconds = time_module.monotonic() - started_at
+    process.wait()
+    stdout_reader.join(timeout=30)
+    stdout = "".join(stdout_chunks)
+    stderr = "\n".join(stderr_lines)
+    wall_seconds = time_module.monotonic() - started_at
 
-        log_to_task(task_id, f"Remote execution stdout:\n{stdout}")
-        if stderr:
-            log_to_task(task_id, f"Remote execution stderr:\n{stderr}")
+    log_to_task(task_id, f"Remote execution stdout:\n{stdout}")
+    if stderr:
+        log_to_task(task_id, f"Remote execution stderr:\n{stderr}")
 
-        if process.returncode in (0, 1):
-            if process.returncode == 1:
-                log_to_task(task_id, "WARNING: Backup completed with warnings (some files changed during backup or were skipped).")
-            original_size = 0
-            deduplicated_size = 0
-            borg_duration = None
-            try:
-                data = json.loads(stdout)
-                archive_stats = data.get("archive", {}).get("stats", {})
-                original_size = archive_stats.get("original_size", 0)
-                deduplicated_size = archive_stats.get("deduplicated_size", 0)
-                borg_duration = data.get("archive", {}).get("duration")
-            except Exception:
-                log_to_task(task_id, "Failed to parse JSON directly; estimating size metrics.")
+    if process.returncode not in (0, 1):
+        # Classified here rather than when the Archives page asks, so the
+        # reliability panel never has to read a fleet's worth of logs.
+        combined_log = stdout + "\n" + stderr
+        category = backup_stats.classify_failure(combined_log)
+        log_to_task(task_id, f"Failure category: {category}")
 
-            # Deduplicated bytes are what actually crossed the network; original
-            # bytes only say how much the node read off its own disk.
-            duration = borg_duration or wall_seconds
-            avg_mbps = transfer_speed.average_mbps(deduplicated_size, duration)
-            max_mbps = tracker.max_mbps
-            read_mbps = transfer_speed.average_mbps(original_size, duration)
-
-            log_to_task(task_id, (
-                f"Transfer speed — average: {transfer_speed.format_mbps(avg_mbps)}, "
-                f"peak: {transfer_speed.format_mbps(max_mbps)} "
-                f"(sustained over {tracker.window_seconds:.0f}s), "
-                f"read from disk: {transfer_speed.format_mbps(read_mbps)}"
-            ))
-
-            if rate_limit_kib:
-                binding = transfer_speed.limit_is_binding(max_mbps, limit_mbps)
-                if binding is True:
-                    verdict = "the limit is being reached, so it is what caps this backup"
-                elif binding is False:
-                    verdict = "the limit was never reached, so something else is the bottleneck"
-                else:
-                    verdict = "not enough samples to tell whether the limit was reached"
-                log_to_task(task_id, (
-                    f"Upload limit {rate_limit_kib} KiB/s "
-                    f"({transfer_speed.format_mbps(limit_mbps)}) from the {rate_limit_source} — {verdict}"
-                ))
-            elif max_mbps is not None:
-                log_to_task(task_id, "No upload limit configured; the link itself set the pace.")
-
-            history = BackupHistory(
-                node_id=node.id,
-                archive_name=archive_name,
-                original_size=original_size,
-                deduplicated_size=deduplicated_size,
-                status="SUCCESS",
-                log_output=stdout + "\n" + stderr,
-                comment=comment,
-                avg_speed_mbps=avg_mbps,
-                max_speed_mbps=max_mbps,
-                duration_seconds=duration,
-            )
-            db.add(history)
-            node.last_backup = datetime.utcnow()
-            db.commit()
-
-            log_to_task(task_id, "Backup completed successfully.", status="SUCCESS")
-
-            # A backup is the one moment the fleet reliably runs its nodes hard,
-            # which makes the telemetry either side of it the most informative
-            # the node will produce — see docs on why excitation is what the
-            # thermal fit needs. Dispatched rather than run inline so a slow
-            # harvest cannot extend the backup, and non-fatal because a
-            # completed backup must never be reported as failed over telemetry.
-            try:
-                from tasks.monitoring import harvest_node_task
-                harvest_node_task.apply_async(args=[node.id], retry=False)
-            except Exception as e:
-                logger.warning(f"Could not schedule post-backup harvest: {e}")
-
-            return {"status": "SUCCESS", "archive": archive_name}
-        else:
-            # Classified here rather than when the Archives page asks, so the
-            # reliability panel never has to read a fleet's worth of logs.
-            combined_log = stdout + "\n" + stderr
-            category = backup_stats.classify_failure(combined_log)
-            log_to_task(task_id, f"Failure category: {category}")
-
-            history = BackupHistory(
-                node_id=node.id,
+        with session_scope() as db:
+            db.add(BackupHistory(
+                node_id=plan.node_id,
                 archive_name=archive_name,
                 original_size=0,
                 deduplicated_size=0,
@@ -689,20 +726,86 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
                 comment=comment,
                 duration_seconds=wall_seconds,
                 error_category=category,
-            )
-            db.add(history)
-            db.commit()
-            log_to_task(task_id, "Backup execution failed.", status="FAILED")
-            return {"status": "FAILED", "error": stderr}
+            ))
+        log_to_task(task_id, "Backup execution failed.", status="FAILED")
+        return {"status": "FAILED", "error": stderr}
+
+    if process.returncode == 1:
+        log_to_task(task_id, "WARNING: Backup completed with warnings (some files changed during backup or were skipped).")
+
+    original_size = 0
+    deduplicated_size = 0
+    borg_duration = None
+    try:
+        data = json.loads(stdout)
+        archive_stats = data.get("archive", {}).get("stats", {})
+        original_size = archive_stats.get("original_size", 0)
+        deduplicated_size = archive_stats.get("deduplicated_size", 0)
+        borg_duration = data.get("archive", {}).get("duration")
+    except Exception:
+        log_to_task(task_id, "Failed to parse JSON directly; estimating size metrics.")
+
+    # Deduplicated bytes are what actually crossed the network; original
+    # bytes only say how much the node read off its own disk.
+    duration = borg_duration or wall_seconds
+    avg_mbps = transfer_speed.average_mbps(deduplicated_size, duration)
+    max_mbps = tracker.max_mbps
+    read_mbps = transfer_speed.average_mbps(original_size, duration)
+
+    log_to_task(task_id, (
+        f"Transfer speed — average: {transfer_speed.format_mbps(avg_mbps)}, "
+        f"peak: {transfer_speed.format_mbps(max_mbps)} "
+        f"(sustained over {tracker.window_seconds:.0f}s), "
+        f"read from disk: {transfer_speed.format_mbps(read_mbps)}"
+    ))
+
+    if rate_limit_kib:
+        binding = transfer_speed.limit_is_binding(max_mbps, limit_mbps)
+        if binding is True:
+            verdict = "the limit is being reached, so it is what caps this backup"
+        elif binding is False:
+            verdict = "the limit was never reached, so something else is the bottleneck"
+        else:
+            verdict = "not enough samples to tell whether the limit was reached"
+        log_to_task(task_id, (
+            f"Upload limit {rate_limit_kib} KiB/s "
+            f"({transfer_speed.format_mbps(limit_mbps)}) from the {plan.rate_limit_source} — {verdict}"
+        ))
+    elif max_mbps is not None:
+        log_to_task(task_id, "No upload limit configured; the link itself set the pace.")
+
+    with session_scope() as db:
+        db.add(BackupHistory(
+            node_id=plan.node_id,
+            archive_name=archive_name,
+            original_size=original_size,
+            deduplicated_size=deduplicated_size,
+            status="SUCCESS",
+            log_output=stdout + "\n" + stderr,
+            comment=comment,
+            avg_speed_mbps=avg_mbps,
+            max_speed_mbps=max_mbps,
+            duration_seconds=duration,
+        ))
+        node = db.query(Node).filter(Node.id == plan.node_id).first()
+        if node:
+            node.last_backup = datetime.utcnow()
+
+    log_to_task(task_id, "Backup completed successfully.", status="SUCCESS")
+
+    # A backup is the one moment the fleet reliably runs its nodes hard,
+    # which makes the telemetry either side of it the most informative
+    # the node will produce — see docs on why excitation is what the
+    # thermal fit needs. Dispatched rather than run inline so a slow
+    # harvest cannot extend the backup, and non-fatal because a
+    # completed backup must never be reported as failed over telemetry.
+    try:
+        from tasks.monitoring import harvest_node_task
+        harvest_node_task.apply_async(args=[plan.node_id], retry=False)
     except Exception as e:
-        log_to_task(task_id, f"Exception occurred during backup task: {str(e)}", status="FAILED")
-        return {"status": "FAILED", "error": str(e)}
-    finally:
-        try:
-            redis_client.delete(f"backup_running:{node.id}")
-        except Exception:
-            pass
-        db.close()
+        logger.warning(f"Could not schedule post-backup harvest: {e}")
+
+    return {"status": "SUCCESS", "archive": archive_name}
 
 
 @celery_app.task
@@ -712,89 +815,107 @@ def global_daily_prune() -> Dict[str, Any]:
     Executes borg prune on a per-node basis using resolved retention policies,
     then compacts the Borg repository.
     """
-    from models import BackupGroup
     from tasks import fix_repo_permissions
-    db: Session = SessionLocal()
-    try:
-        return _run_global_daily_prune(db, BackupGroup, fix_repo_permissions)
-    finally:
-        # Was closed at the very end of the body rather than in a finally, so
-        # any exception in between left this session idle in transaction
-        # holding a lock on `settings`. That blocked every later ALTER TABLE
-        # on settings or nodes, which is to say every future migration.
-        db.close()
+    return _run_global_daily_prune(fix_repo_permissions)
 
 
-def _run_global_daily_prune(db, BackupGroup, fix_repo_permissions) -> Dict[str, Any]:
-    settings = db.query(Settings).first()
-    if not settings:
-        settings = Settings()
+def _plan_prunes() -> list:
+    """Resolve every node's retention policy into a ready-to-run borg command.
 
-    nodes = db.query(Node).all()
-    results = {"prunes": {}, "compact": "PENDING"}
+    All of it in one short session, before any pruning starts. This task used
+    to keep a session open for the whole run — and the run is hours, one
+    serialised `borg prune` per node against a shared repository. That session
+    is the one found on 2026-08-12 sitting `idle in transaction` on `settings`
+    for a day and sixteen hours, blocking migrations; see
+    tests/test_session_hygiene.py.
+    """
+    repo_path = "/data/borg/fleet"
+    plans = []
 
+    with session_scope() as db:
+        settings = db.query(Settings).first()
+        if not settings:
+            settings = Settings()
+
+        groups = {g.id: g for g in db.query(BackupGroup).all()}
+
+        for node in db.query(Node).all():
+            group = groups.get(node.group_id) if node.group_id else None
+
+            policy = None
+            if group and group.override_retention and group.retention_policy:
+                policy = group.retention_policy
+            elif settings.retention_policy:
+                policy = settings.retention_policy
+
+            prune_cmd = ["borg", "prune", "--prefix", f"{node.hostname}-"]
+
+            if policy:
+                p_type = policy.get("type", "interval")
+                if p_type == "interval":
+                    prune_cmd.extend([
+                        "--keep-daily", str(policy.get("keep_daily", 7)),
+                        "--keep-weekly", str(policy.get("keep_weekly", 4)),
+                        "--keep-monthly", str(policy.get("keep_monthly", 6))
+                    ])
+                elif p_type == "count":
+                    prune_cmd.extend(["--keep-last", str(policy.get("keep_last", 5))])
+                elif p_type == "timeframe":
+                    val = policy.get("within_value", 3)
+                    unit = policy.get("within_unit", "m")
+                    prune_cmd.extend([
+                        "--keep-last", "1",
+                        "--keep-within", f"{val}{unit}"
+                    ])
+            else:
+                # Fallback to legacy settings flat columns
+                prune_cmd.extend([
+                    "--keep-daily", str(settings.keep_daily),
+                    "--keep-weekly", str(settings.keep_weekly),
+                    "--keep-monthly", str(settings.keep_monthly)
+                ])
+
+            prune_cmd.append(repo_path)
+            plans.append((node.hostname, prune_cmd))
+
+    return plans
+
+
+def _reconcile_history_with_repo(active_archives: set) -> int:
+    """Drop history rows whose archive is no longer in the repository."""
+    with session_scope() as db:
+        stale = [
+            row for row in db.query(BackupHistory).filter(BackupHistory.status == "SUCCESS").all()
+            if row.archive_name not in active_archives
+        ]
+        for row in stale:
+            logger.info(f"Removing stale database backup history record: {row.archive_name}")
+            db.delete(row)
+        return len(stale)
+
+
+def _run_global_daily_prune(fix_repo_permissions) -> Dict[str, Any]:
     repo_path = "/data/borg/fleet"
     if not os.path.exists(repo_path):
-        db.close()
         return {"error": "Repository path not found"}
+
+    results = {"prunes": {}, "compact": "PENDING"}
 
     env = os.environ.copy()
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
-    # Pre-fetch groups
-    groups = {g.id: g for g in db.query(BackupGroup).all()}
-
-    for node in nodes:
-        # Resolve policy
-        policy = None
-        group = groups.get(node.group_id) if node.group_id else None
-        
-        if group and group.override_retention and group.retention_policy:
-            policy = group.retention_policy
-        elif settings.retention_policy:
-            policy = settings.retention_policy
-
-        # Build command parameters
-        prune_cmd = ["borg", "prune", "--prefix", f"{node.hostname}-"]
-
-        if policy:
-            p_type = policy.get("type", "interval")
-            if p_type == "interval":
-                prune_cmd.extend([
-                    "--keep-daily", str(policy.get("keep_daily", 7)),
-                    "--keep-weekly", str(policy.get("keep_weekly", 4)),
-                    "--keep-monthly", str(policy.get("keep_monthly", 6))
-                ])
-            elif p_type == "count":
-                prune_cmd.extend(["--keep-last", str(policy.get("keep_last", 5))])
-            elif p_type == "timeframe":
-                val = policy.get("within_value", 3)
-                unit = policy.get("within_unit", "m")
-                prune_cmd.extend([
-                    "--keep-last", "1",
-                    "--keep-within", f"{val}{unit}"
-                ])
-        else:
-            # Fallback to legacy settings flat columns
-            prune_cmd.extend([
-                "--keep-daily", str(settings.keep_daily),
-                "--keep-weekly", str(settings.keep_weekly),
-                "--keep-monthly", str(settings.keep_monthly)
-            ])
-
-        prune_cmd.append(repo_path)
-
+    for hostname, prune_cmd in _plan_prunes():
         try:
-            logger.info(f"Executing Borg prune for node {node.hostname}...")
+            logger.info(f"Executing Borg prune for node {hostname}...")
             res_prune = subprocess.run(prune_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
             if res_prune.returncode == 0:
-                results["prunes"][node.hostname] = "SUCCESS"
+                results["prunes"][hostname] = "SUCCESS"
             else:
-                logger.error(f"Borg prune failed for node {node.hostname}: {res_prune.stderr}")
-                results["prunes"][node.hostname] = f"FAILED: {res_prune.stderr}"
+                logger.error(f"Borg prune failed for node {hostname}: {res_prune.stderr}")
+                results["prunes"][hostname] = f"FAILED: {res_prune.stderr}"
         except Exception as e:
-            logger.error(f"Exception pruning node {node.hostname}: {str(e)}")
-            results["prunes"][node.hostname] = f"ERROR: {str(e)}"
+            logger.error(f"Exception pruning node {hostname}: {str(e)}")
+            results["prunes"][hostname] = f"ERROR: {str(e)}"
 
     # Compaction
     try:
@@ -817,17 +938,8 @@ def _run_global_daily_prune(db, BackupGroup, fix_repo_permissions) -> Dict[str, 
         list_cmd = ["borg", "list", "--json", repo_path]
         res_list = subprocess.run(list_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
         if res_list.returncode == 0:
-            import json
             active_archives = {a["name"] for a in json.loads(res_list.stdout).get("archives", [])}
-            db_archives = db.query(BackupHistory).filter(BackupHistory.status == "SUCCESS").all()
-            deleted_count = 0
-            for db_a in db_archives:
-                if db_a.archive_name not in active_archives:
-                    logger.info(f"Removing stale database backup history record: {db_a.archive_name}")
-                    db.delete(db_a)
-                    deleted_count += 1
-            if deleted_count > 0:
-                db.commit()
+            deleted_count = _reconcile_history_with_repo(active_archives)
             logger.info(f"Database history sync completed. Removed {deleted_count} stale records.")
         else:
             logger.error(f"Failed to list Borg archives during DB sync: {res_list.stderr}")

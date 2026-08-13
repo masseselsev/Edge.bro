@@ -2,7 +2,8 @@ import os
 import subprocess
 import redis
 import json
-from typing import List
+from dataclasses import dataclass
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from database import get_db
@@ -235,54 +236,73 @@ def get_node_task_logs(node_id: int, db: Session = Depends(get_db), current_user
     return db.query(models.TaskLog).filter(models.TaskLog.node_id == node_id).order_by(models.TaskLog.created_at.desc()).limit(20).all()
 
 
-def apply_saved_license_task(node_id: int, db: Session = None):
+@dataclass
+class _LicensedNode:
+    """The node fields the license flow needs, detached from any session.
+
+    Applying a license is up to three SSH round trips at 30s timeouts each.
+    Running that with a session open — worse, with the *request's* session
+    open, which is what this did when called with a db — parks a connection
+    idle in transaction for the duration. See core.db_session.
+    """
+    id: int
+    ssh_port: int
+    ip_address: str
+    hasp_runtime_version: Optional[str]
+    hasp_license_v2c: Optional[str]
+
+
+def apply_saved_license_task(node_id: int):
     """Background task to apply a saved base64 V2C license over SSH to a restored node."""
-    should_close = False
-    if db is None:
-        from database import SessionLocal
-        db = SessionLocal()
-        should_close = True
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node or not node.hasp_license_v2c:
-        return
-        
+    from core.db_session import session_scope
+    from core.hasp_helper import check_hasp_status_on_node
+
+    with session_scope() as db:
+        node = db.query(models.Node).filter(models.Node.id == node_id).first()
+        if not node or not node.hasp_license_v2c:
+            return
+        target = _LicensedNode(
+            id=node.id,
+            ssh_port=node.ssh_port,
+            ip_address=node.ip_address,
+            hasp_runtime_version=node.hasp_runtime_version,
+            hasp_license_v2c=node.hasp_license_v2c,
+        )
+
     try:
-        b64_content = node.hasp_license_v2c
+        b64_content = target.hasp_license_v2c
         ssh_cmd = [
             "ssh", "-o", "StrictHostKeyChecking=no",
-            "-p", str(node.ssh_port),
+            "-p", str(target.ssh_port),
             "-i", "/root/.ssh/id_ed25519",
-            f"root@{node.ip_address}",
+            f"root@{target.ip_address}",
             f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
             f"(. /opt/edge/rc.setenv && /opt/edge/bin/hasp_update u /tmp/license.v2c 2>/dev/null && echo 'CLI_SUCCESS' || echo 'CLI_FAILED') && "
             f"rm -f /tmp/license.v2c"
         ]
         res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=30)
-        
+
         # Fallback to ACC HTTP checkin if CLI fails
         if res.returncode != 0 or "CLI_SUCCESS" not in res.stdout:
             ssh_cmd_acc = [
                 "ssh", "-o", "StrictHostKeyChecking=no",
-                "-p", str(node.ssh_port),
+                "-p", str(target.ssh_port),
                 "-i", "/root/.ssh/id_ed25519",
-                f"root@{node.ip_address}",
+                f"root@{target.ip_address}",
                 f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
                 f"curl -s -F \"check_in_file=@/tmp/license.v2c\" http://localhost:1947/_int_/checkin_file.html && "
                 f"rm -f /tmp/license.v2c"
             ]
             subprocess.run(ssh_cmd_acc, capture_output=True, timeout=30)
-            
+
         # Re-fetch new HASP details to update Node status
-        from routers.restore import get_node_hasp_status
-        hasp_res = get_node_hasp_status(node_id=node.id, db=db, current_user=None)
-        if hasp_res.get("status") == "active":
-            node.status = "READY"
-            db.commit()
+        if check_hasp_status_on_node(target) == "active":
+            with session_scope() as db:
+                node = db.query(models.Node).filter(models.Node.id == node_id).first()
+                if node:
+                    node.status = "READY"
     except Exception as e:
         print(f"Error applying saved license to node {node_id}: {e}")
-    finally:
-        if should_close:
-            db.close()
 
 
 @router.post("/checkin-restored")

@@ -23,7 +23,7 @@ def session_factory():
         except Exception:
             pass
 
-@patch('backup_tasks.SessionLocal')
+@patch('database.SessionLocal')
 @patch('backup_tasks.subprocess.run')
 @patch('backup_tasks.os.path.exists')
 def test_prune_legacy_fallback(mock_exists, mock_run, mock_session, session_factory):
@@ -77,7 +77,7 @@ def test_prune_legacy_fallback(mock_exists, mock_run, mock_session, session_fact
     compact_args = mock_run.call_args_list[1][0][0]
     assert compact_args == ["borg", "compact", "/data/borg/fleet"]
 
-@patch('backup_tasks.SessionLocal')
+@patch('database.SessionLocal')
 @patch('backup_tasks.subprocess.run')
 @patch('backup_tasks.os.path.exists')
 def test_prune_global_custom_strategies(mock_exists, mock_run, mock_session, session_factory):
@@ -142,7 +142,7 @@ def test_prune_global_custom_strategies(mock_exists, mock_run, mock_session, ses
     assert "--keep-within" in prune_args
     assert "6w" in prune_args
 
-@patch('backup_tasks.SessionLocal')
+@patch('database.SessionLocal')
 @patch('backup_tasks.subprocess.run')
 @patch('backup_tasks.os.path.exists')
 def test_prune_group_override(mock_exists, mock_run, mock_session, session_factory):

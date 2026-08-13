@@ -111,7 +111,9 @@ class Node(Base):
     hostname = Column(String, unique=True, index=True, nullable=False)
     ip_address = Column(String, unique=True, index=True, nullable=False)
     ssh_port = Column(Integer, default=22, nullable=False)
-    status = Column(String, default='NEEDS_BOOTSTRAP', nullable=False) # OFFLINE, NEEDS_BOOTSTRAP, NEEDS_FIX, READY
+    # Indexed: the scheduler filters on it every 60s, the bootstrap retry
+    # every 5 minutes, and the node list filters on it per request.
+    status = Column(String, default='NEEDS_BOOTSTRAP', nullable=False, index=True) # OFFLINE, NEEDS_BOOTSTRAP, NEEDS_FIX, READY
     last_backup = Column(DateTime, nullable=True)
     disk_type = Column(String, default='UNKNOWN', nullable=False) # SATA, NVME, UNKNOWN
     network_iface = Column(String, nullable=True)
@@ -121,7 +123,8 @@ class Node(Base):
     os_version = Column(String, nullable=True)
     
     # Scheduler & Automated Backup fields
-    group_id = Column(Integer, ForeignKey('backup_groups.id'), nullable=True)
+    # Indexed: the scheduler filters nodes by group on every tick.
+    group_id = Column(Integer, ForeignKey('backup_groups.id'), nullable=True, index=True)
     backup_paused = Column(Boolean, default=False, nullable=False)
     backup_today = Column(Boolean, default=False, nullable=False)
     missed_window = Column(Boolean, default=False, nullable=False)
@@ -170,11 +173,20 @@ class BackupHistory(Base):
     BackupHistory model containing compression metrics and execution logs for historical archives.
     """
     __tablename__ = 'backup_history'
+    # Declared here so `alembic revision --autogenerate` sees them. They were
+    # created by migration only, which meant the next autogenerate run would
+    # have emitted DROP INDEX for each one.
+    __table_args__ = (
+        Index('ix_backup_history_node_id_status', 'node_id', 'status'),
+        # Status on its own: the composite above leads with node_id and so
+        # cannot serve the fleet-wide "all successful archives" scans.
+        Index('ix_backup_history_status', 'status'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     node_id = Column(Integer, ForeignKey('nodes.id'), nullable=False)
     archive_name = Column(String, unique=True, index=True, nullable=False)
-    timestamp = Column(DateTime, default=func.now(), nullable=False)
+    timestamp = Column(DateTime, default=func.now(), nullable=False, index=True)
     original_size = Column(BigInteger, nullable=False) # Original uncompressed size
     deduplicated_size = Column(BigInteger, nullable=False) # Deduplicated storage size
     status = Column(String, nullable=False) # SUCCESS, FAILED
@@ -201,10 +213,17 @@ class TaskLog(Base):
     TaskLog model storing execution progress and logs for frontend console streaming.
     """
     __tablename__ = 'task_logs'
+    # See the note on BackupHistory: migration-only index, declared so
+    # autogenerate does not drop it.
+    __table_args__ = (
+        Index('ix_task_log_node_id_created_at', 'node_id', 'created_at'),
+    )
 
     id = Column(String, primary_key=True, index=True) # UUID string representation
     task_type = Column(String, nullable=False) # BOOTSTRAP, PREPARE, BACKUP, RESTORE
-    status = Column(String, default='PENDING', nullable=False) # PENDING, RUNNING, SUCCESS, FAILED
+    # Indexed: the daily prune and the startup reconciliation both filter on
+    # status alone, which ix_task_log_node_id_created_at cannot serve.
+    status = Column(String, default='PENDING', nullable=False, index=True) # PENDING, RUNNING, SUCCESS, FAILED
     node_id = Column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'), nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
@@ -220,7 +239,8 @@ class SystemLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     level = Column(String, nullable=False)
     message = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
+    # Indexed: read with ORDER BY created_at DESC LIMIT, and now swept by date.
+    created_at = Column(DateTime, default=func.now(), nullable=False, index=True)
 
 
 class AuditLog(Base):
@@ -234,7 +254,8 @@ class AuditLog(Base):
     action = Column(String, nullable=False)
     details = Column(Text, nullable=True)
     ip_address = Column(String, nullable=True)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
+    # Indexed: read with ORDER BY created_at DESC LIMIT, and now swept by date.
+    created_at = Column(DateTime, default=func.now(), nullable=False, index=True)
 
 
 class Kiosk(Base):
@@ -348,6 +369,9 @@ class TelemetryRollup(Base):
     __tablename__ = 'telemetry_rollups'
     __table_args__ = (
         UniqueConstraint('node_id', 'bucket_start', name='uq_telemetry_rollup'),
+        # Charts always ask for one node over a time range, and the retention
+        # sweep always asks for everything before a date.
+        Index('ix_telemetry_rollups_node_bucket', 'node_id', 'bucket_start'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -377,6 +401,9 @@ class ThermalFit(Base):
     __tablename__ = 'thermal_fits'
     __table_args__ = (
         UniqueConstraint('node_id', 'window_start', name='uq_thermal_fit_window'),
+        # The cohort detector asks for every node's fits inside one window; the
+        # per-node trend asks for one node's fits over time.
+        Index('ix_thermal_fits_node_window', 'node_id', 'window_start'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -412,6 +439,9 @@ class SmartSnapshot(Base):
     beside it are what the history graph actually plots.
     """
     __tablename__ = 'smart_snapshots'
+    __table_args__ = (
+        Index('ix_smart_snapshots_node_captured', 'node_id', 'captured_at'),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     node_id = Column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'), nullable=False)
@@ -462,6 +492,11 @@ class Alert(Base):
         Index('uq_alert_open_dedup', 'dedup_key', unique=True,
               postgresql_where=text("status != 'RESOLVED'"),
               sqlite_where=text("status != 'RESOLVED'")),
+        # The sweep scans open alerts by status; the API lists them per node
+        # and orders by recency.
+        Index('ix_alerts_status', 'status'),
+        Index('ix_alerts_node_id', 'node_id'),
+        Index('ix_alerts_last_seen', 'last_seen'),
     )
 
     id = Column(Integer, primary_key=True, index=True)

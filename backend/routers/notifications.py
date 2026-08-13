@@ -124,5 +124,11 @@ def send_test_notification(
 
 
 @router.get("/notifications/status", response_model=schemas.NotificationStatus)
-def get_notification_status():
+def get_notification_status(current_user: models.User = Depends(require_user)):
+    """Whether the server has a Telegram bot token configured at all.
+
+    Guarded even though it returns a single boolean: it is only ever read by
+    the profile modal, which is already behind a session, and an unauthenticated
+    probe of the server's integration state buys a caller nothing.
+    """
     return schemas.NotificationStatus(telegram_configured=bool(os.getenv("TELEGRAM_BOT_TOKEN")))

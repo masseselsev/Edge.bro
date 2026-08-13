@@ -110,8 +110,8 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
         sort_by: sortKey || 'hostname',
         sort_order: sortOrder
       });
-      if (searchQuery) {
-        qParams.append('q', searchQuery);
+      if (debouncedSearch) {
+        qParams.append('q', debouncedSearch);
       }
       
       const [nRes, gRes] = await Promise.all([
@@ -135,11 +135,21 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     }
   };
 
+  // Typing is debounced before it reaches the network. `searchQuery` is a
+  // dependency of the fetch effect below, so without this every keystroke tore
+  // down the poll and issued a fresh /api/nodes — an endpoint that does real
+  // work per request.
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
   useEffect(() => {
     fetchNodes();
     const interval = setInterval(fetchNodes, 5000);
     return () => clearInterval(interval);
-  }, [page, limit, searchQuery, sortKey, sortOrder]);
+  }, [page, limit, debouncedSearch, sortKey, sortOrder]);
 
   const handleResponse = async (res: Response) => {
     const contentType = res.headers.get("content-type");
@@ -338,10 +348,6 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     setExpandedGroups(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
   };
 
-  const filteredNodes = nodes;
-
-  const sortedFilteredNodes = nodes;
-
   const renderNodeRow = (node: Node, depth = 0) => {
     const group = groups.find(g => g.id === node.group_id);
     const groupName = group ? group.name : null;
@@ -373,12 +379,12 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
   const renderGroupedContent = () => {
     if (grouping === 'flat') {
-      return sortedFilteredNodes.map(node => renderNodeRow(node));
+      return nodes.map(node => renderNodeRow(node));
     }
 
     if (grouping === 'prefix') {
       const groups: Record<string, Node[]> = {};
-      sortedFilteredNodes.forEach(node => {
+      nodes.forEach(node => {
         const match = node.hostname.match(/^([^0-9.-]+)/);
         const prefix = match ? match[1] : 'Other';
         if (!groups[prefix]) groups[prefix] = [];
@@ -407,7 +413,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
     if (grouping === 'subnet') {
       const rootTree: any = {};
-      sortedFilteredNodes.forEach(node => {
+      nodes.forEach(node => {
         const parts = node.ip_address.split('.');
         if (parts.length !== 4) return;
         const o1 = parts[0] + '.x.x.x';
@@ -567,12 +573,12 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                 <th className="px-4 py-2.5 w-10 text-center">
                   <input
                     type="checkbox"
-                    checked={filteredNodes.length > 0 && filteredNodes.every(n => selectedNodeIds[n.id])}
+                    checked={nodes.length > 0 && nodes.every(n => selectedNodeIds[n.id])}
                     onChange={(e) => {
                       const checked = e.target.checked;
                       const newSelection: Record<number, boolean> = {};
                       if (checked) {
-                        filteredNodes.forEach(n => { newSelection[n.id] = true; });
+                        nodes.forEach(n => { newSelection[n.id] = true; });
                       }
                       setSelectedNodeIds(newSelection);
                     }}
@@ -637,7 +643,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
               <tr>
                 <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-8 text-center text-zinc-500">{t('loadingFleetData') || 'Loading fleet data...'}</td>
               </tr>
-            ) : filteredNodes.length === 0 ? (
+            ) : nodes.length === 0 ? (
               <tr>
                 <td colSpan={bulkDeleteMode ? 8 : 7} className="px-6 py-8 text-center text-zinc-500">{t('noNodesMatchFilter') || 'No nodes match your filter.'}</td>
               </tr>

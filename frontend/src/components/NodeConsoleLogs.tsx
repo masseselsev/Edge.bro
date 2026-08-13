@@ -1,5 +1,6 @@
 import React from 'react';
 import { SearchableSelect } from './SearchableSelect';
+import { parseServerDate } from './dateUtils';
 
 interface TaskLog {
   id: string;
@@ -36,7 +37,7 @@ export default function NodeConsoleLogs({
   const logOptions = taskLogs.map((tl) => ({
     value: tl.id,
     label: tl.task_type,
-    sublabel: `${new Date(tl.created_at).toLocaleString(language === 'ru' ? 'ru-RU' : language === 'uk' ? 'uk-UA' : 'en-US')} (${tl.status})`
+    sublabel: `${parseServerDate(tl.created_at)?.toLocaleString(language === 'ru' ? 'ru-RU' : language === 'uk' ? 'uk-UA' : 'en-US') ?? '—'} (${tl.status})`
   }));
 
   return (

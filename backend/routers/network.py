@@ -11,12 +11,6 @@ from fastapi import APIRouter, Depends
 from database import get_db, SessionLocal
 from sqlalchemy.orm import Session
 import models
-try:
-    from routers.users import require_admin
-except ImportError:
-    # On the kiosk terminal, network configuration is local and does not require web session authentication.
-    def require_admin():
-        pass
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
@@ -40,7 +34,14 @@ if redis:
 # Module-level fallback cache used when Redis is unavailable
 _fallback_traffic_cache: dict = {}
 
-router = APIRouter(prefix="/network", tags=["Network"], dependencies=[Depends(require_admin)])
+# This module is shared verbatim with the kiosk payload client, which has no
+# web session to authenticate against — network configuration there is local
+# and physical. So the router declares no auth of its own; whoever mounts it
+# decides. The orchestrator mounts it behind require_admin (see main.py); the
+# kiosk mounts it bare. Previously this was inferred from an ImportError on
+# routers.users, which meant any unrelated import failure in that module
+# silently turned authorization off for every route here.
+router = APIRouter(prefix="/network", tags=["Network"])
 
 # Pydantic models for strict type hinting and serialization
 class WiredStatus(BaseModel):

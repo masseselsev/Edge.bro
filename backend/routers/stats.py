@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
 import models
@@ -24,11 +25,6 @@ from database import get_db
 from routers.users import require_admin
 
 router = APIRouter(prefix="/api/stats", dependencies=[Depends(require_admin)])
-
-#: How many failed rows may have their category worked out on the fly per
-#: request. New backups classify themselves as they finish, so this only ever
-#: has to chew through history recorded before that existed.
-_BACKFILL_LIMIT = 500
 
 #: How many entries each "worst offenders" list shows. Long enough to spot a
 #: pattern, short enough to stay a summary.
@@ -43,40 +39,64 @@ def get_global_stats(db: Session = Depends(get_db)):
     endpoint summed only each node's first backup, which described a sample of
     three archives while appearing to describe all of them.
     """
-    rows = db.query(
-        models.BackupHistory.node_id,
-        models.BackupHistory.status,
-        models.BackupHistory.original_size,
-        models.BackupHistory.deduplicated_size,
-    ).all()
-
-    total_original = 0
-    total_dedup = 0
-    successful = 0
-    nodes_with_archives = set()
-    base_rows = []
-
-    for node_id, status, original_size, deduplicated_size in rows:
-        nodes_with_archives.add(node_id)
-        if status != "SUCCESS":
-            continue
-        successful += 1
-        total_original += original_size or 0
-        total_dedup += deduplicated_size or 0
-        base_rows.append((node_id, original_size, deduplicated_size))
+    # Summed in the database rather than in Python. This endpoint is polled,
+    # and the previous version pulled every backup_history row on every call —
+    # at 2000 nodes with a few years of retention that is hundreds of thousands
+    # of tuples materialised to produce five integers.
+    is_success = models.BackupHistory.status == "SUCCESS"
+    totals = db.query(
+        func.count(models.BackupHistory.id),
+        func.count(func.distinct(models.BackupHistory.node_id)),
+        func.coalesce(func.sum(case((is_success, 1), else_=0)), 0),
+        func.coalesce(func.sum(case((is_success, models.BackupHistory.original_size), else_=0)), 0),
+        func.coalesce(func.sum(case((is_success, models.BackupHistory.deduplicated_size), else_=0)), 0),
+    ).one()
+    total_archives, nodes_with_archives, successful, total_original, total_dedup = (
+        int(totals[0] or 0), int(totals[1] or 0), int(totals[2] or 0),
+        int(totals[3] or 0), int(totals[4] or 0),
+    )
 
     # The saving is reported across nodes only. Summing every archive would
     # count a node re-backing up unchanged data as deduplication, which says
     # nothing about how well the shared repository packs the fleet — see
     # backup_stats.base_archive_totals.
+    #
+    # Each node's base archive is its largest by deduplicated size, so the
+    # candidate set is fetched with a greatest-n-per-group join (one row per
+    # node) rather than by scanning every archive. Ties return more than one
+    # row for a node; base_archive_totals keeps the largest, so that is safe.
+    largest = (
+        db.query(
+            models.BackupHistory.node_id.label("node_id"),
+            func.max(models.BackupHistory.deduplicated_size).label("max_dedup"),
+        )
+        .filter(is_success)
+        .group_by(models.BackupHistory.node_id)
+        .subquery()
+    )
+    base_rows = (
+        db.query(
+            models.BackupHistory.node_id,
+            models.BackupHistory.original_size,
+            models.BackupHistory.deduplicated_size,
+        )
+        .join(
+            largest,
+            and_(
+                models.BackupHistory.node_id == largest.c.node_id,
+                models.BackupHistory.deduplicated_size == largest.c.max_dedup,
+            ),
+        )
+        .filter(is_success)
+        .all()
+    )
     base_original, base_dedup, base_nodes = backup_stats.base_archive_totals(base_rows)
 
-    total_archives = len(rows)
     disk = repo_usage.disk_usage()
 
     return schemas.GlobalStatsResponse(
         total_nodes=db.query(models.Node).count(),
-        nodes_with_archives=len(nodes_with_archives),
+        nodes_with_archives=nodes_with_archives,
         total_archives=total_archives,
         successful_archives=successful,
         failed_archives=total_archives - successful,
@@ -105,71 +125,140 @@ def get_insights(
     nodes = db.query(models.Node).all()
     groups = {g.id: g for g in db.query(models.BackupGroup).all()}
 
-    _backfill_error_categories(db, since)
+    # Categorising old failures used to happen here, which meant a GET wrote
+    # to the database — up to 500 rows, reading each one's log_output, with
+    # concurrent dashboard loads all doing it over overlapping row sets. It is
+    # now a daily task (tasks.backfill_error_categories_task); rows it has not
+    # reached yet simply render as uncategorised, which the panel already
+    # handles.
 
+    # Only the window is loaded as rows. The previous version fetched every
+    # backup_history row ever written and filtered to the window in Python —
+    # the `days` parameter did no work in the database at all, and
+    # ix_backup_history_timestamp went unused. At 2000 nodes that is hundreds
+    # of thousands of tuples per request on an endpoint the Archives page hits
+    # on every mount and after every delete.
+    #
     # log_output is deliberately absent: it is the only large column on the
     # table and none of the numbers below need it.
-    history = db.query(
-        models.BackupHistory.node_id,
-        models.BackupHistory.status,
-        models.BackupHistory.timestamp,
-        models.BackupHistory.error_category,
-        models.BackupHistory.original_size,
-        models.BackupHistory.deduplicated_size,
-        models.BackupHistory.avg_speed_mbps,
-        models.BackupHistory.max_speed_mbps,
-        models.BackupHistory.duration_seconds,
-    ).order_by(models.BackupHistory.timestamp.desc()).all()
+    in_window = (
+        db.query(
+            models.BackupHistory.node_id,
+            models.BackupHistory.status,
+            models.BackupHistory.timestamp,
+            models.BackupHistory.error_category,
+            models.BackupHistory.original_size,
+            models.BackupHistory.deduplicated_size,
+            models.BackupHistory.avg_speed_mbps,
+            models.BackupHistory.max_speed_mbps,
+            models.BackupHistory.duration_seconds,
+        )
+        .filter(models.BackupHistory.timestamp >= since)
+        .order_by(models.BackupHistory.timestamp.desc())
+        .all()
+    )
 
-    in_window = [row for row in history if row.timestamp and row.timestamp >= since]
+    # The handful of facts that genuinely span a node's whole history — when it
+    # last succeeded, how many runs have failed since, how much it has ever
+    # contributed — are aggregated in the database instead.
+    lifetime = _lifetime_stats(db)
 
     return schemas.StatsInsightsResponse(
         window_days=days,
         generated_at=now,
-        reliability=_reliability(nodes, groups, history, in_window, now, since),
+        reliability=_reliability(nodes, groups, lifetime, in_window, now, since),
         speed=_speed(nodes, groups, in_window),
         duration=_duration(nodes, groups, in_window),
-        capacity=_capacity(nodes, history, in_window, days),
+        capacity=_capacity(nodes, lifetime, in_window, days),
     )
 
 
-def _backfill_error_categories(db: Session, since: datetime) -> None:
-    """Work out the category of older failures the first time they are needed.
+def _lifetime_stats(db: Session) -> dict:
+    """Per-node facts that need all of history, computed as grouped SQL.
 
-    Backups written since this feature landed classify themselves. Anything
-    older has a NULL category, and deriving it on every request would mean
-    pulling every failed log out of the database each time — so the answer is
-    written back once. A failure here must never fail the request: the panel
-    simply shows those rows as uncategorised.
+    Returns node_id -> dict(last_success, contributed, archives,
+    failure_streak, last_error_category).
     """
-    try:
-        stale = (
-            db.query(models.BackupHistory)
-            .filter(
-                models.BackupHistory.status != "SUCCESS",
-                models.BackupHistory.error_category.is_(None),
-                models.BackupHistory.timestamp >= since,
-            )
-            .limit(_BACKFILL_LIMIT)
-            .all()
+    is_success = models.BackupHistory.status == "SUCCESS"
+    stats: dict = defaultdict(lambda: {
+        "last_success": None,
+        "contributed": 0,
+        "archives": 0,
+        "failure_streak": 0,
+        "last_error_category": None,
+    })
+
+    # 1. Last success, lifetime contribution and archive count, per node.
+    for node_id, last_success, contributed, archives in db.query(
+        models.BackupHistory.node_id,
+        func.max(case((is_success, models.BackupHistory.timestamp))),
+        func.coalesce(
+            func.sum(case((is_success, models.BackupHistory.deduplicated_size), else_=0)), 0
+        ),
+        func.coalesce(func.sum(case((is_success, 1), else_=0)), 0),
+    ).group_by(models.BackupHistory.node_id):
+        entry = stats[node_id]
+        entry["last_success"] = last_success
+        entry["contributed"] = int(contributed or 0)
+        entry["archives"] = int(archives or 0)
+
+    # 2. Consecutive failures since the last success. Equivalent to walking a
+    #    newest-first list until the first SUCCESS, which is what
+    #    backup_stats.failure_streak does over in-memory rows.
+    last_ok = (
+        db.query(
+            models.BackupHistory.node_id.label("node_id"),
+            func.max(models.BackupHistory.timestamp).label("last_success"),
         )
-        if not stale:
-            return
-        for row in stale:
-            row.error_category = backup_stats.classify_failure(row.log_output)
-        db.commit()
-    except Exception:
-        db.rollback()
+        .filter(is_success)
+        .group_by(models.BackupHistory.node_id)
+        .subquery()
+    )
+    for node_id, streak in (
+        db.query(models.BackupHistory.node_id, func.count(models.BackupHistory.id))
+        .outerjoin(last_ok, last_ok.c.node_id == models.BackupHistory.node_id)
+        .filter(models.BackupHistory.status != "SUCCESS")
+        .filter(or_(
+            last_ok.c.last_success.is_(None),
+            models.BackupHistory.timestamp > last_ok.c.last_success,
+        ))
+        .group_by(models.BackupHistory.node_id)
+    ):
+        stats[node_id]["failure_streak"] = int(streak or 0)
+
+    # 3. The most recent categorised failure per node.
+    newest_fail = (
+        db.query(
+            models.BackupHistory.node_id.label("node_id"),
+            func.max(models.BackupHistory.timestamp).label("ts"),
+        )
+        .filter(models.BackupHistory.status != "SUCCESS",
+                models.BackupHistory.error_category.isnot(None))
+        .group_by(models.BackupHistory.node_id)
+        .subquery()
+    )
+    for node_id, category in (
+        db.query(models.BackupHistory.node_id, models.BackupHistory.error_category)
+        .join(newest_fail, and_(
+            models.BackupHistory.node_id == newest_fail.c.node_id,
+            models.BackupHistory.timestamp == newest_fail.c.ts,
+        ))
+        .filter(models.BackupHistory.status != "SUCCESS",
+                models.BackupHistory.error_category.isnot(None))
+    ):
+        stats[node_id]["last_error_category"] = category
+
+    return stats
 
 
 def _group_for(node, groups) -> Optional[models.BackupGroup]:
     return groups.get(node.group_id) if node.group_id else None
 
 
-def _reliability(nodes, groups, history, in_window, now, since) -> schemas.ReliabilitySection:
-    by_node = defaultdict(list)
-    for row in history:
-        by_node[row.node_id].append(row)
+def _reliability(nodes, groups, lifetime, in_window, now, since) -> schemas.ReliabilitySection:
+    runs_in_window = defaultdict(int)
+    for row in in_window:
+        runs_in_window[row.node_id] += 1
 
     successful = sum(1 for row in in_window if row.status == "SUCCESS")
     total = len(in_window)
@@ -179,22 +268,22 @@ def _reliability(nodes, groups, history, in_window, now, since) -> schemas.Relia
     never_succeeded = 0
 
     for node in nodes:
-        rows = by_node.get(node.id, [])  # already newest first
+        stats = lifetime.get(node.id)
 
         # A node with no history at all has nothing to report yet. Counting it
         # as a failure would light the panel up for every freshly added node,
         # which is exactly the noise that makes an alert get ignored.
-        if not rows:
+        if stats is None:
             continue
 
-        last_success = next((r.timestamp for r in rows if r.status == "SUCCESS"), None)
+        last_success = stats["last_success"]
         if last_success is None:
             never_succeeded += 1
 
         group = _group_for(node, groups)
         interval = backup_stats.expected_interval_days(group.interval if group else None)
         age = backup_stats.days_since(last_success, now)
-        streak = backup_stats.failure_streak([r.status for r in rows])
+        streak = stats["failure_streak"]
 
         entry = schemas.NodeReliability(
             node_id=node.id,
@@ -205,11 +294,8 @@ def _reliability(nodes, groups, history, in_window, now, since) -> schemas.Relia
             days_since_success=round(age, 1) if age is not None else None,
             expected_interval_days=interval,
             consecutive_failures=streak,
-            last_error_category=next(
-                (r.error_category for r in rows if r.status != "SUCCESS" and r.error_category),
-                None,
-            ),
-            runs_in_window=sum(1 for r in rows if r.timestamp and r.timestamp >= since),
+            last_error_category=stats["last_error_category"],
+            runs_in_window=runs_in_window.get(node.id, 0),
             is_stale=backup_stats.is_stale(age, interval),
         )
 
@@ -344,19 +430,20 @@ def _duration(nodes, groups, in_window) -> schemas.DurationSection:
     )
 
 
-def _capacity(nodes, history, in_window, days) -> schemas.CapacitySection:
+def _capacity(nodes, lifetime, in_window, days) -> schemas.CapacitySection:
     hostnames = {node.id: node.hostname for node in nodes}
 
     # Contribution, not occupancy: borg deduplicates across nodes, so the bytes
     # one node's archives reported are not bytes that would be freed by
     # deleting them. It is still the right ranking for "who drives growth".
-    contributed = defaultdict(int)
-    archive_counts = defaultdict(int)
-    for row in history:
-        if row.status == "SUCCESS":
-            contributed[row.node_id] += row.deduplicated_size or 0
-            archive_counts[row.node_id] += 1
-
+    #
+    # Summed in SQL (see _lifetime_stats) rather than by walking every archive
+    # row: this is a lifetime figure, so doing it in Python meant loading the
+    # entire table on every request.
+    contributed = {
+        node_id: s["contributed"]
+        for node_id, s in lifetime.items() if s["contributed"]
+    }
     total_contributed = sum(contributed.values())
     consumers = [
         schemas.NodeConsumption(
@@ -364,7 +451,7 @@ def _capacity(nodes, history, in_window, days) -> schemas.CapacitySection:
             hostname=hostnames.get(node_id, "—"),
             bytes=value,
             share=round(value / total_contributed, 4) if total_contributed else None,
-            archives=archive_counts[node_id],
+            archives=lifetime[node_id]["archives"],
         )
         for node_id, value in contributed.items()
     ]

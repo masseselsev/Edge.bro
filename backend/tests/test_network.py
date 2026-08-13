@@ -163,8 +163,11 @@ def test_bootstrap_node_task_passes_orchestrator_ip(monkeypatch):
     node_id = node.id
     db.close()
 
-    # Mock SessionLocal with TestingSessionLocal (not the db instance)
+    # Mock SessionLocal with TestingSessionLocal (not the db instance).
+    # Two bindings: `tasks.SessionLocal` for the task module, and the one
+    # core.db_session resolves for every session_scope() in the process.
     monkeypatch.setattr("tasks.SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr("database.SessionLocal", TestingSessionLocal)
 
     passed_vars = {}
 
@@ -217,6 +220,7 @@ def test_bootstrap_node_task_passes_force_orchestrator_proxy(monkeypatch):
     db.close()
 
     monkeypatch.setattr("tasks.SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr("database.SessionLocal", TestingSessionLocal)
 
     passed_vars = {}
 

@@ -65,6 +65,43 @@ def estimate_node_backup_minutes(db: Session, node_id: int, rate_kib_s: Optional
     return minutes_for_bytes(est_bytes, rate_kib_s)
 
 
+def estimate_transfer_bytes_for_nodes(db: Session, node_ids: List[int]) -> dict:
+    """Median recent transfer size for several nodes, in one query.
+
+    The per-node form issues a query each, which the scheduler then ran once
+    per pending node on every 60-second tick. Here the rows for the whole set
+    are fetched together and the per-node sample is taken in Python.
+    """
+    if not node_ids:
+        return {}
+
+    rows = (
+        db.query(
+            models.BackupHistory.node_id,
+            models.BackupHistory.deduplicated_size,
+        )
+        .filter(
+            models.BackupHistory.node_id.in_(node_ids),
+            models.BackupHistory.status == "SUCCESS",
+            models.BackupHistory.deduplicated_size > 0,
+        )
+        .order_by(
+            models.BackupHistory.node_id.asc(),
+            models.BackupHistory.timestamp.desc(),
+        )
+        .all()
+    )
+
+    samples: dict = {}
+    for node_id, size in rows:
+        bucket = samples.setdefault(node_id, [])
+        # Ordered newest-first within each node, so the first N are the sample.
+        if len(bucket) < HISTORY_SAMPLE_SIZE and size:
+            bucket.append(size)
+
+    return {node_id: int(median(sizes)) for node_id, sizes in samples.items() if sizes}
+
+
 def estimate_group_backup_minutes(db: Session, group, nodes: List) -> float:
     """Average expected backup duration for a group's pending nodes.
 
@@ -76,11 +113,11 @@ def estimate_group_backup_minutes(db: Session, group, nodes: List) -> float:
     if not rate:
         return DEFAULT_BACKUP_MINUTES
 
-    estimates = []
-    for node in nodes:
-        est = estimate_node_backup_minutes(db, node.id, rate)
-        if est is not None:
-            estimates.append(est)
+    by_node = estimate_transfer_bytes_for_nodes(db, [n.id for n in nodes])
+    estimates = [
+        m for m in (minutes_for_bytes(b, rate) for b in by_node.values())
+        if m is not None
+    ]
 
     if not estimates:
         return DEFAULT_BACKUP_MINUTES

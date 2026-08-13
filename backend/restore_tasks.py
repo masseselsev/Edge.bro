@@ -2,10 +2,9 @@ import os
 import json
 import subprocess
 from typing import Dict, Any
-from sqlalchemy.orm import Session
 from celery_app import celery_app
 
-from database import SessionLocal
+from core.db_session import session_scope
 from models import Node, TaskLog, BackupHistory
 from restore_logic import execute_restore
 from core.borg_local import borg_kwargs
@@ -28,20 +27,21 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
     Also cleans up related BackupHistory records from the database.
     """
     from tasks import log_to_task, fix_repo_permissions
-    
+
     task_id = self.request.id
-    db: Session = SessionLocal()
-    node = db.query(Node).filter(Node.id == node_id).first()
-    if not node:
-        db.close()
-        return {"status": "FAILED", "error": "Node not found"}
-
-    task_log = TaskLog(id=task_id, task_type="PURGE", status="RUNNING", log_output="")
-    db.add(task_log)
-    db.commit()
-
     repo_path = "/data/borg/fleet"
-    log_to_task(task_id, f"Starting archive purge for node {node.hostname}...")
+
+    # Deleting archives one at a time and then compacting is minutes of borg,
+    # so the session goes no further than reading the hostname. See
+    # core.db_session.
+    with session_scope() as db:
+        node = db.query(Node).filter(Node.id == node_id).first()
+        if not node:
+            return {"status": "FAILED", "error": "Node not found"}
+        hostname = node.hostname
+        db.add(TaskLog(id=task_id, task_type="PURGE", status="RUNNING", log_output=""))
+
+    log_to_task(task_id, f"Starting archive purge for node {hostname}...")
 
     env = os.environ.copy()
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
@@ -50,13 +50,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
         # Check if repo exists and is initialized
         if not os.path.exists(repo_path) or not os.path.exists(os.path.join(repo_path, "config")):
             log_to_task(task_id, "No archives to purge (repository does not exist or is not initialized).", status="SUCCESS")
-            # Clean up database history records for this node
-            purged_rows = db.query(BackupHistory).filter(
-                BackupHistory.node_id == node_id
-            ).delete()
-            node.last_backup = None
-            db.commit()
-            db.close()
+            _forget_node_backups(node_id)
             return {"status": "SUCCESS", "deleted": 0}
 
         # List all archives in the repository
@@ -65,22 +59,15 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
 
         if list_res.returncode != 0:
             log_to_task(task_id, f"Failed to list archives: {list_res.stderr}", status="FAILED")
-            db.close()
             return {"status": "FAILED", "error": list_res.stderr}
 
         all_archives = json.loads(list_res.stdout).get("archives", [])
-        archives = [a for a in all_archives if a["name"].startswith(f"{node.hostname}-")]
-        log_to_task(task_id, f"Found {len(archives)} archive(s) belonging to {node.hostname} to delete.")
+        archives = [a for a in all_archives if a["name"].startswith(f"{hostname}-")]
+        log_to_task(task_id, f"Found {len(archives)} archive(s) belonging to {hostname} to delete.")
 
         if not archives:
             log_to_task(task_id, "No archives to purge.", status="SUCCESS")
-            # Clean up database history records for this node
-            purged_rows = db.query(BackupHistory).filter(
-                BackupHistory.node_id == node_id
-            ).delete()
-            node.last_backup = None
-            db.commit()
-            db.close()
+            _forget_node_backups(node_id)
             return {"status": "SUCCESS", "deleted": 0}
 
         # Delete each archive individually
@@ -105,12 +92,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
             else:
                 log_to_task(task_id, f"Repository compaction failed: {compact_res.stderr}")
 
-        # Clean up database history records for this node
-        purged_rows = db.query(BackupHistory).filter(
-            BackupHistory.node_id == node_id
-        ).delete()
-        node.last_backup = None
-        db.commit()
+        purged_rows = _forget_node_backups(node_id)
 
         log_to_task(task_id, f"Purge complete: {deleted_count}/{len(archives)} archives deleted, {purged_rows} DB records removed.", status="SUCCESS")
         return {"status": "SUCCESS", "deleted": deleted_count}
@@ -119,4 +101,15 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
         return {"status": "FAILED", "error": str(e)}
     finally:
         fix_repo_permissions(repo_path)
-        db.close()
+
+
+def _forget_node_backups(node_id: int) -> int:
+    """Drop the node's backup history and clear its last-backup marker."""
+    with session_scope() as db:
+        purged_rows = db.query(BackupHistory).filter(
+            BackupHistory.node_id == node_id
+        ).delete()
+        node = db.query(Node).filter(Node.id == node_id).first()
+        if node:
+            node.last_backup = None
+        return purged_rows

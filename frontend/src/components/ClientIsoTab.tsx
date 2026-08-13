@@ -3,6 +3,7 @@ import { Download, Cpu, RefreshCw, CheckCircle, ShieldAlert, History, Trash2 } f
 import { DropdownTextInput } from './SearchableSelect';
 import { useTranslation } from '../context/TranslationContext';
 import KioskManagementSection from './KioskManagementSection';
+import { formatDate } from './dateUtils';
 
 interface IsoStatus {
   base_iso_cached: boolean;
@@ -430,7 +431,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                 <div className="text-[10px] text-zinc-400 font-semibold flex items-center justify-center gap-1.5 py-1">
                   <span className="text-zinc-500">{t('imageCreatedAt') || 'Created'}:</span>
                   <span className="text-zinc-300 font-mono bg-zinc-950 px-2 py-0.5 rounded border border-zinc-850/60">
-                    {new Date(status.client_iso_created_at).toLocaleString()}
+                    {formatDate(status.client_iso_created_at)}
                   </span>
                 </div>
               )}
@@ -614,7 +615,7 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
                           <div>
                             <span className="font-semibold text-zinc-500">{t('kioskCreatedAtLabel') || 'Creation Date'}:</span>{' '}
                             <span className="text-zinc-300 font-mono">
-                              {kiosk.created_at ? new Date(kiosk.created_at).toLocaleString() : '—'}
+                              {kiosk.created_at ? formatDate(kiosk.created_at) : '—'}
                             </span>
                           </div>
                           <div>

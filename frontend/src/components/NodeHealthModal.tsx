@@ -4,6 +4,7 @@ import { useTranslation } from '../context/TranslationContext';
 import { scoreTextColour } from './NodeHealthBadges';
 import type { NodeHealth, SmartHealth, ThermalHealth } from './NodeHealthBadges';
 import SmartReportView from './SmartReportView';
+import { parseServerDate } from './dateUtils';
 
 /**
  * The detail view behind a health badge: the full statistics of the latest
@@ -99,8 +100,8 @@ export function formatBytes(bytes: number | null | undefined): string {
 }
 
 function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString();
+  const parsed = parseServerDate(value);
+  return parsed ? parsed.toLocaleDateString() : '—';
 }
 
 /**
@@ -132,7 +133,7 @@ function MultiSeriesChart({
   const width = 900;
   const pad = { top: 14, right: 14, bottom: 26, left: 14 };
 
-  const times = points.map(p => new Date(p[xKey]).getTime()).filter(t => !Number.isNaN(t));
+  const times = points.map(p => parseServerDate(p[xKey])?.getTime() ?? NaN).filter(t => !Number.isNaN(t));
   const tMin = Math.min(...times);
   const tMax = Math.max(...times);
   const span = tMax - tMin || 1;
@@ -150,7 +151,7 @@ function MultiSeriesChart({
     let penDown = false;
     points.forEach((p, i) => {
       const value = values[i];
-      const time = new Date(p[xKey]).getTime();
+      const time = parseServerDate(p[xKey])?.getTime() ?? NaN;
       if (value === null || Number.isNaN(time)) {
         // A gap in the data is drawn as a gap, not bridged with a straight
         // line that would imply readings nobody took.
@@ -202,7 +203,7 @@ function MultiSeriesChart({
         ))}
 
         {points.map((p, i) => {
-          const time = new Date(p[xKey]).getTime();
+          const time = parseServerDate(p[xKey])?.getTime() ?? NaN;
           if (Number.isNaN(time)) return null;
           const x = pad.left + ((time - tMin) / span) * (width - pad.left - pad.right);
           return (
@@ -219,7 +220,7 @@ function MultiSeriesChart({
         })}
 
         {hoverPoint && (() => {
-          const time = new Date(hoverPoint[xKey]).getTime();
+          const time = parseServerDate(hoverPoint[xKey])?.getTime() ?? NaN;
           const x = pad.left + ((time - tMin) / span) * (width - pad.left - pad.right);
           return <line x1={x} x2={x} y1={pad.top} y2={height - pad.bottom}
                        stroke="currentColor" className="text-zinc-600" strokeWidth={1} />;
@@ -250,7 +251,7 @@ function MultiSeriesChart({
 
       {hoverPoint && (
         <div className="text-[10px] text-zinc-400 bg-zinc-950/60 border border-zinc-800 rounded px-2 py-1">
-          <span className="text-zinc-500">{new Date(hoverPoint[xKey]).toLocaleString()}</span>
+          <span className="text-zinc-500">{parseServerDate(hoverPoint[xKey])?.toLocaleString() ?? '—'}</span>
           {active.map(spec => (
             typeof hoverPoint[spec.key] === 'number' && (
               <span key={spec.key} className="ml-3">
@@ -398,7 +399,7 @@ export default function NodeHealthModal({ nodeId, hostname, initialTab = 'smart'
               {hostname}
               {health?.last_harvest_at && (
                 <span className="ml-2">
-                  {t('healthLastHarvest')} {new Date(health.last_harvest_at).toLocaleString()}
+                  {t('healthLastHarvest')} {parseServerDate(health.last_harvest_at)?.toLocaleString() ?? '—'}
                 </span>
               )}
             </p>

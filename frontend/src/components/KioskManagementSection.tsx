@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, ShieldAlert, CheckCircle, RefreshCw, Clipboard, Copy, Server, Globe, Search, Edit2 } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
+import { formatDate } from './dateUtils';
 
 interface Kiosk {
   id: number;
@@ -398,7 +399,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                         <div>
                           {kiosk.status === 'APPROVED' ? (
                             kiosk.is_online ? (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title={kiosk.last_seen ? `Last seen: ${new Date(kiosk.last_seen).toLocaleString()}` : ''}>
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title={kiosk.last_seen ? `Last seen: ${formatDate(kiosk.last_seen)}` : ''}>
                                 <span className="relative flex h-2 w-2 mr-0.5">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -406,7 +407,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                                 {t('kioskStatusApprovedLabel') || 'Active'}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-500/10 text-zinc-400 border border-zinc-500/20" title={kiosk.last_seen ? `Last seen: ${new Date(kiosk.last_seen).toLocaleString()}` : ''}>
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-500/10 text-zinc-400 border border-zinc-500/20" title={kiosk.last_seen ? `Last seen: ${formatDate(kiosk.last_seen)}` : ''}>
                                 <span className="relative flex h-2 w-2 mr-0.5">
                                   <span className="relative inline-flex rounded-full h-2 w-2 bg-zinc-500"></span>
                                 </span>
@@ -446,18 +447,18 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                         )}
                         <div className="text-[9px] text-zinc-500 font-mono">
                           <span className="text-zinc-650 font-sans mr-0.5">{t('kioskCreatedAtLabel') || 'Built'}:</span>{' '}
-                          {kiosk.created_at ? new Date(kiosk.created_at).toLocaleString() : '—'}
+                          {kiosk.created_at ? formatDate(kiosk.created_at) : '—'}
                         </div>
                       </div>
                     </td>
                     <td className="py-2 px-2.5 text-zinc-350 font-mono">
-                      {kiosk.approved_at ? new Date(kiosk.approved_at).toLocaleString() : <span className="text-zinc-655">—</span>}
+                      {kiosk.approved_at ? formatDate(kiosk.approved_at) : <span className="text-zinc-655">—</span>}
                     </td>
                     <td className="py-2 px-2.5">
                       {kiosk.iso_built_at ? (
                         <div className="space-y-0.5">
                           <div className="font-mono text-zinc-350">
-                            {new Date(kiosk.iso_built_at).toLocaleString()}
+                            {formatDate(kiosk.iso_built_at)}
                           </div>
                           {baseIsoCreatedAt && (() => {
                             // Normalize to UTC: backend stores iso_built_at as naive UTC (no 'Z'),

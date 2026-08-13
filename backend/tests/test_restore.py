@@ -526,6 +526,17 @@ def test_get_node_hasp_status_active_ok(mock_run, db_session):
     assert "Exp: Thu Jan 1, 2026" in res["features"][0]["lic_type"]
 
 
+class _NonClosing:
+    """Hands the shared fixture session to session_scope() without letting the
+    code under test close it out from under the rest of the test."""
+    def __init__(self, s):
+        self.s = s
+    def __getattr__(self, name):
+        return getattr(self.s, name)
+    def close(self):
+        pass
+
+
 def test_node_checkin_restored_flow(db_session, monkeypatch):
     import subprocess
     from routers.nodes import apply_saved_license_task
@@ -555,12 +566,14 @@ def test_node_checkin_restored_flow(db_session, monkeypatch):
         
     monkeypatch.setattr(subprocess, "run", mock_run)
 
-    # Mock get_node_hasp_status to return active
-    import routers.restore
-    monkeypatch.setattr(routers.restore, "get_node_hasp_status", lambda node_id, db, current_user: {"status": "active", "features": []})
+    # Mock the live license probe to report the node as licensed
+    import routers.nodes_actions
+    monkeypatch.setattr(routers.nodes_actions, "apply_saved_license_task", apply_saved_license_task)
+    monkeypatch.setattr("core.hasp_helper.check_hasp_status_on_node", lambda node: "active")
+    monkeypatch.setattr("database.SessionLocal", lambda: _NonClosing(db_session))
 
     # Call background task directly
-    apply_saved_license_task(node.id, db=db_session)
+    apply_saved_license_task(node.id)
 
     db_session.refresh(node)
     assert node.status == "READY"
@@ -616,7 +629,9 @@ def test_background_license_checks_and_locks(mock_run, mock_redis, db_session, m
             pass
             
     monkeypatch.setattr("tasks.SessionLocal", lambda: SessionProxy(db_session))
-    monkeypatch.setattr("backup_tasks.SessionLocal", lambda: SessionProxy(db_session))
+    # Also the factory core.db_session resolves, which is what every
+    # session_scope() inside the backup task goes through.
+    monkeypatch.setattr("database.SessionLocal", lambda: SessionProxy(db_session))
     monkeypatch.setattr("tasks.redis_client", mock_client)
 
     # Create node in RESTORED status

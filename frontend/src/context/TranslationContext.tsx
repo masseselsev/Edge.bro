@@ -13,33 +13,28 @@ const TranslationContext = createContext<TranslationContextProps | undefined>(un
 export function TranslationProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>('en');
 
+  // Nothing here logs its responses. /api/settings carries the fleet's
+  // bootstrap SSH credentials in plaintext, and this runs on every page load,
+  // so a debug dump of the response put those passwords in the browser
+  // console of anyone who opened devtools.
   const fetchLanguageSetting = async () => {
     try {
-      console.log('TranslationContext: fetchLanguageSetting started');
       // 1. First detect if kiosk mode is active by fetching version
       const vRes = await fetch('/api/version');
-      console.log('TranslationContext: version response status:', vRes.status);
       if (vRes.ok) {
         const vData = await vRes.json();
-        console.log('TranslationContext: version data:', vData);
         if (vData && vData.is_kiosk && vData.language) {
-          console.log('TranslationContext: kiosk mode active, setting language to:', vData.language);
           setLanguageState(vData.language as Language);
           return;
         }
       }
-      
+
       // 2. Otherwise fetch from normal settings API
       const sRes = await fetch('/api/settings');
-      console.log('TranslationContext: settings response status:', sRes.status);
       if (sRes.ok) {
         const sData = await sRes.json();
-        console.log('TranslationContext: settings data:', sData);
         if (sData && sData.language) {
-          console.log('TranslationContext: setting language to:', sData.language);
           setLanguageState(sData.language as Language);
-        } else {
-          console.log('TranslationContext: settings data has no language field or is empty');
         }
       }
     } catch (err) {

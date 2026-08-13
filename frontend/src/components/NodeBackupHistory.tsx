@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { History, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import ArchiveFilesModal from './ArchiveFilesModal';
+import { parseServerDate } from './dateUtils';
 
 interface BackupHistory {
   id: number;
@@ -62,9 +63,9 @@ export default function NodeBackupHistory({
               <tr key={row.id} className="border-b border-zinc-800/80 hover:bg-zinc-850/30 text-zinc-200">
                 <td className="p-3 font-mono text-xs">{row.archive_name}</td>
                 <td className="p-3 font-mono text-xs">
-                  {new Date(row.timestamp).toLocaleString(
+                  {parseServerDate(row.timestamp)?.toLocaleString(
                     language === 'ru' ? 'ru-RU' : language === 'uk' ? 'uk-UA' : 'en-US'
-                  )}
+                  ) ?? '—'}
                 </td>
                 <td className="p-3">{formatBytes(row.original_size)}</td>
                 <td className="p-3">{formatBytes(row.deduplicated_size)}</td>

@@ -11,13 +11,14 @@ node, or whose drive stopped answering, records what it did get and moves on —
 across a thousand roadside units some are always unreachable, and a sweep that
 aborted on the first would never finish.
 """
+import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from celery_app import celery_app
 from core import harvest as harvest_io
 from core import smart, telemetry, thermal
-from database import SessionLocal
+from core.db_session import session_scope
 from models import Node, Settings, SmartSnapshot, TelemetryRollup, ThermalFit
 import tasks
 
@@ -29,6 +30,13 @@ FIT_WINDOW_SECONDS = 4 * 3600
 #: Rollups are cheap; a node buffering for months should not produce a single
 #: enormous insert. Written in batches of this many.
 ROLLUP_BATCH = 500
+
+#: Harvests dispatched per wave, and the gap between waves. The sweep runs
+#: hourly and a harvest takes seconds, so spreading 2000 nodes over ~13 minutes
+#: still finishes long before the next sweep while keeping the number of
+#: concurrent SSH sessions bounded.
+HARVEST_BATCH_SIZE = int(os.getenv("HARVEST_BATCH_SIZE", "50"))
+HARVEST_BATCH_INTERVAL_SECONDS = int(os.getenv("HARVEST_BATCH_INTERVAL_SECONDS", "20"))
 
 
 def resolve_setting(node: Node, settings: Optional[Settings], name: str, fallback):
@@ -205,44 +213,59 @@ def harvest_node(node_id: int, task_id: Optional[str] = None) -> Dict[str, Any]:
         if task_id:
             tasks.log_to_task(task_id, message)
 
-    db = SessionLocal()
     try:
-        node = db.query(Node).filter(Node.id == node_id).first()
-        if not node:
-            return {"status": "FAILED", "error": "Node not found"}
+        # Look up the node, let go of the connection, then reach out to it.
+        # Draining a node's buffer over SSH takes up to four minutes; a session
+        # held across that sits idle in transaction for the whole harvest, and
+        # the hourly sweep does this once per node. See core.db_session.
+        with session_scope() as db:
+            node = db.query(Node).filter(Node.id == node_id).first()
+            if not node:
+                return {"status": "FAILED", "error": "Node not found"}
+            hostname, ip_address, ssh_port = node.hostname, node.ip_address, node.ssh_port
 
-        settings = db.query(Settings).first()
-        now = datetime.utcnow()
-        summary: Dict[str, Any] = {"node": node.hostname, "status": "SUCCESS"}
-
-        log(f"Harvesting monitoring data from {node.hostname} ({node.ip_address})")
-        result = harvest_io.harvest(node.ip_address, node.ssh_port)
+        summary: Dict[str, Any] = {"node": hostname, "status": "SUCCESS"}
+        log(f"Harvesting monitoring data from {hostname} ({ip_address})")
+        result = harvest_io.harvest(ip_address, ssh_port)
 
         if not result.reachable:
             log(f"Node unreachable: {'; '.join(result.errors)}")
-            return {"status": "FAILED", "node": node.hostname, "error": "; ".join(result.errors)}
-
-        if result.capabilities:
-            node.monitoring_capabilities = result.capabilities
-            summary["capabilities"] = result.capabilities
-            if not result.capabilities.get("rapl"):
-                log("No RAPL on this node — SMART will be collected but no thermal model")
+            return {"status": "FAILED", "node": hostname, "error": "; ".join(result.errors)}
 
         parsed = telemetry.parse_buffer(result.buffer_text)
         log(f"Telemetry buffer: {parsed.summary()}")
         summary["samples"] = len(parsed.records)
         summary["dropped"] = parsed.dropped
-
         readings = telemetry.to_readings(parsed.records)
-        summary["rollups"] = _store_rollups(db, node.id, telemetry.rollups(readings))
-        summary.update(_store_fits(db, node.id, readings))
+
+        # Everything the node had to say is now in memory; one session records
+        # all of it. Fitting and scoring happen inside because they are pure
+        # computation over `readings` — no I/O, no waiting.
+        now = datetime.utcnow()
+        with session_scope() as db:
+            node = db.query(Node).filter(Node.id == node_id).first()
+            if not node:
+                return {"status": "FAILED", "error": "Node not found"}
+            settings = db.query(Settings).first()
+
+            if result.capabilities:
+                node.monitoring_capabilities = result.capabilities
+                summary["capabilities"] = result.capabilities
+
+            summary["rollups"] = _store_rollups(db, node.id, telemetry.rollups(readings))
+            summary.update(_store_fits(db, node.id, readings))
+            summary["smart_devices"] = _store_smart(db, node, settings, result.smart_reports, now)
+            node.last_harvest_at = now
+
+        if result.capabilities and not result.capabilities.get("rapl"):
+            log("No RAPL on this node — SMART will be collected but no thermal model")
+
         if summary.get("fitted") or summary.get("rejected"):
             log(
                 f"Thermal windows: {summary.get('fitted', 0)} fitted, "
                 f"{summary.get('rejected', 0)} rejected"
             )
 
-        summary["smart_devices"] = _store_smart(db, node, settings, result.smart_reports, now)
         for device, report in result.smart_reports.items():
             reading = smart.parse(report)
             health = smart.score(reading)
@@ -254,17 +277,11 @@ def harvest_node(node_id: int, task_id: Optional[str] = None) -> Dict[str, Any]:
             for error in result.errors:
                 log(f"WARNING: {error}")
 
-        node.last_harvest_at = now
-        db.commit()
-
         log(f"Harvest complete: {summary}")
         return summary
     except Exception as e:
-        db.rollback()
         log(f"Harvest failed: {e}")
         return {"status": "FAILED", "error": str(e)}
-    finally:
-        db.close()
 
 
 # ignore_result is load-bearing, not tidiness. Nothing ever awaits a harvest:
@@ -288,21 +305,26 @@ def monitoring_sweep_task() -> Dict[str, Any]:
     slack is irrelevant, and a sweep that simply asks "who is overdue?" needs
     no state and recovers by itself from an orchestrator that was down.
     """
-    db = SessionLocal()
-    try:
+    with session_scope() as db:
         settings = db.query(Settings).first()
         now = datetime.utcnow()
         due = [
             node.id for node in db.query(Node).all()
             if monitoring_due(node, settings, now)
         ]
-    finally:
-        db.close()
 
-    for node_id in due:
-        # Dispatched individually so one slow or unreachable node cannot hold
-        # up the rest, and so each retries on its own schedule.
-        harvest_node_task.apply_async(args=[node_id], retry=False)
+    # Dispatched individually so one slow or unreachable node cannot hold up
+    # the rest, and so each retries on its own schedule — but spread over the
+    # hour rather than all at once. The first sweep after enabling monitoring
+    # on a large fleet finds every node due simultaneously; queueing 2000
+    # harvests in one burst puts thousands of SSH sessions behind a worker
+    # pool sized for a handful, and starves everything else on that queue.
+    for index, node_id in enumerate(due):
+        harvest_node_task.apply_async(
+            args=[node_id],
+            retry=False,
+            countdown=(index // HARVEST_BATCH_SIZE) * HARVEST_BATCH_INTERVAL_SECONDS,
+        )
 
     return {"dispatched": len(due)}
 
@@ -329,38 +351,34 @@ def monitoring_retention_task() -> Dict[str, Any]:
     degradation trend the whole feature exists to produce, and at roughly a
     tenth the volume of the rejections they are affordable to keep.
     """
-    db = SessionLocal()
     try:
-        settings = db.query(Settings).first()
-        days = int(getattr(settings, "telemetry_retention_days", None) or 90)
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        with session_scope() as db:
+            settings = db.query(Settings).first()
+            days = int(getattr(settings, "telemetry_retention_days", None) or 90)
+            cutoff = datetime.utcnow() - timedelta(days=days)
 
-        rollups_removed = (
-            db.query(TelemetryRollup)
-            .filter(TelemetryRollup.bucket_start < cutoff)
-            .delete(synchronize_session=False)
-        )
+            rollups_removed = (
+                db.query(TelemetryRollup)
+                .filter(TelemetryRollup.bucket_start < cutoff)
+                .delete(synchronize_session=False)
+            )
 
-        raw_cleared = (
-            db.query(SmartSnapshot)
-            .filter(SmartSnapshot.captured_at < cutoff, SmartSnapshot.raw.isnot(None))
-            .update({SmartSnapshot.raw: None}, synchronize_session=False)
-        )
+            raw_cleared = (
+                db.query(SmartSnapshot)
+                .filter(SmartSnapshot.captured_at < cutoff, SmartSnapshot.raw.isnot(None))
+                .update({SmartSnapshot.raw: None}, synchronize_session=False)
+            )
 
-        rejected_removed = (
-            db.query(ThermalFit)
-            .filter(ThermalFit.window_start < cutoff, ThermalFit.rejection != "OK")
-            .delete(synchronize_session=False)
-        )
+            rejected_removed = (
+                db.query(ThermalFit)
+                .filter(ThermalFit.window_start < cutoff, ThermalFit.rejection != "OK")
+                .delete(synchronize_session=False)
+            )
 
-        db.commit()
         return {
             "rollups_removed": rollups_removed,
             "raw_reports_cleared": raw_cleared,
             "rejected_fits_removed": rejected_removed,
         }
     except Exception as e:
-        db.rollback()
         return {"status": "FAILED", "error": str(e)}
-    finally:
-        db.close()

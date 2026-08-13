@@ -78,23 +78,21 @@ def get_local_ips():
         except Exception:
             pass
 
-    # Fallback to standard socket.getifaddrs() or container hostname lookup
+    # Fallback: resolve our own hostname.
+    #
+    # This returns the container's address rather than the host's, so it is a
+    # poor substitute for the /host/proc parse above and exists only so the
+    # settings page shows something. It used to sit behind a
+    # `socket.getifaddrs()` branch, which is not part of the Python standard
+    # library at all — that call raised AttributeError into a bare `except`
+    # on every single run, so this hostname lookup was always what actually
+    # executed, by accident rather than intent.
     if not ips:
         try:
-            for interface in socket.getifaddrs():
-                if any(interface.name.startswith(prefix) for prefix in exclude_prefixes):
-                    continue
-                addr = interface.addr
-                if addr and addr.family == socket.AF_INET:
-                    ip = addr.address
-                    if ip != "127.0.0.1":
-                        ips.append(ip)
+            hostname = socket.gethostname()
+            ips = [socket.gethostbyname(hostname)]
         except Exception:
-            try:
-                hostname = socket.gethostname()
-                ips = [socket.gethostbyname(hostname)]
-            except Exception:
-                pass
+            pass
 
     return sorted(list(set(ips)))
 
