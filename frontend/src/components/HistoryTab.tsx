@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw, Trash2, AlertTriangle, Loader2, ChevronRight, ChevronDown, Search, Folder, FolderOpen, Cpu, HardDrive, Download, CheckSquare, Square, CheckCircle, Globe2, FileText, Eraser } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import ArchiveFilesModal from './ArchiveFilesModal';
@@ -88,6 +88,14 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
   const [syncEta, setSyncEta] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState<number>(0);
   const [syncingTaskId, setSyncingTaskId] = useState<string | null>(null);
+  // The archive-sync poller's handle, so unmounting stops it. See where it
+  // is assigned: the interval is started from a click handler, not an
+  // effect, because the task id it polls does not exist until the POST
+  // returns.
+  const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => () => {
+    if (syncPollRef.current) clearInterval(syncPollRef.current);
+  }, []);
 
   const fetchStorageInfo = async () => {
     if (!isKiosk) return;
@@ -200,6 +208,12 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
         const data = await res.json();
         if (data.task_id) {
           setSyncingTaskId(data.task_id);
+          // Started here rather than in a useEffect because the task id only
+          // exists once the POST returns. The handle goes into a ref so the
+          // unmount cleanup below can stop it: every terminal branch inside
+          // clears it, but closing the tab mid-sync is not one of those
+          // branches, and the callback would keep polling and calling
+          // setState on an unmounted component until the page reloaded.
           const poll = setInterval(async () => {
             try {
               const statusRes = await fetch(`/api/tasks/${data.task_id}`);
@@ -233,6 +247,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
               setSyncingTaskId(null);
             }
           }, 1000);
+          syncPollRef.current = poll;
         }
       } else {
         const err = await res.json();

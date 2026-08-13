@@ -54,14 +54,40 @@ def get_db():
 import logging
 
 class DBLoggingHandler(logging.Handler):
+    """Mirrors log records into the system_logs table for the Logs tab.
+
+    Writing logs to the database being logged is inherently circular, and the
+    three defenses below are three different ways that circle closes. They
+    overlap on purpose — each one alone has a hole:
+
+    1. **The `_logged_to_db` stamp** stops one record being written twice when
+       the handler is attached to both a logger and its parent, which it is:
+       `setup_db_logging` attaches to the root *and* to `uvicorn`, `celery` and
+       friends, so a celery record would otherwise arrive here twice.
+    2. **The logger-name prefixes** stop the loop proper. Writing a row makes
+       SQLAlchemy log the INSERT, which arrives here, which writes a row. The
+       stamp does not help: that is a genuinely new record each time. urllib3
+       and redis are here for the same reason via the broker.
+    3. **The message-text check** is the backstop for a record that reaches
+       here under some other logger name — a wrapper, a library that
+       re-emits, an application log line that happens to quote the statement.
+       Cruder than matching on the logger, and last for that reason.
+
+    A missing defense does not degrade gracefully. It produces an unbounded
+    recursion that fills the disk with log rows describing the writing of log
+    rows.
+    """
+
     def emit(self, record):
         if getattr(record, "_logged_to_db", False):
             return
         try:
             record._logged_to_db = True
         except Exception:
+            # Some records are not writable (a proxy, a frozen instance). One
+            # duplicate row is better than losing the record entirely.
             pass
-            
+
         name = record.name.lower()
         # Prevent infinite logging loop on SQL queries
         if (

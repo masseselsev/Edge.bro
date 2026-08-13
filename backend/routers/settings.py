@@ -46,6 +46,13 @@ def get_local_ips():
                     dest_hex = parts[1]
                     mask_hex = parts[7]
                     try:
+                        # /proc/net/route prints addresses as little-endian
+                        # hex — 192.168.1.0 appears as "0001A8C0", not
+                        # "C0A80100". Pack the parsed integer back out in
+                        # little-endian order and read it in big-endian to
+                        # swap the bytes, which puts it in the same order
+                        # inet_aton produces so the mask comparison below is
+                        # comparing like with like.
                         dest_val = int(dest_hex, 16)
                         mask_val = int(mask_hex, 16)
                         dest_int = struct.unpack(">I", struct.pack("<I", dest_val))[0]

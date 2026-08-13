@@ -83,3 +83,36 @@ def test_nodes_pagination_filtering_and_sorting(client, db_session):
     data = response.json()
     assert data["total"] == 1
     assert data["nodes"][0]["hostname"] == "node-beta"
+
+
+def test_a_cidr_block_too_large_to_expand_is_refused():
+    """A /16 in the bulk-add box is 65,534 Node rows built inside one request.
+
+    The expansion is eager — a list of address strings — and each becomes a
+    row, a ping schedule and a bootstrap attempt. A /8 would be 16 million and
+    would take the API process with it.
+    """
+    from routers.nodes_crud import MAX_EXPANDED_IPS, parse_ip_input
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_ip_input("10.0.0.0/16")
+    assert "65536" in str(excinfo.value)
+    assert str(MAX_EXPANDED_IPS) in str(excinfo.value)
+
+
+def test_a_site_sized_block_still_expands():
+    """The limit must not get in the way of the thing it is guarding."""
+    from routers.nodes_crud import parse_ip_input
+
+    ips = parse_ip_input("192.168.1.0/24")
+    assert len(ips) == 254
+    assert ips[0] == "192.168.1.1"
+    assert ips[-1] == "192.168.1.254"
+
+
+def test_ranges_and_single_addresses_are_unaffected():
+    from routers.nodes_crud import parse_ip_input
+
+    assert parse_ip_input("192.168.1.5") == ["192.168.1.5"]
+    assert parse_ip_input("192.168.1.5-7") == ["192.168.1.5", "192.168.1.6", "192.168.1.7"]
+    assert len(parse_ip_input("192.168.1.10-192.168.1.12")) == 3

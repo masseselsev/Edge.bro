@@ -1,9 +1,38 @@
 import os
+import re
 import shutil
 import subprocess
 import json
 from typing import Dict, Any, List, Callable, Optional
 import pathlib
+
+#: The device naming schemes this fleet actually boots from, each mapping a
+#: partition path to the whole disk it lives on. Written as explicit patterns
+#: rather than "strip the trailing digits", because that heuristic turns
+#: mmcblk0p1 into mmcblkp — a name no device has, which is how a safety check
+#: that compares disk names comes to permit the disk it should have refused.
+_PARTITION_PATTERNS = (
+    re.compile(r"^(/dev/nvme\d+n\d+)(?:p\d+)?$"),
+    re.compile(r"^(/dev/mmcblk\d+)(?:p\d+)?$"),
+    re.compile(r"^(/dev/[a-z]+)\d*$"),          # sda1, vdb2, hdc3
+)
+
+
+def base_disk(device: str) -> str:
+    """The whole disk a device path refers to: nvme0n1p2 becomes nvme0n1.
+
+    Already a whole disk? Returned unchanged. Unrecognised? Returned unchanged
+    too, so a caller comparing two of these gets a mismatch rather than a
+    confident wrong answer.
+    """
+    if not device:
+        return device
+    for pattern in _PARTITION_PATTERNS:
+        match = pattern.match(device)
+        if match:
+            return match.group(1)
+    return device
+
 
 def get_host_root_disk() -> Optional[str]:
     """
@@ -31,17 +60,7 @@ def get_host_root_disk() -> Optional[str]:
                         dev_path = root_val.strip('"\'')
 
                     if dev_path and os.path.exists(dev_path):
-                        real_path = os.path.realpath(dev_path)
-                        # Remove partition suffix (e.g. /dev/sda1 -> /dev/sda, /dev/nvme0n1p2 -> /dev/nvme0n1)
-                        import re
-                        m = re.match(r"^(/dev/nvme\d+n\d+)p\d+$", real_path)
-                        if m:
-                            return m.group(1)
-                        m_sd = re.match(r"^(/dev/sd[a-z]+)\d+$", real_path)
-                        if m_sd:
-                            return m_sd.group(1)
-                        # Fallback: remove trailing digits
-                        return real_path.rstrip("0123456789")
+                        return base_disk(os.path.realpath(dev_path))
         except Exception:
             pass
     return None
@@ -97,6 +116,26 @@ def safe_unmount_target(target_mnt: str, log_callback: Optional[Callable[[str], 
     Safely unmounts all virtual filesystems (/dev/pts, /dev, /proc, /sys) and target partitions
     under target_mnt, then unmounts target_mnt itself.
     Avoids using 'umount -R' which propagates recursive unmounts back to the host in privileged containers.
+
+    The three stages run in this order because each one can only succeed once
+    the previous has finished, and getting it wrong does not fail loudly — it
+    leaves the host holding mounts.
+
+    1. **Virtual filesystems first, deepest first.** These were bind-mounted
+       from the host so grub-install could run in a chroot. /dev/pts is nested
+       inside /dev, so unmounting /dev first leaves /dev/pts orphaned and
+       still attached to the host's devtmpfs.
+    2. **Then the target's own partitions, deepest first.** /boot/efi lives
+       under /boot lives under the root; a parent cannot be unmounted while a
+       child is mounted on it.
+    3. **Then the mountpoint itself**, which by now has nothing under it.
+
+    Every unmount is lazy (-l) and every failure is swallowed. Both are
+    deliberate: this runs in the teardown path of a restore that may already
+    have failed, and a busy mountpoint here must not mask the error the
+    caller is trying to report. `umount -R` would do all three stages in one
+    call, but inside a privileged container it propagates back through the
+    shared mount namespace and unmounts the host's own /dev.
     """
     def emit(msg: str):
         if log_callback:
@@ -185,14 +224,26 @@ def format_and_restore(
             except Exception:
                 pass
 
+        # Compared as whole disks, not as substrings. The previous check
+        # stripped the digits out of the name and asked whether the result
+        # appeared anywhere in the target, which is wrong in both directions:
+        # "sda" occurs inside "sdaa" (blocks a restore that was fine), and an
+        # eMMC root mangled into "mmcblkp" occurs inside nothing at all
+        # (permits the one that wipes the orchestrator).
         if host_root_disk:
-            if "nvme" in host_root_disk:
-                host_root_disk_base = host_root_disk.split("p")[0]
-            else:
-                host_root_disk_base = "".join([c for c in host_root_disk if not c.isdigit()])
-
-            if host_root_disk_base in target_dev:
+            host_root_disk_base = base_disk(host_root_disk)
+            if base_disk(target_dev) == host_root_disk_base:
                 raise PermissionError(f"PROTECTION SHIELD: Attempted to flash the host's root drive ({host_root_disk_base}). Blocked.")
+        else:
+            # Not fatal, and deliberately so: on the technician kiosk the "host
+            # root" is the USB stick it booted from, /proc/cmdline names a loop
+            # device, and flashing the machine's internal disk is the entire
+            # purpose. Refusing here would break the product to protect a
+            # machine that was never at risk. Say so loudly instead.
+            emit_log(
+                "WARNING: could not determine the host's root disk, so the "
+                "protection shield is not active for this restore."
+            )
 
         # 1.5. Release active mount and device-mapper (LVM/LUKS) locks on target device & its partitions
         try:

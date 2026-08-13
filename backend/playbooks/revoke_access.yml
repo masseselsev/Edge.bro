@@ -1,4 +1,26 @@
 ---
+# Removes the orchestrator's own SSH key from a node being decommissioned.
+#
+# Run when a node is deleted, and best-effort by design: a box being retired is
+# usually already switched off, so an unreachable host is a logged outcome
+# rather than a failure. See tasks/bootstrap.revoke_node_access_task.
+#
+# Three properties matter more than they look:
+#
+# * **`raw` rather than the `authorized_key` module.** This runs against a node
+#   that may have nothing installed on it — no Python, therefore no Ansible
+#   modules. `raw` is the only thing guaranteed to work on a host that is on
+#   its way out.
+# * **Only our own keys are touched.** Entries are matched on the `edge-bro-`
+#   comment tag that `core/ssh_keys.py` writes. A node's authorized_keys
+#   belongs to the customer; removing an entry we did not add would lock
+#   someone out of a machine we are in the middle of walking away from.
+# * **The file is never left half-written.** awk writes to a temporary file and
+#   the move only happens if awk exited cleanly. The alternative — editing in
+#   place — turns a parse error into a machine nobody can log into.
+#
+# A timestamped backup is kept beside the file regardless, because this is the
+# last thing the orchestrator ever does to that host.
 - name: Revoke orchestrator SSH access from a decommissioned node
   hosts: all
   gather_facts: no
@@ -12,6 +34,10 @@
           exit 0
         fi
         cp "$AUTH" "$AUTH.bak.$(date +%s)" 2>/dev/null || true
+        # Fields are split on whitespace; the tag is the last one, which is
+        # where ssh_keys.node_tag() puts it. Removed keys are reported on
+        # stderr so they end up in the task log without polluting the file
+        # being rewritten on stdout.
         if awk '
              { n = split($0, f, /[ \t]+/)
                if (n >= 2 && f[n] ~ /^edge-bro-/) {
@@ -30,4 +56,6 @@
           rm -f "$AUTH.new"
           echo "REVOKE_RESULT: parse failed, file left untouched"
         fi
+      # Nothing here is idempotent to report on — the node is being deleted and
+      # the run either reached it or did not.
       changed_when: false

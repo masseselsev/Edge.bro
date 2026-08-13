@@ -95,6 +95,20 @@ def _backup_run_state(node_id: int, raw=None, _prefetched: bool = False):
                 redis_client.delete(f"backup_running:{node_id}")
                 return False, 0, None
 
+        # This progress figure is invented, not measured.
+        #
+        # borg reports its byte counters on the node's stderr, which the backup
+        # task consumes but does not publish anywhere the fleet list can read.
+        # Rather than show nothing next to a running backup, the bar is drawn
+        # from elapsed time through a saturating curve: fast at first, then
+        # asymptotic, capped at 99 so it never claims to be finished. 45.0 is
+        # the time constant in seconds — after ~45s it reads 63%, after ~2min
+        # about 93% — chosen to feel right for a typical incremental, and
+        # meaning nothing at all for a first full backup that runs for hours.
+        #
+        # It is a spinner with numbers on it. Do not use it for anything that
+        # needs to be true: BackupHistory.duration_seconds is the real figure,
+        # recorded once the transfer ends.
         elapsed = max(0, int(time.time()) - start_time)
         progress = max(0, min(99, int(100 * (1 - math.exp(-elapsed / 45.0)))))
     except Exception:
@@ -169,10 +183,25 @@ def _serialize_node(
 
     return node_dict
 
+#: Ceiling on how many addresses one entry may expand to.
+#:
+#: A CIDR block is expanded eagerly into a list of strings, so the operator
+#: who types a /16 in the bulk-add box asks for 65,534 of them — and then a
+#: Node row and a ping schedule for each. A /8 would be 16 million and take
+#: the API process down with it. /22 (1022 hosts) is comfortably more than any
+#: real site and still cheap to materialise.
+MAX_EXPANDED_IPS = 1024
+
+
 def parse_ip_input(ip_input: str) -> List[str]:
     """
     Parses IP input which can be single IP, comma/newline-separated list,
     ranges (e.g. 192.168.1.50-100 or 192.168.1.50-192.168.1.60), or CIDR block.
+
+    Raises ValueError if the input expands past MAX_EXPANDED_IPS, rather than
+    quietly producing a truncated list — a bulk add that silently skipped half
+    a subnet would be discovered weeks later, as nodes that were never backed
+    up.
     """
     cleaned = ip_input.replace("\n", ",").replace(" ", ",")
     raw_entries = [r.strip() for r in cleaned.split(",") if r.strip()]
@@ -181,7 +210,14 @@ def parse_ip_input(ip_input: str) -> List[str]:
         if "/" in entry:
             try:
                 net = ipaddress.ip_network(entry, strict=False)
+                if net.num_addresses > MAX_EXPANDED_IPS:
+                    raise ValueError(
+                        f"{entry} covers {net.num_addresses} addresses; "
+                        f"at most {MAX_EXPANDED_IPS} can be added at once."
+                    )
                 ips.extend([str(ip) for ip in net.hosts()])
+            except ValueError:
+                raise
             except Exception:
                 pass
         elif "-" in entry:
@@ -374,7 +410,12 @@ def add_node(payload: schemas.NodeCreate, request: Request = None, db: Session =
     except Exception:
         pass
 
-    ips = parse_ip_input(payload.ip_address)
+    try:
+        ips = parse_ip_input(payload.ip_address)
+    except ValueError as e:
+        # Too large to expand — say so, rather than working through a million
+        # addresses inside the request.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     if not ips:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

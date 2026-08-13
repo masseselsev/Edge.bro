@@ -250,6 +250,12 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
         # 1. Unpack Base ISO
         log_to_task(task_id, "[PROGRESS] 10:Unpacking base ISO...")
         os.makedirs(work_dir, exist_ok=True)
+        # Denominator for the unpack progress bar below: xorriso reports how
+        # much it has restored, and this turns that into a percentage. The
+        # 3800 MB is the approximate size of the Debian live image we ship and
+        # is only a fallback for the case where the file cannot be stat'd —
+        # wrong by a few hundred MB just makes the bar finish slightly early or
+        # late, so it is not worth failing the build over.
         base_size_mb = 3800.0
         try:
             if os.path.exists(base_iso_to_use):

@@ -1,7 +1,31 @@
+"""The offline technician client: the backend baked into the USB restore stick.
+
+This runs unattended on customer hardware, usually with no network beyond the
+LAN it was plugged into, driven by a technician through a kiosk browser. Two
+things follow from that and shape everything here.
+
+**It cannot be updated in place.** The whole app is baked into an ISO by
+`backend/iso_tasks.py` and reaches the field on a USB stick. A bug shipped here
+stays in the field until someone re-images every stick, which is why so much of
+this file swallows exceptions and carries on: a restore that half-works is
+recoverable by a technician standing at the machine, and a crashed backend is
+not.
+
+**It runs both paired and unpaired.** Before an operator approves the stick in
+the orchestrator's Kiosk tab it has a token but no standing; after approval it
+can read the fleet and pull archives. `auto_register_with_orchestrator` polls
+for that transition in a background thread.
+
+Shared code arrives by injection, not by import: `core/disk_ops.py`, the
+network routers and `version.py` are copied in during ISO generation, which is
+why the imports below are wrapped in try/except — they genuinely do not exist
+when this file is read on the orchestrator.
+"""
 import os
 import subprocess
 import json
 import logging
+import threading
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -38,9 +62,25 @@ restore_mode = "offline"
 local_storage_path = "/media/usb-data"
 available_server_ips = []
 autocheck_in_thread_started = False
+#: Guards the flag above. Three call sites start the check-in thread — startup,
+#: pairing, and re-pairing to a different orchestrator — and the read-then-set
+#: was unsynchronised, so two pairing requests arriving together could each see
+#: False and start a thread. Both would then poll the orchestrator forever,
+#: since nothing ever stops one.
+autocheck_in_thread_lock = threading.Lock()
 payload_update_available = False
 latest_payload_hash = ""
 LOCAL_HASH_PATH = "/opt/offline-client/payload_hash.txt"
+
+
+def ensure_autocheckin_thread() -> None:
+    """Start the orchestrator check-in poller, exactly once per process."""
+    global autocheck_in_thread_started
+    with autocheck_in_thread_lock:
+        if autocheck_in_thread_started:
+            return
+        autocheck_in_thread_started = True
+    threading.Thread(target=auto_register_with_orchestrator, daemon=True).start()
 
 def read_local_payload_hash() -> str:
     try:
@@ -439,10 +479,7 @@ def enroll_client_kiosk(req: ClientEnrollRequest):
             kiosk_status = "PENDING"
             
             # Start auto check-in thread if not already running
-            if not autocheck_in_thread_started:
-                import threading
-                threading.Thread(target=auto_register_with_orchestrator, daemon=True).start()
-                autocheck_in_thread_started = True
+            ensure_autocheckin_thread()
             
             # Update config.json file
             cfg_data = {}
@@ -517,10 +554,7 @@ def connect_to_orchestrator(req: ConnectRequest):
         kiosk_status = "APPROVED"
         
         # Start auto check-in thread if not already running
-        if not autocheck_in_thread_started:
-            import threading
-            threading.Thread(target=auto_register_with_orchestrator, daemon=True).start()
-            autocheck_in_thread_started = True
+        ensure_autocheckin_thread()
         
         # Update config.json file
         cfg_data = {}
@@ -1374,11 +1408,10 @@ def auto_register_with_orchestrator():
 
 @app.on_event("startup")
 def startup_event():
-    global autocheck_in_thread_started
+    # A stick that was already paired resumes polling immediately; an unpaired
+    # one waits until the technician enters an orchestrator address.
     if auth_token and orchestrator_ip:
-        import threading
-        threading.Thread(target=auto_register_with_orchestrator, daemon=True).start()
-        autocheck_in_thread_started = True
+        ensure_autocheckin_thread()
 
 
 @app.post("/api/kiosk/request-activation")

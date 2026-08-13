@@ -323,3 +323,117 @@ def test_scheduler_retry_delay(mock_run_backup_task, mock_redis, test_db):
     now_time_retry = datetime(2026, 6, 15, 3, 1)
     check_and_trigger_backups(test_db, now=now_time_retry)
     mock_run_backup_task.delay.assert_called_once()
+
+
+@patch('core.scheduler.redis_client')
+@patch('core.scheduler.run_backup_task')
+def test_a_stale_lock_does_not_count_against_the_group_limit(mock_run_backup_task, mock_redis, test_db):
+    """A dead worker must not throttle its whole group until the TTL expires.
+
+    `backup_running:` outlives the worker that set it. The lock TTL is sized
+    from the node's own transfer history, so on a slow link it is hours — and
+    the group's concurrency count was reading the bare key, so one crashed
+    backup silently held a concurrency_limit=1 group idle for that long with
+    nothing in the logs to explain it. Admission control already resolved this
+    through is_backup_lock_live; the count did not.
+    """
+    group = models.BackupGroup(
+        name="NightlyGroup",
+        interval="weekly",
+        start_time="02:00",
+        end_time="05:00",
+        concurrency_limit=1,
+        randomize_days=True,
+    )
+    test_db.add(group)
+    test_db.commit()
+    test_db.refresh(group)
+
+    dead = models.Node(hostname="node-dead", ip_address="192.168.1.10",
+                       group_id=group.id, backup_paused=False, status="READY")
+    waiting = models.Node(hostname="node-02", ip_address="192.168.1.11",
+                          group_id=group.id, backup_paused=False, status="READY")
+    test_db.add_all([dead, waiting])
+    test_db.commit()
+    test_db.refresh(dead)
+    test_db.refresh(waiting)
+
+    # The dead node holds a lock naming a Celery task that has already finished.
+    def lock_for(key):
+        return b"1700000000:finished-task-id" if str(dead.id) in key else None
+
+    mock_redis.get.side_effect = lock_for
+    mock_redis.mget.side_effect = lambda keys: [lock_for(k) for k in keys]
+
+    node_hash = deterministic_hash(waiting.hostname)
+    day_index = node_hash % 7
+    hour_offset = node_hash % 3
+    scheduled_hour = (2 + hour_offset) % 24
+    scheduled_minute = (node_hash // 3) % 60
+    target_time = (datetime(2026, 6, 15) + timedelta(days=day_index)).replace(
+        hour=scheduled_hour, minute=scheduled_minute
+    )
+
+    class _FinishedResult:
+        def ready(self):
+            return True
+
+    with patch('celery_app.celery_app.AsyncResult', return_value=_FinishedResult()), \
+         patch('core.scheduler.datetime') as mock_datetime:
+        mock_datetime.utcnow.return_value = target_time
+        check_and_trigger_backups(test_db)
+
+    # The group is no longer frozen. Which node goes first is the scheduler's
+    # own slot ordering and not what this test is about — the dead node's own
+    # backup failed, so it being retried first is legitimate.
+    assert mock_run_backup_task.delay.called, (
+        "a finished task's leftover lock still counted against the group limit"
+    )
+    # And the corpse is cleared rather than left to expire on its own.
+    mock_redis.delete.assert_any_call(f"backup_running:{dead.id}")
+
+
+@patch('core.scheduler.redis_client')
+@patch('core.scheduler.run_backup_task')
+def test_a_live_lock_still_counts_against_the_group_limit(mock_run_backup_task, mock_redis, test_db):
+    """The other half: the fix must not make the limit stop working."""
+    group = models.BackupGroup(
+        name="NightlyGroup", interval="weekly", start_time="02:00", end_time="05:00",
+        concurrency_limit=1, randomize_days=True,
+    )
+    test_db.add(group)
+    test_db.commit()
+    test_db.refresh(group)
+
+    running = models.Node(hostname="node-01", ip_address="192.168.1.10",
+                          group_id=group.id, backup_paused=False, status="READY")
+    waiting = models.Node(hostname="node-02", ip_address="192.168.1.11",
+                          group_id=group.id, backup_paused=False, status="READY")
+    test_db.add_all([running, waiting])
+    test_db.commit()
+    test_db.refresh(running)
+    test_db.refresh(waiting)
+
+    def lock_for(key):
+        return b"1700000000:still-running-task" if str(running.id) in key else None
+
+    mock_redis.get.side_effect = lock_for
+    mock_redis.mget.side_effect = lambda keys: [lock_for(k) for k in keys]
+
+    node_hash = deterministic_hash(waiting.hostname)
+    day_index = node_hash % 7
+    hour_offset = node_hash % 3
+    target_time = (datetime(2026, 6, 15) + timedelta(days=day_index)).replace(
+        hour=(2 + hour_offset) % 24, minute=(node_hash // 3) % 60
+    )
+
+    class _RunningResult:
+        def ready(self):
+            return False
+
+    with patch('celery_app.celery_app.AsyncResult', return_value=_RunningResult()), \
+         patch('core.scheduler.datetime') as mock_datetime:
+        mock_datetime.utcnow.return_value = target_time
+        check_and_trigger_backups(test_db)
+
+    mock_run_backup_task.delay.assert_not_called()

@@ -115,9 +115,21 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
     for gid in groups:
         group_running_counts[gid] = 0
 
-    # Count currently running backups per group
+    # Count currently running backups per group.
+    #
+    # Through is_backup_lock_live, not on the presence of the key. A worker
+    # that died leaves its `backup_running:` key behind until the TTL expires,
+    # and that TTL is now sized from the node's own history — hours, on a slow
+    # link. Counting the corpse throttled the entire group for that long, and
+    # nothing in the logs said why. Admission control below already used the
+    # live check; these two disagreeing was the bug.
+    #
+    # It costs nothing extra at fleet scale: the Celery round trip inside only
+    # happens for nodes that actually hold a key, so it is bounded by the
+    # number of running backups rather than by the size of the fleet.
     for node in nodes:
-        if running_raw.get(node.id):
+        raw = running_raw.get(node.id)
+        if raw and is_backup_lock_live(node.id, raw=raw, prefetched=True):
             group_running_counts[node.group_id] = group_running_counts.get(node.group_id, 0) + 1
 
     # Precompute group-level variables to optimize execution speed and implement dynamic concurrency
@@ -151,14 +163,30 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
         # Base concurrency limit (default to 5 if not set or 0)
         base_concurrency = group.concurrency_limit or 5
 
-        # Hard ceiling derived from the group's upload rate limit (assume a
-        # single stream can use ~2 MiB/s). Kept SEPARATE from base_concurrency:
-        # the dynamic "finish before the window closes" logic below may raise
-        # concurrency above the configured limit, but it must never raise it
-        # above what the link can physically carry.
+        # Hard ceiling derived from the group's upload rate limit. Kept
+        # SEPARATE from base_concurrency: the dynamic "finish before the window
+        # closes" logic below may raise concurrency above the configured limit,
+        # but it must never raise it above what the link can physically carry.
+        #
+        # 2048 is KiB/s per concurrent stream, i.e. an assumption that one
+        # backup can sustain about 2 MiB/s. It is a floor on realistic
+        # single-stream throughput over the DSL and LTE links these nodes sit
+        # behind, not a measurement, and it is the only place the scheduler
+        # converts bandwidth into a number of streams:
+        #
+        #   too low  -> the cap is generous, streams contend, every backup in
+        #               the group slows down together and some miss the window
+        #   too high -> the cap is stingy, the link idles, and the group takes
+        #               longer than it needed to
+        #
+        # Erring low is the safer direction, which is why it is set where it
+        # is. core/transfer_speed.py records what each backup actually
+        # achieved; if the fleet's measured rate settles well above this, this
+        # is the constant to revisit.
+        BYTES_PER_STREAM_KIB = 2048
         bandwidth_cap = None
         if group.upload_rate_limit:
-            bandwidth_cap = max(1, group.upload_rate_limit // 2048)
+            bandwidth_cap = max(1, group.upload_rate_limit // BYTES_PER_STREAM_KIB)
 
         # Calculate remaining time in current window
         if in_window:
