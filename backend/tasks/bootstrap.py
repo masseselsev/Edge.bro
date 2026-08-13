@@ -1,7 +1,7 @@
 import os
 import subprocess
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from models import Node, TaskLog, Settings
 from celery_app import celery_app
@@ -53,7 +53,7 @@ def sync_node_key(task_id: str, node, new_pubkey: str) -> None:
     )
 
 
-def deploy_monitoring(task_id: str, node) -> bool:
+def deploy_monitoring(task_id: str, node, ssh_password: Optional[str] = None) -> bool:
     """Install the telemetry collector on a node that has just been provisioned.
 
     Never raises and never fails the caller. Monitoring is an addition to a
@@ -70,14 +70,15 @@ def deploy_monitoring(task_id: str, node) -> bool:
             ssh_port=node.ssh_port,
             extra_vars={},
             ssh_key_path=ssh_keys.ORCHESTRATOR_PRIVATE_KEY,
+            ssh_password=ssh_password,
         )
         if result.get("status") == "SUCCESS":
             tasks.log_to_task(task_id, "Telemetry collector installed and running.")
             return True
         tasks.log_to_task(
             task_id,
-            "WARNING: Could not install the telemetry collector. The node is "
-            "otherwise provisioned; monitoring can be retried separately.",
+            f"WARNING: Could not install the telemetry collector (exit code {result.get('return_code')}). "
+            "The node is otherwise provisioned; monitoring can be retried separately.",
         )
     except Exception as e:
         tasks.log_to_task(task_id, f"WARNING: Monitoring deploy raised: {str(e)}")
@@ -237,7 +238,7 @@ def _run_bootstrap(
         # non-fatal: monitoring is an addition to a node that is already
         # working, and a failure to install it must never turn a successful
         # bootstrap into a failed one.
-        deploy_monitoring(task_id, node)
+        deploy_monitoring(task_id, node, ssh_password=ssh_password)
 
     else:
         is_offline = False

@@ -97,8 +97,8 @@ def test_play_recap_progress_line_is_not_emitted_for_unrecognised_playbooks(monk
     db.add(models.TaskLog(id="progress-task", task_type="BOOTSTRAP", status="RUNNING", log_output=""))
     db.commit()
 
-    _run_playbook("progress-task", "deploy_monitoring.yml", [
-        "TASK [Show the capability report] ****\n",
+    _run_playbook("progress-task", "custom_unknown.yml", [
+        "TASK [Some unknown custom task] ****\n",
         "ok: [1.2.3.4]\n",
         "PLAY RECAP ****\n",
         "1.2.3.4 : ok=1 changed=0\n",
@@ -106,6 +106,24 @@ def test_play_recap_progress_line_is_not_emitted_for_unrecognised_playbooks(monk
 
     log = db.query(models.TaskLog).filter(models.TaskLog.id == "progress-task").first()
     assert "[PROGRESS]" not in log.log_output
+
+
+def test_play_recap_progress_line_is_emitted_for_monitoring(monkeypatch, db_session):
+    db, session_local = db_session
+    monkeypatch.setattr(ansible_utils, "SessionLocal", session_local)
+    db.add(models.TaskLog(id="monitoring-progress-task", task_type="BOOTSTRAP", status="RUNNING", log_output=""))
+    db.commit()
+
+    _run_playbook("monitoring-progress-task", "deploy_monitoring.yml", [
+        "TASK [Show the capability report] ****\n",
+        "ok: [1.2.3.4]\n",
+        "PLAY RECAP ****\n",
+        "1.2.3.4 : ok=1 changed=0\n",
+    ])
+
+    log = db.query(models.TaskLog).filter(models.TaskLog.id == "monitoring-progress-task").first()
+    assert "[PROGRESS] 95:" in log.log_output
+    assert "[PROGRESS] 100:" in log.log_output
 
 
 def test_play_recap_progress_line_is_still_emitted_for_bootstrap(monkeypatch, db_session):

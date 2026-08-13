@@ -85,20 +85,19 @@ def run_ansible_playbook(
         playbook_path = os.path.join(base_dir, "playbooks", playbook_name)
 
         # Create temporary inventory
-        inventory_content = f"{host_ip} ansible_host={host_ip} ansible_port={ssh_port} ansible_user=root"
+        user = extra_vars.get('bootstrap_user', 'root') if ssh_password else 'root'
+        inv_vars = [f"ansible_host={host_ip}", f"ansible_port={ssh_port}", f"ansible_user={user}"]
         if ssh_password:
-            # Escalation to root
-            inventory_content = (
-                f"{host_ip} ansible_host={host_ip} "
-                f"ansible_port={ssh_port} "
-                f"ansible_user={extra_vars.get('bootstrap_user', 'root')} "
-                f"ansible_password={ssh_password} "
-                f"ansible_become=yes "
-                f"ansible_become_method=sudo "
+            inv_vars.extend([
+                f"ansible_password={ssh_password}",
+                "ansible_become=yes",
+                "ansible_become_method=sudo",
                 f"ansible_become_password={ssh_password}"
-            )
-        elif ssh_key_path:
-            inventory_content += f" ansible_ssh_private_key_file={ssh_key_path} ansible_port={ssh_port}"
+            ])
+        if ssh_key_path and os.path.exists(ssh_key_path):
+            inv_vars.append(f"ansible_ssh_private_key_file={ssh_key_path}")
+
+        inventory_content = f"{host_ip} " + " ".join(inv_vars)
 
         # Write temporary files for safety
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as inv_file:
@@ -146,6 +145,7 @@ def run_ansible_playbook(
 
         is_bootstrap = "bootstrap" in playbook_name
         is_prepare = "prepare" in playbook_name
+        is_monitoring = "monitoring" in playbook_name
         
         lang = "en"
         try:
@@ -167,13 +167,17 @@ def run_ansible_playbook(
             "Restore proxy configurations and clean up orchestrator proxy": (95, "cleaning_up")
         }
 
-        PREPARE_TASKS = {
-            "Backup remote fstab": (10, "backup_fstab"),
-            "Gather partition and system details": (25, "gather_details"),
-            "Label root filesystem": (50, "labeling_fs"),
-            "Rewrite target /etc/fstab": (70, "writing_fstab"),
-            "Verify mount configuration live": (85, "verifying_mount"),
-            "Update GRUB bootloader configuration": (90, "updating_grub")
+        MONITORING_TASKS = {
+            "Ensure the telemetry buffer directory exists": (10, "buffer_dir"),
+            "Install the collector script": (30, "collector_script"),
+            "Install the systemd service unit": (40, "service_unit"),
+            "Install the systemd timer unit": (50, "timer_unit"),
+            "Expose SATA drive temperature via the drivetemp module": (60, "drivetemp"),
+            "Enable and start the collection timer": (75, "enable_timer"),
+            "Restart the timer if the collector or its units changed": (80, "restart_timer"),
+            "Take one sample immediately": (85, "immediate_sample"),
+            "Report what the node can actually measure": (90, "capability_report"),
+            "Show the capability report": (95, "show_capability")
         }
 
         PROGRESS_TRANSLATIONS = {
@@ -243,6 +247,47 @@ def run_ansible_playbook(
                     "updating_grub": "Оновлення завантажувача GRUB та initramfs...",
                     "complete": "Автопідготовка успішно завершена!"
                 }
+            },
+            "monitoring": {
+                "en": {
+                    "buffer_dir": "Ensuring telemetry buffer directory...",
+                    "collector_script": "Installing telemetry collector script...",
+                    "service_unit": "Installing systemd service unit...",
+                    "timer_unit": "Installing systemd timer unit...",
+                    "drivetemp": "Configuring drivetemp kernel module for SSD monitoring...",
+                    "enable_timer": "Enabling telemetry collection timer...",
+                    "restart_timer": "Restarting telemetry collection timer...",
+                    "immediate_sample": "Taking initial telemetry sample...",
+                    "capability_report": "Checking hardware sensors & capability report...",
+                    "show_capability": "Displaying telemetry capability report...",
+                    "complete": "Telemetry collector installed successfully!"
+                },
+                "ru": {
+                    "buffer_dir": "Проверка директории буфера телеметрии...",
+                    "collector_script": "Установка скрипта сборщика телеметрии...",
+                    "service_unit": "Установка службы systemd...",
+                    "timer_unit": "Установка таймера systemd...",
+                    "drivetemp": "Настройка модуля ядра drivetemp для мониторинга SSD...",
+                    "enable_timer": "Включение таймера сбора телеметрии...",
+                    "restart_timer": "Перезапуск таймера сбора телеметрии...",
+                    "immediate_sample": "Снятие первого образца телеметрии...",
+                    "capability_report": "Проверка аппаратных датчиков и возможностей...",
+                    "show_capability": "Отображение отчета о возможностях телеметрии...",
+                    "complete": "Сборщик телеметрии успешно установлен!"
+                },
+                "uk": {
+                    "buffer_dir": "Перевірка директорії буфера телеметрії...",
+                    "collector_script": "Встановлення скрипта збирача телеметрії...",
+                    "service_unit": "Встановлення службы systemd...",
+                    "timer_unit": "Встановлення таймера systemd...",
+                    "drivetemp": "Налаштування модуля ядра drivetemp для моніторингу SSD...",
+                    "enable_timer": "Увімкнення таймера збору телеметрії...",
+                    "restart_timer": "Перезапуск таймера збору телеметрії...",
+                    "immediate_sample": "Зняття першого зразка телеметрії...",
+                    "capability_report": "Перевірка апаратних датчиків та возможностей...",
+                    "show_capability": "Відображення звіту про можливості телеметрії...",
+                    "complete": "Збирач телеметрії успішно встановлено!"
+                }
             }
         }
 
@@ -272,17 +317,19 @@ def run_ansible_playbook(
                                     percent = pct
                                     desc = PROGRESS_TRANSLATIONS["prepare"][lang].get(trans_key)
                                     break
+                        elif is_monitoring:
+                            for key, (pct, trans_key) in MONITORING_TASKS.items():
+                                if key in task_title:
+                                    percent = pct
+                                    desc = PROGRESS_TRANSLATIONS["monitoring"][lang].get(trans_key)
+                                    break
                     except Exception:
                         pass
-                elif "PLAY RECAP" in line and (is_bootstrap or is_prepare):
-                    # Playbooks that are neither (e.g. deploy_monitoring.yml,
-                    # run after bootstrap.yml under the same task_id) have no
-                    # translated "complete" message of their own; leave the
-                    # last real progress marker on screen instead of
-                    # mislabelling this recap as "Auto-prepare completed".
+                elif "PLAY RECAP" in line:
                     percent = 100
-                    p_type = "bootstrap" if is_bootstrap else "prepare"
-                    desc = PROGRESS_TRANSLATIONS[p_type][lang].get("complete")
+                    p_type = "bootstrap" if is_bootstrap else ("prepare" if is_prepare else ("monitoring" if is_monitoring else None))
+                    if p_type:
+                        desc = PROGRESS_TRANSLATIONS[p_type][lang].get("complete")
 
                 if percent is not None and desc is not None:
                     log_accumulator.append(f"[PROGRESS] {percent}:{desc}\n")
@@ -420,7 +467,16 @@ def run_ansible_playbook(
                 print(f"Error parsing partition layout: {str(e)}")
                 traceback.print_exc()
 
-        final_log = log_prefix + "".join(log_accumulator)
+        current_log_obj = db.query(TaskLog).filter(TaskLog.id == task_id).first()
+        current_text = current_log_obj.log_output if current_log_obj and current_log_obj.log_output else log_prefix
+        accumulated_text = "".join(log_accumulator)
+        if accumulated_text and not current_text.endswith(accumulated_text):
+            if current_text and not current_text.endswith("\n"):
+                current_text += "\n"
+            final_log = current_text + accumulated_text
+        else:
+            final_log = current_text
+
         status = "SUCCESS" if return_code == 0 else "FAILED"
 
         db.query(TaskLog).filter(TaskLog.id == task_id).update({
