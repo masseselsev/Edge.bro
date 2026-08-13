@@ -74,3 +74,33 @@ def forget(host: str, port: int, known_hosts_path: str = DEFAULT_KNOWN_HOSTS) ->
     except OSError:
         return False
     return after < before
+
+
+def record(host: str, port: int, known_hosts_path: str = DEFAULT_KNOWN_HOSTS) -> bool:
+    """Fetch and append the current SSH ED25519 host key for `host:port` using `ssh-keyscan`.
+
+    First removes any stale entry using `forget(host, port, known_hosts_path)` to ensure
+    no duplicate or outdated host key remains in `known_hosts_path`. Returns True if
+    a host key was successfully scanned and appended.
+    """
+    forget(host, port, known_hosts_path)
+
+    cmd = ["ssh-keyscan", "-t", "ed25519", "-p", str(port), host]
+    try:
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_TIMEOUT_SECONDS,
+            check=False,
+        )
+        output = res.stdout.strip()
+        if res.returncode == 0 and output:
+            os.makedirs(os.path.dirname(os.path.abspath(known_hosts_path)), exist_ok=True)
+            with open(known_hosts_path, "a") as f:
+                f.write(output + "\n")
+            return True
+        logger.warning(f"ssh-keyscan returned empty or non-zero for {host}:{port}: {res.stderr}")
+    except (OSError, subprocess.TimeoutExpired) as e:
+        logger.warning(f"Could not record known_hosts entry for {host}:{port}: {e}")
+    return False

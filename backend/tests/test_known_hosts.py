@@ -128,3 +128,24 @@ def test_ssh_keygen_missing_from_path_fails_closed_not_raising(known_hosts_file,
     monkeypatch.setattr(known_hosts.subprocess, "run", explode)
 
     assert known_hosts.forget("192.168.222.83", 2222, known_hosts_file) is False
+
+
+# --- record -------------------------------------------------------------------
+
+def test_record_clears_old_entry_and_appends_scanned_key(known_hosts_file, monkeypatch):
+    with open(known_hosts_file, "w") as f:
+        f.write(real_entry("[192.168.222.83]:2222"))
+
+    orig_run = subprocess.run
+
+    def mock_run(cmd, *args, **kwargs):
+        if "ssh-keyscan" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout="[192.168.222.83]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINEWKEY\n", stderr="")
+        return orig_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(known_hosts.subprocess, "run", mock_run)
+
+    success = known_hosts.record("192.168.222.83", 2222, known_hosts_file)
+    assert success is True
+    content = open(known_hosts_file).read()
+    assert "AAAAC3NzaC1lZDI1NTE5AAAAINEWKEY" in content

@@ -233,6 +233,11 @@ def _run_bootstrap(
         db.commit()
         tasks.log_to_task(task_id, f"Bootstrap completed. {'Already prepared.' if is_prep else 'Key fetched.'}")
 
+        try:
+            known_hosts.record(node.ip_address, node.ssh_port)
+        except Exception as e:
+            tasks.log_to_task(task_id, f"WARNING: Could not record node SSH host key: {str(e)}")
+
         # Install the telemetry collector so a freshly provisioned node starts
         # sampling without a second visit. Deliberately after the commit and
         # non-fatal: monitoring is an addition to a node that is already
