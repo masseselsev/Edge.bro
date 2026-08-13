@@ -391,7 +391,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
   return createPortal(
     <div className="fixed inset-0 bg-zinc-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90%] shadow-2xl flex flex-col overflow-hidden animate-modal-in">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-6xl max-h-[92vh] shadow-2xl flex flex-col overflow-hidden animate-modal-in">
         {/* Header */}
         <div className="flex justify-between items-center p-5 border-b border-zinc-800">
           <div>
@@ -428,17 +428,17 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
             <>
               {/* Hardware Specs Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
-              <Cpu className="h-8 w-8 text-cyan-400/90" />
+            <div className="relative bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 pt-6 flex items-center gap-3">
+              <div className="absolute top-2 right-2">
+                <ThermalBadge
+                  thermal={health?.thermal}
+                  loading={healthLoading}
+                  onClick={() => setHealthTab('thermal')}
+                />
+              </div>
+              <Cpu className="h-8 w-8 text-cyan-400/90 shrink-0" />
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] uppercase font-bold text-zinc-500">{t('cpu')}</span>
-                  <ThermalBadge
-                    thermal={health?.thermal}
-                    loading={healthLoading}
-                    onClick={() => setHealthTab('thermal')}
-                  />
-                </div>
+                <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('cpu')}</span>
                 <span className="text-xs font-semibold text-zinc-200 block mt-0.5 truncate" title={node.cpu_info || 'UNKNOWN'}>
                   {node.cpu_info || 'Generic CPU'}
                 </span>
@@ -455,17 +455,17 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
               </div>
             </div>
 
-            <div className="bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 flex items-center gap-3">
-              <HardDrive className="h-8 w-8 text-amber-400/90" />
+            <div className="relative bg-zinc-950/40 border border-zinc-800/80 rounded-lg p-3.5 pt-6 flex items-center gap-3">
+              <div className="absolute top-2 right-2">
+                <SmartBadge
+                  smart={health?.smart?.[0]}
+                  loading={healthLoading}
+                  onClick={() => setHealthTab('smart')}
+                />
+              </div>
+              <HardDrive className="h-8 w-8 text-amber-400/90 shrink-0" />
               <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] uppercase font-bold text-zinc-500">{t('diskDrive') || 'Disk Drive'}</span>
-                  <SmartBadge
-                    smart={health?.smart?.[0]}
-                    loading={healthLoading}
-                    onClick={() => setHealthTab('smart')}
-                  />
-                </div>
+                <span className="text-[10px] uppercase font-bold text-zinc-500 block">{t('diskDrive') || 'Disk Drive'}</span>
                 <span className="text-xs font-semibold text-zinc-200 block mt-0.5 truncate">
                   {node.disk_type}
                 </span>
