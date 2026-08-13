@@ -389,8 +389,8 @@ export default function NodeHealthModal({ nodeId, hostname, initialTab = 'smart'
   const xKeyFor = tab === 'smart' ? 'captured_at' : tab === 'thermal' ? 'window_start' : 'bucket_start';
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl animate-modal-in">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 overflow-y-auto bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-5xl max-h-[92dvh] my-auto flex flex-col shadow-2xl animate-modal-in">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
           <div>
             <h3 className="text-sm font-bold text-zinc-50">{t('healthTitle')}</h3>
