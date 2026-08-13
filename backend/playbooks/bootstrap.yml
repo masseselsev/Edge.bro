@@ -152,14 +152,14 @@
         # stops printing "REMOTE HOST IDENTIFICATION HAS CHANGED" on every
         # single backup afterwards.
         rm -f /home/borg/.ssh/known_hosts /root/.ssh/known_hosts /etc/ssh/ssh_known_hosts 2>/dev/null || true
-        if [ -n "{{ orchestrator_ip }}" ]; then
-          # Fetch and store Orchestrator's host key so outbound borg SSH connections match perfectly
-          (ssh-keyscan -t ed25519 -p 12345 "{{ orchestrator_ip }}" 2>/dev/null; ssh-keyscan -t ed25519 "{{ orchestrator_ip }}" 2>/dev/null) > /home/borg/.ssh/known_hosts || true
+        ORCH_IP='{{ orchestrator_ip }}'
+        if [ -n "$ORCH_IP" ]; then
+          (ssh-keyscan -t ed25519 -p 12345 "$ORCH_IP" 2>/dev/null; ssh-keyscan -t ed25519 "$ORCH_IP" 2>/dev/null) > /home/borg/.ssh/known_hosts || true
           chown borg:borg /home/borg/.ssh/known_hosts 2>/dev/null || true
           chmod 644 /home/borg/.ssh/known_hosts 2>/dev/null || true
         fi
         if [ ! -f /home/borg/.ssh/id_ed25519 ]; then
-          ssh-keygen -t ed25519 -N "" -f /home/borg/.ssh/id_ed25519
+          ssh-keygen -t ed25519 -N '' -f /home/borg/.ssh/id_ed25519
           chown borg:borg /home/borg/.ssh/id_ed25519*
           chmod 600 /home/borg/.ssh/id_ed25519
           chmod 644 /home/borg/.ssh/id_ed25519.pub
