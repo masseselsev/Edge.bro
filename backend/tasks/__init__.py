@@ -80,6 +80,12 @@ celery_app.conf.beat_schedule = {
         'task': 'tasks.monitoring_retention_task',
         'schedule': crontab(hour=4, minute=15), # Run at 4:15 AM daily
     },
+    'evaluate-alerts-task': {
+        'task': 'tasks.evaluate_alerts_task',
+        # Hourly. SMART is monthly-cadence and thermal fits are multi-hour
+        # windows, so an hour of latency loses nothing for either producer.
+        'schedule': crontab(minute=40),
+    },
 }
 celery_app.conf.timezone = 'UTC'
 
@@ -216,6 +222,7 @@ from tasks.monitoring import (
     monitoring_retention_task,
     monitoring_sweep_task,
 )
+from tasks.alerts import evaluate_alerts_task
 
 # Import other tasks so they register with Celery automatically when this file is loaded
 from backup_tasks import run_prepare_task, run_backup_task, global_daily_prune

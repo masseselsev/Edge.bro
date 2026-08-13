@@ -99,6 +99,23 @@ def require_admin(auth = Depends(get_current_auth)) -> models.User:
     return auth
 
 
+def require_user(auth = Depends(get_current_auth)) -> models.User:
+    """Like require_admin, but named for routes whose only requirement is
+    "acting principal is a User row", not admin-specific permissions — e.g.
+    a caller's own notification preferences. Kiosk and User primary keys are
+    independent sequences and can collide, so any route that resolves a User
+    row by `current_auth.id` must depend on this (or require_admin) rather
+    than bare get_current_auth, or a kiosk token can act on an unrelated
+    user's account.
+    """
+    if not isinstance(auth, models.User):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account required"
+        )
+    return auth
+
+
 def require_superadmin(auth = Depends(get_current_auth)) -> models.User:
     if not isinstance(auth, models.User) or not auth.is_superadmin:
         raise HTTPException(

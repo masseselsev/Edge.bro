@@ -14,6 +14,7 @@ import { TranslationProvider, useTranslation } from './context/TranslationContex
 import type { Language } from './i18n/translations';
 import Login from './components/Login';
 import ProfileModal from './components/ProfileModal';
+import NotificationBell from './components/NotificationBell';
 import LanguageSelector from './components/LanguageSelector';
 import BlockedKioskScreen from './components/BlockedKioskScreen';
 import IpPromptModal from './components/IpPromptModal';
@@ -902,6 +903,11 @@ function AppContent() {
 
               {/* Language Dropdown Selector */}
               <div className="flex items-center gap-2">
+                {!isKiosk && isAuthenticated && currentUser && (
+                  <div className="mr-1">
+                    <NotificationBell timezone={settings?.timezone || 'Browser Local'} />
+                  </div>
+                )}
                 {!isKiosk && isAuthenticated && currentUser && (
                   <div className="relative mr-1" ref={profileDropdownRef}>
                     <button

@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean, Float, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean, Float, UniqueConstraint, Index, text
 from sqlalchemy.sql import func
 from database import Base
 
@@ -284,6 +284,10 @@ class User(Base):
     # which series the monitoring graphs plot and how deep a window they show.
     # Stored server-side so the same choices appear from any machine.
     ui_preferences = Column(JSON, nullable=True)
+    # Self-service delivery subscription. NULL means "never configured",
+    # read as disabled — nobody is opted in just because a telegram_id
+    # happens to be on file. {"telegram_enabled": bool, "min_severity": str}
+    notification_prefs = Column(JSON, nullable=True)
     is_superadmin = Column(Boolean, default=False, nullable=False)
     is_admin_plus = Column(Boolean, default=False, nullable=False)
 
@@ -438,3 +442,41 @@ class SmartSnapshot(Base):
     # the "full statistics" endpoint would hand back a null report instead of
     # honestly saying none is stored. Absence is what None means here.
     raw = Column(JSON(none_as_null=True), nullable=True)
+
+
+class Alert(Base):
+    """One alert-worthy condition, from open through resolution.
+
+    `dedup_key` is unique only while the row is not RESOLVED (see the
+    migration's partial index) — a resolved problem that recurs opens a new
+    row rather than reusing the old one, so `first_seen` always means what it
+    says for that specific episode.
+    """
+    __tablename__ = 'alerts'
+    __table_args__ = (
+        # sqlite_where kept alongside postgresql_where so the partial index
+        # (not a full-table unique constraint) also applies to the SQLite
+        # databases the test suite runs against — production only ever runs
+        # on Postgres via the migration, but the model's metadata is used
+        # directly (Base.metadata.create_all) in tests, so both need this.
+        Index('uq_alert_open_dedup', 'dedup_key', unique=True,
+              postgresql_where=text("status != 'RESOLVED'"),
+              sqlite_where=text("status != 'RESOLVED'")),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    module = Column(String, nullable=False)           # "smart", "thermal", ...
+    dedup_key = Column(String, nullable=False, index=True)
+    node_id = Column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'), nullable=True)
+
+    severity = Column(String, nullable=False)          # WATCH, ALERT
+    status = Column(String, nullable=False, default='OPEN')  # OPEN, ACKNOWLEDGED, RESOLVED
+
+    title = Column(String, nullable=False)
+    detail = Column(JSON, nullable=True)
+
+    first_seen = Column(DateTime, default=func.now(), nullable=False)
+    last_seen = Column(DateTime, default=func.now(), nullable=False)
+    resolved_at = Column(DateTime, nullable=True)
+    acknowledged_at = Column(DateTime, nullable=True)
+    acknowledged_by_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
