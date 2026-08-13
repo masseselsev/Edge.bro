@@ -1,6 +1,7 @@
 import React from 'react';
 import { HardDrive, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
+import { formatBytes } from './formatBytes';
 
 interface Device {
   name: string;
@@ -26,7 +27,6 @@ interface DeviceScannerSectionProps {
   onRefreshDevices: () => void;
   isKiosk: boolean;
   storageInfo: StorageInfo | null;
-  getFormatSize: (bytes: number) => string;
   onStoragePathChange?: (newPath: string) => Promise<void>;
 }
 
@@ -36,7 +36,6 @@ export function DeviceScannerSection({
   onRefreshDevices,
   isKiosk,
   storageInfo,
-  getFormatSize,
   onStoragePathChange,
 }: DeviceScannerSectionProps) {
   const { t } = useTranslation();
@@ -75,7 +74,7 @@ export function DeviceScannerSection({
                 </div>
                 <div className="text-[11px] text-zinc-400 flex justify-between">
                   <span>Model: {d.model}</span>
-                  <span>{getFormatSize(d.size)}</span>
+                  <span>{formatBytes(d.size)}</span>
                 </div>
                 <div className="text-[10px] text-zinc-500">
                   Type: {d.rotational ? 'Rotational HDD' : 'Solid State Drive (SSD)'}
@@ -139,7 +138,7 @@ export function DeviceScannerSection({
 
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs font-semibold">
-                <span className="text-zinc-400">{t('usedSpace', { size: getFormatSize(storageInfo.used) })}</span>
+                <span className="text-zinc-400">{t('usedSpace', { size: formatBytes(storageInfo.used) })}</span>
                 <span className="text-zinc-100">
                   {((storageInfo.used / storageInfo.total) * 100).toFixed(0)}%
                 </span>
@@ -161,12 +160,12 @@ export function DeviceScannerSection({
 
             <div className="flex justify-between text-xs font-semibold">
               <span className="text-zinc-400">{t('freeSpace')}</span>
-              <span className="text-emerald-400">{getFormatSize(storageInfo.free)}</span>
+              <span className="text-emerald-400">{formatBytes(storageInfo.free)}</span>
             </div>
 
             <div className="flex justify-between text-xs">
               <span className="text-zinc-400">{t('totalCapacity')}</span>
-              <span className="text-zinc-300 font-semibold">{getFormatSize(storageInfo.total)}</span>
+              <span className="text-zinc-300 font-semibold">{formatBytes(storageInfo.total)}</span>
             </div>
           </div>
         </div>

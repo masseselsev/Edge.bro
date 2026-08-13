@@ -35,6 +35,7 @@ interface Snapshot {
 import { formatDate } from './dateUtils';
 import { SearchableSelect } from './SearchableSelect';
 import type { Option } from './SearchableSelect';
+import { formatBytes } from './formatBytes';
 
 interface FlasherTabProps {
   onViewLogs: (taskId: string, title: string) => void;
@@ -243,14 +244,6 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     }
   };
 
-  const getFormatSize = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-  };
-
   const selectedNode = nodes.find(n => n.id === Number(selectedNodeId));
 
   // Options converters
@@ -263,7 +256,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
       sublabel: [
         n.ip_address,
         `Original Disk: ${n.disk_type}${n.efi_uuid ? '' : ' [NO EFI UUID]'}`,
-        ...(n.repo_size_bytes !== undefined ? [`Repo Size: ${getFormatSize(n.repo_size_bytes)}`] : []),
+        ...(n.repo_size_bytes !== undefined ? [`Repo Size: ${formatBytes(n.repo_size_bytes)}`] : []),
         ...(n.notes?.trim() ? [n.notes.trim()] : []),
       ].filter(Boolean).join(' — '),
       disabled: false
@@ -273,9 +266,9 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
     let sizeDetails = "";
     if (restoreMode === 'online') {
       const estDownload = Math.max(s.deduplicated_size, Math.round(s.original_size * 0.4));
-      sizeDetails = `${getFormatSize(estDownload)} ${t('estDownload') || 'to download'}`;
+      sizeDetails = `${formatBytes(estDownload)} ${t('estDownload') || 'to download'}`;
     } else {
-      sizeDetails = `${getFormatSize(s.original_size)} ${t('sizeOnDisk') || 'on disk'} / ${getFormatSize(s.deduplicated_size)} ${t('archiveSize') || 'archive'}`;
+      sizeDetails = `${formatBytes(s.original_size)} ${t('sizeOnDisk') || 'on disk'} / ${formatBytes(s.deduplicated_size)} ${t('archiveSize') || 'archive'}`;
     }
 
     let label = s.archive_name;
@@ -306,7 +299,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   const deviceOptions = devices.map(d => ({
     value: d.name,
     label: d.name,
-    sublabel: `${d.model} (${getFormatSize(d.size)} - ${d.disk_type} ${d.rotational ? 'HDD' : 'SSD'}${d.is_usb ? ' [USB]' : ''})`,
+    sublabel: `${d.model} (${formatBytes(d.size)} - ${d.disk_type} ${d.rotational ? 'HDD' : 'SSD'}${d.is_usb ? ' [USB]' : ''})`,
     disabled: false
   }));
 
@@ -457,7 +450,6 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
         onRefreshDevices={fetchDevices}
         isKiosk={isKiosk}
         storageInfo={storageInfo}
-        getFormatSize={getFormatSize}
         onStoragePathChange={handleStoragePathChange}
       />
     </div>

@@ -13,6 +13,7 @@ from models import Node, TaskLog, BackupHistory, Settings, BackupGroup
 from ansible_utils import run_ansible_playbook
 from core.borg_local import borg_kwargs
 from core.db_session import session_scope
+from core import ssh
 from core import backup_stats, transfer_speed
 
 # Re-use logging configuration from tasks
@@ -107,15 +108,10 @@ def build_borg_create_cmd(
     optionally wrapped in systemd-run --scope for CPU limiting.
     SSH Compression=no because Borg already compresses data chunks.
     """
-    interval = int(os.getenv("SSH_KEEPALIVE_INTERVAL", "30"))
-    count = int(os.getenv("SSH_KEEPALIVE_COUNT", "3"))
-
-    borg_rsh = (
-        "ssh -i /home/borg/.ssh/id_ed25519 "
-        "-o StrictHostKeyChecking=no -o Compression=no "
-        f"-o ServerAliveInterval={interval} -o ServerAliveCountMax={count}"
+    borg_env = (
+        f"BORG_RSH='{ssh.borg_rsh()}' BORG_PASSPHRASE='{borg_passphrase}' "
+        f"BORG_RELOCATED_REPO_ACCESS_IS_OK=yes"
     )
-    borg_env = f"BORG_RSH='{borg_rsh}' BORG_PASSPHRASE='{borg_passphrase}' BORG_RELOCATED_REPO_ACCESS_IS_OK=yes"
     borg_compression = compression.replace(":", ",")
     rate_limit_str = ""
     if rate_limit_kib and rate_limit_kib > 0:
@@ -138,17 +134,14 @@ def build_borg_create_cmd(
     else:
         inner_cmd = f"bash -c \"{borg_env} {borg_create}\""
 
-    return [
-        "ssh",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", f"ServerAliveInterval={interval}",
-        "-o", f"ServerAliveCountMax={count}",
-        "-p", str(node_ssh_port),
-        "-i", "/root/.ssh/id_ed25519",
-        *(extra_ssh_args or []),
-        f"root@{node_ip}",
-        inner_cmd,
-    ]
+    # No connect timeout: a link slow enough to take a minute to hand-shake is
+    # still a link this backup should run over.
+    return ssh.command(
+        node_ip, node_ssh_port, inner_cmd,
+        connect_timeout=None,
+        keepalive=True,
+        extra_args=extra_ssh_args,
+    )
 
 
 def force_cleanup_stale_repo_locks(task_id: str, repo_path: str) -> None:
@@ -198,19 +191,6 @@ def cleanup_locks_and_resolve_ip(
     """
     from tasks import log_to_task  # local import to avoid circular deps
 
-    interval = int(os.getenv("SSH_KEEPALIVE_INTERVAL", "30"))
-    count = int(os.getenv("SSH_KEEPALIVE_COUNT", "3"))
-    ssh_base = [
-        "ssh",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "ConnectTimeout=10",
-        "-o", f"ServerAliveInterval={interval}",
-        "-o", f"ServerAliveCountMax={count}",
-        "-p", str(node_ssh_port),
-        "-i", "/root/.ssh/id_ed25519",
-        f"root@{node_ip}",
-    ]
-
     # In NAT mode direct reachability is impossible by definition, so don't even
     # attempt the /dev/tcp probe — it can only waste a timeout.
     test_ip = "" if orchestrator_behind_nat else (configured_ip.strip() if configured_ip else "")
@@ -232,7 +212,7 @@ def cleanup_locks_and_resolve_ip(
 
     try:
         res = subprocess.run(
-            ssh_base + [remote_cmd],
+            ssh.command(node_ip, node_ssh_port, remote_cmd, keepalive=True),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, timeout=30,
         )
@@ -597,20 +577,17 @@ def _transfer_and_record(
 
     fix_repo_permissions("/data/borg/fleet")
 
-    interval = int(os.getenv("SSH_KEEPALIVE_INTERVAL", "30"))
-    count = int(os.getenv("SSH_KEEPALIVE_COUNT", "3"))
-
-    init_cmd = [
-        "ssh",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", f"ServerAliveInterval={interval}",
-        "-o", f"ServerAliveCountMax={count}",
-        "-p", str(plan.ssh_port),
-        "-i", "/root/.ssh/id_ed25519",
-        *extra_ssh_args,
-        f"root@{plan.ip_address}",
-        f"BORG_RSH='ssh -i /home/borg/.ssh/id_ed25519 -o StrictHostKeyChecking=no -o ServerAliveInterval={interval} -o ServerAliveCountMax={count}' BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' BORG_RELOCATED_REPO_ACCESS_IS_OK=yes borg init --encryption=repokey {borg_repo_url}"
-    ]
+    init_cmd = ssh.command(
+        plan.ip_address, plan.ssh_port,
+        # Compression on: `borg init` writes a tiny repo config, not chunks.
+        f"BORG_RSH='{ssh.borg_rsh(compression=True)}' "
+        f"BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' "
+        f"BORG_RELOCATED_REPO_ACCESS_IS_OK=yes "
+        f"borg init --encryption=repokey {borg_repo_url}",
+        connect_timeout=None,
+        keepalive=True,
+        extra_args=extra_ssh_args,
+    )
     log_to_task(task_id, "Checking/Initializing Borg repository...")
     try:
         res_init = subprocess.run(init_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

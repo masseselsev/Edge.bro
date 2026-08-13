@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Terminal as TermIcon, CheckCircle, AlertCircle, Loader, ArrowDown, ArrowUp } from 'lucide-react';
 import { formatDate } from './dateUtils';
 import { useTranslation } from '../context/TranslationContext';
+import { formatBytesPerSecond } from './formatBytes';
 
 interface TaskLogsModalProps {
   taskId: string;
@@ -10,14 +11,6 @@ interface TaskLogsModalProps {
   onClose: () => void;
   bandwidth?: { rx_speed: number; tx_speed: number } | null;
 }
-
-const formatSpeed = (bytesPerSec: number): string => {
-  if (bytesPerSec === 0) return '0 B/s';
-  const k = 1024;
-  const sizes = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
-  const i = Math.floor(Math.log(bytesPerSec) / Math.log(k));
-  return parseFloat((bytesPerSec / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-};
 
 export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwidth }: TaskLogsModalProps) {
   const { t } = useTranslation();
@@ -202,7 +195,7 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
                 <ArrowDown size={11} className={bandwidth.rx_speed > 1024 ? 'text-emerald-400 animate-pulse' : 'text-zinc-600'} />
                 <span className="text-[9px] text-zinc-500 font-bold font-mono">RX</span>
                 <span className={`text-[10px] font-mono font-semibold transition-colors duration-500 ${bandwidth.rx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
-                  {formatSpeed(bandwidth.rx_speed)}
+                  {formatBytesPerSecond(bandwidth.rx_speed)}
                 </span>
               </div>
               <div className="w-px h-2.5 bg-zinc-800" />
@@ -210,7 +203,7 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
                 <ArrowUp size={11} className={bandwidth.tx_speed > 1024 ? 'text-indigo-400 animate-pulse' : 'text-zinc-600'} />
                 <span className="text-[9px] text-zinc-500 font-bold font-mono">TX</span>
                 <span className={`text-[10px] font-mono font-semibold transition-colors duration-500 ${bandwidth.tx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
-                  {formatSpeed(bandwidth.tx_speed)}
+                  {formatBytesPerSecond(bandwidth.tx_speed)}
                 </span>
               </div>
             </div>

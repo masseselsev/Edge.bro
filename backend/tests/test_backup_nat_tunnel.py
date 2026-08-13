@@ -67,8 +67,12 @@ def test_resolve_borg_target_custom_repo_path():
 # --- build_borg_create_cmd: extra_ssh_args must not disturb the existing shape ---
 
 def test_build_borg_create_cmd_without_extra_args_is_unchanged():
-    """Baseline: omitting extra_ssh_args must produce byte-identical output to
-    before this feature existed — this is what every existing caller does."""
+    """Baseline shape when no extra_ssh_args are passed, which is what every
+    caller but the NAT path does.
+
+    Asserted by content rather than by index: the option list is built by
+    core.ssh and adding an option there must not fail a test that only cares
+    where the key and the destination land."""
     from backup_tasks import build_borg_create_cmd
 
     cmd = build_borg_create_cmd(
@@ -84,11 +88,13 @@ def test_build_borg_create_cmd_without_extra_args_is_unchanged():
         borg_passphrase="secret",
     )
     assert cmd[0] == "ssh"
-    assert cmd[7] == "-p"
-    assert cmd[9] == "-i"
-    assert cmd[10] == "/root/.ssh/id_ed25519"
-    assert cmd[11] == "root@192.168.1.5"
+    assert cmd[cmd.index("-p") + 1] == "22"
+    assert cmd[cmd.index("-i") + 1] == "/root/.ssh/id_ed25519"
+    # The destination and the remote command are the last two, always.
+    assert cmd[-2] == "root@192.168.1.5"
     assert "-R" not in cmd
+    # Never prompt: there is no terminal, so a prompt is a hung backup.
+    assert "BatchMode=yes" in cmd
 
 
 def test_build_borg_create_cmd_with_extra_ssh_args_inserts_before_destination():

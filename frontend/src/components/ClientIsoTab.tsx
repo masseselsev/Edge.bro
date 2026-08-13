@@ -4,6 +4,7 @@ import { DropdownTextInput } from './SearchableSelect';
 import { useTranslation } from '../context/TranslationContext';
 import KioskManagementSection from './KioskManagementSection';
 import { formatDate } from './dateUtils';
+import { formatBytes } from './formatBytes';
 
 interface IsoStatus {
   base_iso_cached: boolean;
@@ -17,14 +18,6 @@ interface IsoStatus {
   client_iso_rebuilding?: boolean;
   client_iso_stale?: boolean;
 }
-
-const formatBytes = (bytes: number) => {
-  if (!bytes) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
 
 interface ClientIsoTabProps {
   onViewLogs: (taskId: string, title: string) => void;

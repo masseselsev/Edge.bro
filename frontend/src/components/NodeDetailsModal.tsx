@@ -392,15 +392,6 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
     }
   };
 
-  // Helper formatting bytes
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
   // Every pre-load state is dismissible. This branch used to render a bare
   // spinner with no close button, no backdrop handler and no Escape key, so
   // whenever the node could not be loaded the only way out was a page reload.
@@ -866,7 +857,6 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
           <NodeBackupHistory
             history={history}
             language={language}
-            formatBytes={formatBytes}
             t={t}
           />
         </>

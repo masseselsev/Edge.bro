@@ -4,6 +4,7 @@ import {
   HardDrive, Loader2, TrendingDown, TrendingUp
 } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
+import { formatBytes } from './formatBytes';
 
 /**
  * The Archives page header and the analysis under it.
@@ -131,15 +132,6 @@ const WINDOW_OPTIONS = [7, 30, 90];
 /** Beyond this the capacity forecast says nothing except "not soon". */
 const FORECAST_HORIZON_DAYS = 3650;
 
-function formatSize(bytes: number | null | undefined): string {
-  if (bytes === null || bytes === undefined) return '—';
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-}
-
 function formatDuration(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return '—';
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -229,12 +221,12 @@ export default function ArchiveStatsPanel({ reloadSignal = 0, onSelectNode }: Pr
           icon={<HardDrive size={14} />}
           tone="indigo"
           label={t('statsStoredOnDisk')}
-          value={formatSize(stats?.repo_size_bytes)}
+          value={formatBytes(stats?.repo_size_bytes)}
           note={
             stats?.disk_total_bytes
               ? t('statsDiskFree', {
-                  free: formatSize(stats.disk_free_bytes),
-                  total: formatSize(stats.disk_total_bytes),
+                  free: formatBytes(stats.disk_free_bytes),
+                  total: formatBytes(stats.disk_total_bytes),
                 })
               : t('statsStoredOnDiskSub')
           }
@@ -243,14 +235,14 @@ export default function ArchiveStatsPanel({ reloadSignal = 0, onSelectNode }: Pr
           icon={<Database size={14} />}
           tone="emerald"
           label={t('statsSourceData')}
-          value={formatSize(stats?.total_original_size_bytes)}
+          value={formatBytes(stats?.total_original_size_bytes)}
           note={t('statsSourceDataSub')}
         />
         <Card
           icon={<TrendingDown size={14} />}
           tone="purple"
           label={t('statsCrossNodeSaving')}
-          value={formatSize(stats?.saved_space_bytes)}
+          value={formatBytes(stats?.saved_space_bytes)}
           note={
             stats?.deduplication_ratio
               ? t('statsCrossNodeSavingSub', {
@@ -484,12 +476,12 @@ export default function ArchiveStatsPanel({ reloadSignal = 0, onSelectNode }: Pr
             {/* --- Capacity --- */}
             <Panel icon={<TrendingUp size={14} />} title={t('statsCapacity')}>
               <Figures>
-                <Figure label={t('statsStoredOnDisk')} value={formatSize(insights.capacity.repo_size_bytes)} />
+                <Figure label={t('statsStoredOnDisk')} value={formatBytes(insights.capacity.repo_size_bytes)} />
                 <Figure
                   label={t('statsDailyInflow')}
                   value={insights.capacity.daily_inflow_bytes === null
                     ? '—'
-                    : `${formatSize(insights.capacity.daily_inflow_bytes)}/d`}
+                    : `${formatBytes(insights.capacity.daily_inflow_bytes)}/d`}
                 />
                 <Figure
                   label={t('statsRunway')}
@@ -506,7 +498,7 @@ export default function ArchiveStatsPanel({ reloadSignal = 0, onSelectNode }: Pr
                       : 'text-zinc-200'
                   }
                 />
-                <Figure label={t('statsFreeSpace')} value={formatSize(insights.capacity.disk_free_bytes)} />
+                <Figure label={t('statsFreeSpace')} value={formatBytes(insights.capacity.disk_free_bytes)} />
               </Figures>
 
               {insights.capacity.daily_inflow_bytes === null ? (
@@ -519,7 +511,7 @@ export default function ArchiveStatsPanel({ reloadSignal = 0, onSelectNode }: Pr
                 <List title={t('statsTopConsumers')}>
                   {insights.capacity.top_consumers.map(c => (
                     <Row key={c.node_id} left={nodeLink(c.node_id, c.hostname)}>
-                      <span className="text-zinc-200 font-semibold">{formatSize(c.bytes)}</span>
+                      <span className="text-zinc-200 font-semibold">{formatBytes(c.bytes)}</span>
                       {c.share !== null && (
                         <span className="text-zinc-600 ml-1.5">
                           {t('statsShareOfRepo', { percent: Math.round(c.share * 100) })}

@@ -3,6 +3,8 @@ import re
 import json
 import logging
 from typing import List, Dict, Any
+
+from core import ssh
 import models
 
 logger = logging.getLogger("hasp_helper")
@@ -30,15 +32,12 @@ def check_hasp_status_on_node(node) -> str:
     if not node.hasp_runtime_version or node.hasp_runtime_version == "None":
         return "inactive"
         
-    ssh_cmd = [
-        "ssh", "-o", "StrictHostKeyChecking=no",
-        "-p", str(node.ssh_port),
-        "-i", "/root/.ssh/id_ed25519",
-        f"root@{node.ip_address}",
+    ssh_cmd = ssh.command(
+        node.ip_address, node.ssh_port,
         "curl -s --connect-timeout 3 http://localhost:1947/_int_/tab_dev.html && "
         "echo '---FEATURES_SEPARATOR---' && "
-        "curl -s --connect-timeout 3 http://localhost:1947/_int_/tab_feat.html"
-    ]
+        "curl -s --connect-timeout 3 http://localhost:1947/_int_/tab_feat.html",
+    )
     
     try:
         res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=8)

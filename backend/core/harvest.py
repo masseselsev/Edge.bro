@@ -19,7 +19,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
-from core import ssh_keys
+from core import ssh, ssh_keys
 
 logger = logging.getLogger(__name__)
 
@@ -53,24 +53,16 @@ class HarvestResult:
 def ssh_command(host: str, port: int, remote: str, key_path: str = DEFAULT_KEY) -> list:
     """The SSH invocation used for every monitoring call.
 
-    StrictHostKeyChecking is disabled for the same reason the backup path
-    disables it: a reprovisioned node legitimately presents a new host key,
-    and authentication here is by key rather than by host identity. Bootstrap
-    clears the stale known_hosts entry (see core.known_hosts), so this is not
-    papering over a warning that should have been resolved.
+    Monitoring is the one caller that discards the host key: it is a read-only
+    probe and has no business writing known_hosts, which the backup and
+    bootstrap paths own. Everything else comes from core.ssh.
     """
-    return [
-        "ssh",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
-        "-o", "LogLevel=ERROR",
-        "-o", f"ConnectTimeout={CONNECT_TIMEOUT_S}",
-        "-o", "BatchMode=yes",
-        "-i", key_path,
-        "-p", str(port),
-        f"root@{host}",
-        remote,
-    ]
+    return ssh.command(
+        host, port, remote,
+        key_path=key_path,
+        connect_timeout=CONNECT_TIMEOUT_S,
+        discard_host_key=True,
+    )
 
 
 def drain_command(buffer_path: str = DEFAULT_BUFFER) -> str:

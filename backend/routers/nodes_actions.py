@@ -7,6 +7,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from database import get_db
+from core import ssh
 import models
 import schemas
 from tasks import run_bootstrap_task, run_prepare_task, run_backup_task, purge_node_archives
@@ -271,28 +272,22 @@ def apply_saved_license_task(node_id: int):
 
     try:
         b64_content = target.hasp_license_v2c
-        ssh_cmd = [
-            "ssh", "-o", "StrictHostKeyChecking=no",
-            "-p", str(target.ssh_port),
-            "-i", "/root/.ssh/id_ed25519",
-            f"root@{target.ip_address}",
+        ssh_cmd = ssh.command(
+            target.ip_address, target.ssh_port,
             f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
             f"(. /opt/edge/rc.setenv && /opt/edge/bin/hasp_update u /tmp/license.v2c 2>/dev/null && echo 'CLI_SUCCESS' || echo 'CLI_FAILED') && "
-            f"rm -f /tmp/license.v2c"
-        ]
+            f"rm -f /tmp/license.v2c",
+        )
         res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=30)
 
         # Fallback to ACC HTTP checkin if CLI fails
         if res.returncode != 0 or "CLI_SUCCESS" not in res.stdout:
-            ssh_cmd_acc = [
-                "ssh", "-o", "StrictHostKeyChecking=no",
-                "-p", str(target.ssh_port),
-                "-i", "/root/.ssh/id_ed25519",
-                f"root@{target.ip_address}",
+            ssh_cmd_acc = ssh.command(
+                target.ip_address, target.ssh_port,
                 f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
                 f"curl -s -F \"check_in_file=@/tmp/license.v2c\" http://localhost:1947/_int_/checkin_file.html && "
-                f"rm -f /tmp/license.v2c"
-            ]
+                f"rm -f /tmp/license.v2c",
+            )
             subprocess.run(ssh_cmd_acc, capture_output=True, timeout=30)
 
         # Re-fetch new HASP details to update Node status

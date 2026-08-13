@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { History, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import ArchiveFilesModal from './ArchiveFilesModal';
 import { parseServerDate } from './dateUtils';
+import { formatBytes } from './formatBytes';
 
 interface BackupHistory {
   id: number;
@@ -16,14 +17,12 @@ interface BackupHistory {
 interface NodeBackupHistoryProps {
   history: BackupHistory[];
   language: string;
-  formatBytes: (bytes: number) => string;
   t: (key: string) => string;
 }
 
 export default function NodeBackupHistory({
   history,
   language,
-  formatBytes,
   t,
 }: NodeBackupHistoryProps) {
   const [currentPage, setCurrentPage] = useState(1);

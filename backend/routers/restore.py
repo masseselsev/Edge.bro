@@ -4,6 +4,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Request, File, UploadFile
 from sqlalchemy.orm import Session
 from database import get_db
+from core import ssh
 import models
 import schemas
 from tasks import flash_restore_device
@@ -215,13 +216,10 @@ def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_us
     
     try:
         # 1. Try to list keys with features using the hasp_update tool
-        ssh_cmd_lf = [
-            "ssh", "-o", "StrictHostKeyChecking=no",
-            "-p", str(node.ssh_port),
-            "-i", "/root/.ssh/id_ed25519",
-            f"root@{node.ip_address}",
-            ". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update lf"
-        ]
+        ssh_cmd_lf = ssh.command(
+            node.ip_address, node.ssh_port,
+            ". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update lf",
+        )
         
         haspid = None
         try:
@@ -243,25 +241,16 @@ def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_us
             cmd_str = ". /opt/edge/rc.setenv && /opt/edge/bin/hasp_update f"
             filename = f"{node.hostname}_fingerprint.c2v"
             
-        ssh_cmd_update = [
-            "ssh", "-o", "StrictHostKeyChecking=no",
-            "-p", str(node.ssh_port),
-            "-i", "/root/.ssh/id_ed25519",
-            f"root@{node.ip_address}",
-            cmd_str
-        ]
+        ssh_cmd_update = ssh.command(node.ip_address, node.ssh_port, cmd_str)
         
         res = subprocess.run(ssh_cmd_update, capture_output=True, text=True, timeout=10)
         content = res.stdout.strip()
         if not content or "<?xml" not in content:
             # Secondary fallback: Use ACC HTTP API if hasp_update failed
-            ssh_cmd_acc_list = [
-                "ssh", "-o", "StrictHostKeyChecking=no",
-                "-p", str(node.ssh_port),
-                "-i", "/root/.ssh/id_ed25519",
-                f"root@{node.ip_address}",
-                "curl -s http://127.0.0.1:1947/_int_/tab_dev.html"
-            ]
+            ssh_cmd_acc_list = ssh.command(
+                node.ip_address, node.ssh_port,
+                "curl -s http://127.0.0.1:1947/_int_/tab_dev.html",
+            )
             acc_haspid = None
             acc_vid = "107392"
             try:
@@ -287,25 +276,19 @@ def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_us
                 acc_target = f"http://127.0.0.1:1947/download/my.fp?{acc_vid}"
                 filename = f"{node.hostname}_fingerprint.c2v"
                 
-            ssh_cmd_acc_download = [
-                "ssh", "-o", "StrictHostKeyChecking=no",
-                "-p", str(node.ssh_port),
-                "-i", "/root/.ssh/id_ed25519",
-                f"root@{node.ip_address}",
-                f"curl -s '{acc_target}'"
-            ]
+            ssh_cmd_acc_download = ssh.command(
+                node.ip_address, node.ssh_port, f"curl -s '{acc_target}'"
+            )
             res_acc = subprocess.run(ssh_cmd_acc_download, capture_output=True, text=True, timeout=10)
             content = res_acc.stdout.strip()
             
             if not content or "<?xml" not in content:
                 # Tertiary fallback: file-based cat
-                fallback_cmd = [
-                    "ssh", "-o", "StrictHostKeyChecking=no",
-                    "-p", str(node.ssh_port),
-                    "-i", "/root/.ssh/id_ed25519",
-                    f"root@{node.ip_address}",
-                    "cat /var/hasplm/fingerprint 2>/dev/null || cat /var/hasplm/*.c2v 2>/dev/null || echo 'NO_FINGERPRINT'"
-                ]
+                fallback_cmd = ssh.command(
+                    node.ip_address, node.ssh_port,
+                    "cat /var/hasplm/fingerprint 2>/dev/null || "
+                    "cat /var/hasplm/*.c2v 2>/dev/null || echo 'NO_FINGERPRINT'",
+                )
                 res_fb = subprocess.run(fallback_cmd, capture_output=True, text=True, timeout=10)
                 content = res_fb.stdout.strip()
                 filename = f"{node.hostname}_fingerprint.c2v"
@@ -355,13 +338,12 @@ def get_node_hasp_status(node_id: int, db: Session = Depends(get_db), current_us
     if not node.hasp_runtime_version or node.hasp_runtime_version == "None":
         return {"status": "inactive", "features": []}
         
-    ssh_cmd = [
-        "ssh", "-o", "StrictHostKeyChecking=no",
-        "-p", str(node.ssh_port),
-        "-i", "/root/.ssh/id_ed25519",
-        f"root@{node.ip_address}",
-        "curl -s --connect-timeout 3 http://localhost:1947/_int_/tab_dev.html && echo '---FEATURES_SEPARATOR---' && curl -s --connect-timeout 3 http://localhost:1947/_int_/tab_feat.html"
-    ]
+    ssh_cmd = ssh.command(
+        node.ip_address, node.ssh_port,
+        "curl -s --connect-timeout 3 http://localhost:1947/_int_/tab_dev.html && "
+        "echo '---FEATURES_SEPARATOR---' && "
+        "curl -s --connect-timeout 3 http://localhost:1947/_int_/tab_feat.html",
+    )
     
     try:
         res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=8)
@@ -460,15 +442,12 @@ async def upload_hasp_license(
         db.commit()
         
         # Try applying via hasp_update CLI, fallback to ACC HTTP Checkin if it fails
-        ssh_cmd = [
-            "ssh", "-o", "StrictHostKeyChecking=no",
-            "-p", str(node.ssh_port),
-            "-i", "/root/.ssh/id_ed25519",
-            f"root@{node.ip_address}",
+        ssh_cmd = ssh.command(
+            node.ip_address, node.ssh_port,
             f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
             f"(. /opt/edge/rc.setenv && /opt/edge/bin/hasp_update u /tmp/license.v2c 2>/dev/null && echo 'CLI_SUCCESS' || echo 'CLI_FAILED') && "
-            f"rm -f /tmp/license.v2c"
-        ]
+            f"rm -f /tmp/license.v2c",
+        )
         
         res = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=20)
         if res.returncode != 0:
@@ -482,15 +461,12 @@ async def upload_hasp_license(
             return {"status": "success", "message": "License applied successfully via Sentinel hasp_update!"}
             
         # Fallback to ACC HTTP Checkin
-        ssh_cmd_acc = [
-            "ssh", "-o", "StrictHostKeyChecking=no",
-            "-p", str(node.ssh_port),
-            "-i", "/root/.ssh/id_ed25519",
-            f"root@{node.ip_address}",
+        ssh_cmd_acc = ssh.command(
+            node.ip_address, node.ssh_port,
             f"echo '{b64_content}' | base64 -d > /tmp/license.v2c && "
             f"curl -s -F \"check_in_file=@/tmp/license.v2c\" http://localhost:1947/_int_/checkin_file.html && "
-            f"rm -f /tmp/license.v2c"
-        ]
+            f"rm -f /tmp/license.v2c",
+        )
         
         res_acc = subprocess.run(ssh_cmd_acc, capture_output=True, text=True, timeout=20)
         if res_acc.returncode != 0:

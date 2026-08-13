@@ -30,6 +30,7 @@ interface Node {
 
 import { formatDate } from './dateUtils';
 import NodeDetailsModal from './NodeDetailsModal';
+import { formatBytes } from './formatBytes';
 
 interface HistoryTabProps {
   onViewLogs?: (taskId: string, title: string) => void;
@@ -419,14 +420,6 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
     }
   };
 
-  const getFormatSize = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-  };
-
   // Node lookup
   const nodesMap = React.useMemo(() => {
     const map: Record<number, Node> = {};
@@ -643,10 +636,10 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                   {h.comment && <span className="text-[11px] text-zinc-500 mt-0.5 italic">{t('kioskTableComment') || 'Comment'}: {h.comment}</span>}
                 </td>
                 <td className="px-6 py-3.5 text-zinc-400">{formatDate(h.timestamp, timezone)}</td>
-                <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.original_size)}</td>
-                <td className="px-6 py-3.5 text-zinc-300">{getFormatSize(h.deduplicated_size)}</td>
+                <td className="px-6 py-3.5 text-zinc-300">{formatBytes(h.original_size)}</td>
+                <td className="px-6 py-3.5 text-zinc-300">{formatBytes(h.deduplicated_size)}</td>
                 <td className="px-6 py-3.5 text-zinc-300">
-                  {getFormatSize(Math.max(h.deduplicated_size, Math.round(h.original_size * 0.4)))}
+                  {formatBytes(Math.max(h.deduplicated_size, Math.round(h.original_size * 0.4)))}
                 </td>
                 <td className="px-6 py-3.5 text-zinc-300 whitespace-nowrap">
                   {h.avg_speed_mbps == null ? (
@@ -986,7 +979,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
 
             <div className="flex-1 max-w-xs space-y-1">
               <div className="flex justify-between text-[10px] font-semibold text-zinc-400">
-                <span>{t('usedSpace', { size: getFormatSize(storageInfo.used) })}</span>
+                <span>{t('usedSpace', { size: formatBytes(storageInfo.used) })}</span>
                 <span>{((storageInfo.used / storageInfo.total) * 100).toFixed(0)}%</span>
               </div>
               <div className="w-full bg-zinc-950 h-1.5 rounded-full overflow-hidden border border-zinc-850 p-[1px]">
@@ -1002,8 +995,8 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                 />
               </div>
               <div className="flex justify-between text-[10px] font-medium text-zinc-500">
-                <span>{t('freeSpace')}: <span className="text-emerald-400">{getFormatSize(storageInfo.free)}</span></span>
-                <span>{t('totalCapacity')}: {getFormatSize(storageInfo.total)}</span>
+                <span>{t('freeSpace')}: <span className="text-emerald-400">{formatBytes(storageInfo.free)}</span></span>
+                <span>{t('totalCapacity')}: {formatBytes(storageInfo.total)}</span>
               </div>
             </div>
           </div>
@@ -1114,10 +1107,10 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                       </span>
                       | {t('estDownloadSizeColumn') || 'Est. Download Size'}:{' '}
                       <span className="font-bold text-emerald-400">
-                        {getFormatSize(getSelectedMetrics().totalEstimatedDownload)}
+                        {formatBytes(getSelectedMetrics().totalEstimatedDownload)}
                       </span>{' '}
                       <span className="text-[9px] text-zinc-500 font-normal">
-                        ({t('originalSizeColumn') || 'Original Size'}: {getFormatSize(getSelectedMetrics().totalOriginal)})
+                        ({t('originalSizeColumn') || 'Original Size'}: {formatBytes(getSelectedMetrics().totalOriginal)})
                       </span>
                     </p>
                   </div>

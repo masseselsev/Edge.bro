@@ -4,7 +4,8 @@ import { useTranslation } from '../context/TranslationContext';
 import { scoreTextColour } from './NodeHealthBadges';
 import type { NodeHealth, SmartHealth, ThermalHealth } from './NodeHealthBadges';
 import SmartReportView from './SmartReportView';
-import { parseServerDate } from './dateUtils';
+import { formatEpochDate, parseServerDate } from './dateUtils';
+import { formatBytes } from './formatBytes';
 
 /**
  * The detail view behind a health badge: the full statistics of the latest
@@ -92,12 +93,9 @@ const TELEMETRY_SERIES: SeriesSpec[] = [
 
 const DEPTH_OPTIONS = [7, 30, 90, 365];
 
-export function formatBytes(bytes: number | null | undefined): string {
-  if (bytes === null || bytes === undefined) return '—';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-  const i = bytes > 0 ? Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1) : 0;
-  return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(2))} ${units[i]}`;
-}
+// Re-exported so SmartReportView and the node modals can keep importing it
+// from here; the implementation lives in formatBytes.ts.
+export { formatBytes };
 
 function formatDate(value: string | null | undefined): string {
   const parsed = parseServerDate(value);
@@ -227,11 +225,11 @@ function MultiSeriesChart({
         })()}
 
         <text x={pad.left} y={height - 8} className="fill-zinc-600" style={{ fontSize: 11 }}>
-          {new Date(tMin).toLocaleDateString()}
+          {formatEpochDate(tMin)}
         </text>
         <text x={width - pad.right} y={height - 8} textAnchor="end"
               className="fill-zinc-600" style={{ fontSize: 11 }}>
-          {new Date(tMax).toLocaleDateString()}
+          {formatEpochDate(tMax)}
         </text>
       </svg>
 

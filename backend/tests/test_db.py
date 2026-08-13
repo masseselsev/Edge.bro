@@ -412,14 +412,13 @@ def test_checkpoint_calculation_and_command_builder():
         cpu_quota=None,
         borg_passphrase="my-secret-passphrase"
     )
-    # Ensure correct format and options
+    # Ensure correct format and options. By content, not by index: core.ssh
+    # owns the option list and gaining one must not break this.
     assert cmd_no_cpu[0] == "ssh"
-    assert cmd_no_cpu[1] == "-o"
-    assert cmd_no_cpu[7] == "-p"
-    assert cmd_no_cpu[9] == "-i"
+    assert cmd_no_cpu[cmd_no_cpu.index("-p") + 1] == "22"
+    assert cmd_no_cpu[cmd_no_cpu.index("-i") + 1] == "/root/.ssh/id_ed25519"
 
     # Assert Keepalive options in ssh command list
-    assert "-o" in cmd_no_cpu
     assert "ServerAliveInterval=30" in cmd_no_cpu
     assert "ServerAliveCountMax=3" in cmd_no_cpu
 

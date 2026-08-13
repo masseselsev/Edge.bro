@@ -45,3 +45,18 @@ export function formatDate(dateStr: string | null | undefined, timezone?: string
 
   return new Intl.DateTimeFormat(undefined, options).format(date);
 }
+
+/**
+ * A date from an epoch-milliseconds value that is already an absolute instant.
+ *
+ * Distinct from `formatDate`, which takes the naive-UTC strings the API
+ * returns and has to attach the timezone itself. Here the ambiguity is already
+ * resolved — chart axes work in milliseconds derived from `parseServerDate` —
+ * so the only job left is rendering it in the viewer's locale. Kept as a named
+ * function so `new Date(x).toLocaleDateString()` never has to appear at a call
+ * site, where it is almost always the naive-UTC bug instead.
+ */
+export function formatEpochDate(epochMs: number): string {
+  if (!Number.isFinite(epochMs)) return '';
+  return new Date(epochMs).toLocaleDateString();
+}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, FileText, Folder, FolderOpen, File, Copy, Check, Loader2, AlertCircle, HardDrive, Maximize2, Minimize2, ChevronRight, ChevronDown, Download } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
+import { formatBytes } from './formatBytes';
 
 interface ArchiveFileInfo {
   path: string;
@@ -167,14 +168,6 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
-  const formatSize = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
   const handleCopy = () => {
@@ -466,7 +459,7 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                             <Download className="w-3.5 h-3.5" />
                           </button>
                           <span className="text-[11px] text-slate-500 font-normal">
-                            {formatSize(node.size)}
+                            {formatBytes(node.size)}
                           </span>
                         </div>
                       </div>
@@ -512,7 +505,7 @@ export default function ArchiveFilesModal({ historyId, archiveName, onClose }: A
                       {selectedFile.path}
                     </span>
                     <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
-                      {formatSize(selectedFile.size)}
+                      {formatBytes(selectedFile.size)}
                     </span>
                   </div>
 
