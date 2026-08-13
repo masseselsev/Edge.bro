@@ -272,6 +272,33 @@ class RestoreRequest(BaseModel):
     restore_mode: Optional[str] = None
 
 def run_offline_restore(task_id: str, req: RestoreRequest):
+    """Restore a node from the kiosk, in a background thread.
+
+    This is the product. Everything else in this file exists so that a
+    technician standing in front of a dead server can reach this function.
+
+    Two modes, and the difference matters:
+
+    - **offline** — read from the archives already on the kiosk's USB volume.
+      No orchestrator, no network. This is the case the kiosk was built for:
+      the site's server is what died.
+    - **online** — stream from the orchestrator's repository over SSH. Used
+      when the kiosk is on the same network and was not pre-loaded.
+
+    Online does a connectivity pre-flight before touching the disk, because the
+    failure it prevents is a wiped and partitioned target with no data to put
+    on it — leaving the machine worse off than when the technician arrived.
+    Offline needs no such check.
+
+    The local USB cache is preferred even in online mode where the archive is
+    present in both: it is a local disk read instead of a network transfer of
+    tens of gigabytes.
+
+    Progress is written into the module-level task dictionaries rather than
+    returned, because the browser polls /api/tasks/{id} for it. Nothing here
+    raises to the caller — a failure becomes a FAILED task with the reason in
+    its log, which is what the operator can act on.
+    """
     global restore_mode
     active_mode = req.restore_mode or restore_mode
     task_status[task_id] = "RUNNING"
@@ -1071,6 +1098,19 @@ def get_task_status(task_id: str):
     raise HTTPException(status_code=404, detail="Task not found")
 
 def run_kiosk_sync(task_id: str, hostname: str, archive: Optional[str] = None):
+    """Copy a node's archives from the orchestrator onto the kiosk's USB volume.
+
+    Run before the kiosk leaves for a site. What it copies is what can be
+    restored once it gets there, so a missing archive here is a wasted trip.
+
+    Borg-to-borg rather than a file copy: the destination is a real repository,
+    so the second and later archives for a node transfer only their changed
+    chunks. Copying the repository directory instead would move the whole
+    thing every time and would not be resumable.
+
+    Progress goes into the module-level task dictionaries for the browser to
+    poll, same as the restore above. Failures are recorded there, not raised.
+    """
     import urllib.request, urllib.parse
     task_status[task_id] = "RUNNING"
     task_progress[task_id] = 0
@@ -1336,6 +1376,21 @@ def trigger_kiosk_sync(hostname: str, background_tasks: BackgroundTasks, archive
 
 
 def auto_register_with_orchestrator():
+    """Poll the orchestrator until this kiosk is approved. Runs forever.
+
+    A kiosk enrolls with no standing: it has a token but an administrator has
+    not yet allowed it near the fleet's backups. Approval happens on the
+    orchestrator, which has no way to reach back — the kiosk is on a
+    technician's bench, or behind NAT, or not powered on. So the kiosk asks.
+
+    Started by `ensure_autocheckin_thread`, which is why that has a lock: three
+    call sites can reach it, and two threads polling forever is a thing nothing
+    in this process would ever stop.
+
+    Never exits, even once approved — the same loop notices a revocation, and a
+    kiosk that kept working after its access was withdrawn is the failure worth
+    avoiding.
+    """
     global kiosk_status, restore_mode
     import time
     import urllib.error

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Play, Pause, Edit, Cpu, HardDrive, Cpu as MemIcon, Info, RefreshCw, Save, Database, History, Terminal, Calendar, Upload, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
@@ -14,6 +14,8 @@ import NodeHealthModal from './NodeHealthModal';
 import type { NatChoice } from './BackupGroupModal';
 import { kibToMbit, mbitToKib, parseMbitInput, formatMbit } from './rateLimit';
 import type { BackupHistory, Node, TaskLog } from '../types';
+import { useNodeMutation } from '../hooks/useNodeMutation';
+import { api } from '../api';
 
 interface BackupGroup {
   id: number;
@@ -46,7 +48,6 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const [globalBehindNat, setGlobalBehindNat] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
-  const [triggeringAction, setTriggeringAction] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'info' | 'logs'>('info');
   const [taskLogs, setTaskLogs] = useState<TaskLog[]>([]);
@@ -209,17 +210,21 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
     fetchHealth();
   }, [nodeId]);
 
+  // One helper for the eight POST-and-refresh actions below; see the hook for
+  // what they all had in common and what they did not.
+  const refreshBoth = useCallback(() => {
+    onRefreshList();
+    fetchNodeDetails();
+  }, [onRefreshList]);
+  const mutation = useNodeMutation(refreshBoth);
+
   const handleSaveNotes = async () => {
     setSavingNotes(true);
+    // Notes do not affect anything else on screen, so this is the one action
+    // that refreshes the list without refetching the node.
     try {
-      const res = await fetch(`/api/nodes/${nodeId}/notes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes })
-      });
-      if (res.ok) {
-        onRefreshList();
-      }
+      await api.post(`/api/nodes/${nodeId}/notes`, { notes });
+      onRefreshList();
     } catch (err) {
       console.error(err);
     } finally {
@@ -228,118 +233,63 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   };
 
   const handleNatOverride = async (choice: NatChoice) => {
+    // Applied immediately and rolled back if the server refuses: this is a
+    // three-way radio and waiting for a round trip to move it feels broken.
     const previous = natChoice;
     setNatChoice(choice);
-    try {
-      const res = await fetch(`/api/nodes/${nodeId}/nat-override`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orchestrator_behind_nat: natChoiceToValue(choice) })
-      });
-      if (res.ok) {
-        onRefreshList();
-        fetchNodeDetails();
-      } else {
-        setNatChoice(previous);
-      }
-    } catch (err) {
-      console.error(err);
-      setNatChoice(previous);
-    }
+    const ok = await mutation.run(`/api/nodes/${nodeId}/nat-override`, {
+      orchestrator_behind_nat: natChoiceToValue(choice),
+    });
+    if (!ok) setNatChoice(previous);
   };
 
   const handleRateLimit = async () => {
     const trimmed = rateLimit.trim();
     let parsed: number | null;
     if (trimmed === '') {
+      // Empty clears the override, so the node inherits its group's limit.
       parsed = null;
     } else {
       const mbit = parseMbitInput(trimmed);
       if (mbit === null) {
+        // Unparseable: put the field back to the stored value rather than
+        // sending something the operator did not mean.
         setRateLimit(node?.upload_rate_limit == null ? '' : formatMbit(kibToMbit(node.upload_rate_limit)));
         return;
       }
       parsed = mbitToKib(mbit);
     }
+    // Fires on blur, so most invocations are a field the operator tabbed
+    // through without editing.
     if ((node?.upload_rate_limit ?? null) === parsed) return;
-    try {
-      const res = await fetch(`/api/nodes/${nodeId}/rate-limit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upload_rate_limit: parsed })
-      });
-      if (res.ok) {
-        onRefreshList();
-        fetchNodeDetails();
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    await mutation.run(`/api/nodes/${nodeId}/rate-limit`, { upload_rate_limit: parsed });
   };
 
   const handleGroupAssign = async (gid: number) => {
+    const previous = groupId;
     setGroupId(gid);
-    try {
-      const res = await fetch(`/api/nodes/${nodeId}/assign-group/${gid}`, { method: 'POST' });
-      if (res.ok) {
-        onRefreshList();
-        fetchNodeDetails();
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    // Rolled back on failure. It was not, so a rejected assignment left the
+    // dropdown showing a group the node had never been moved to.
+    const ok = await mutation.run(`/api/nodes/${nodeId}/assign-group/${gid}`);
+    if (!ok) setGroupId(previous);
   };
 
-  const handleTogglePause = async () => {
-    setTriggeringAction(true);
-    try {
-      const res = await fetch(`/api/nodes/${nodeId}/toggle-pause`, { method: 'POST' });
-      if (res.ok) {
-        onRefreshList();
-        fetchNodeDetails();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setTriggeringAction(false);
-    }
-  };
+  const handleTogglePause = () => mutation.run(`/api/nodes/${nodeId}/toggle-pause`);
 
   const handleBackupToday = async () => {
-    setTriggeringAction(true);
-    try {
-      const res = await fetch(`/api/nodes/${nodeId}/backup-today`, { method: 'POST' });
-      if (res.ok) {
-        alert(t('backupToday') + ": Queued for next window.");
-        onRefreshList();
-        fetchNodeDetails();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setTriggeringAction(false);
+    if (await mutation.run(`/api/nodes/${nodeId}/backup-today`)) {
+      alert(t('backupToday') + ": Queued for next window.");
     }
   };
 
   const handleProvision = async () => {
     if (!window.confirm(t('reprovisionSubmit') + "?")) return;
-    setTriggeringAction(true);
-    try {
-      const pass = window.prompt(t('bootstrapPassLabel'));
-      if (!pass) return;
-      const res = await fetch(`/api/nodes/${nodeId}/provision`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bootstrap_user: 'root', bootstrap_password: pass })
-      });
-      if (res.ok) {
-        onClose();
-        onRefreshList();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setTriggeringAction(false);
+    const pass = window.prompt(t('bootstrapPassLabel'));
+    if (!pass) return;
+    if (await mutation.run(`/api/nodes/${nodeId}/provision`, {
+      bootstrap_user: 'root', bootstrap_password: pass,
+    })) {
+      onClose();
     }
   };
 
@@ -595,7 +545,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                 <div className="flex flex-wrap gap-3 pt-3">
                   <button
                     onClick={handleTogglePause}
-                    disabled={triggeringAction}
+                    disabled={mutation.pending}
                     className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition ${
                       node.backup_paused
                         ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-900/10'
@@ -608,7 +558,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
                   <button
                     onClick={handleBackupToday}
-                    disabled={triggeringAction || node.backup_paused || node.backup_today}
+                    disabled={mutation.pending || node.backup_paused || node.backup_today}
                     className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-lg text-sm font-semibold transition shadow-md shadow-indigo-900/10"
                   >
                     <Calendar className="h-4 w-4" />
@@ -617,7 +567,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
 
                   <button
                     onClick={handleProvision}
-                    disabled={triggeringAction}
+                    disabled={mutation.pending}
                     className="flex items-center gap-1.5 px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700/80 rounded-lg text-sm font-semibold transition hover:text-indigo-400"
                   >
                     <RefreshCw className="h-4 w-4" />
