@@ -8,6 +8,8 @@ import { formatDate } from './dateUtils';
 import NodeDetailsModal from './NodeDetailsModal';
 import { formatBytes } from './formatBytes';
 import type { BackupHistory, Node } from '../types';
+import { useKioskArchiveSync } from '../hooks/useKioskArchiveSync';
+import KioskStoragePanel from './KioskStoragePanel';
 
 interface HistoryTabProps {
   onViewLogs?: (taskId: string, title: string) => void;
@@ -48,194 +50,13 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
   const [sortKey, setSortKey] = useState<string>('timestamp');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  // Kiosk specific states
+  // Kiosk view state. Which source the tab reads from stays here because it
+  // decides which endpoint fetchStats hits; everything to do with copying
+  // archives onto local storage is in useKioskArchiveSync.
   const [viewMode, setViewMode] = useState<'local' | 'remote'>(isKiosk ? 'local' : 'remote');
   const [localHistory, setLocalHistory] = useState<BackupHistory[]>([]);
-  const [storageInfo, setStorageInfo] = useState<any | null>(null);
-  const [availablePaths, setAvailablePaths] = useState<string[]>([]);
-  const [storagePathInput, setStoragePathInput] = useState('');
-  const [selectedNodeForSync, setSelectedNodeForSync] = useState<number | null>(null);
-  const [selectedArchives, setSelectedArchives] = useState<Record<string, boolean>>({});
   const [hasCheckedInitialLocal, setHasCheckedInitialLocal] = useState(false);
   const [remoteLoading, setRemoteLoading] = useState(false);
-
-  // Sync process state
-  const [syncing, setSyncing] = useState(false);
-  const [syncSpeed, setSyncSpeed] = useState<string | null>(null);
-  const [syncEta, setSyncEta] = useState<string | null>(null);
-  const [syncProgress, setSyncProgress] = useState<number>(0);
-  const [syncingTaskId, setSyncingTaskId] = useState<string | null>(null);
-  // The archive-sync poller's handle, so unmounting stops it. See where it
-  // is assigned: the interval is started from a click handler, not an
-  // effect, because the task id it polls does not exist until the POST
-  // returns.
-  const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => () => {
-    if (syncPollRef.current) clearInterval(syncPollRef.current);
-  }, []);
-
-  const fetchStorageInfo = async () => {
-    if (!isKiosk) return;
-    try {
-      const res = await fetch('/api/kiosk/storage');
-      if (res.ok) {
-        const data = await res.json();
-        setStorageInfo(data);
-        if (data.path) {
-          setStoragePathInput(data.path);
-        }
-        if (Array.isArray(data.available_paths)) {
-          setAvailablePaths(data.available_paths);
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleStoragePathChange = async (newPath: string) => {
-    try {
-      const res = await fetch('/api/kiosk/storage/path', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: newPath })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setStorageInfo(data);
-        fetchStats();
-      } else {
-        const err = await res.json();
-        alert(`Failed to set storage path: ${err.detail || 'Unknown error'}`);
-      }
-    } catch (e: any) {
-      alert(`Error updating storage path: ${e.message}`);
-    }
-  };
-
-  const handleCheckboxChange = (nodeId: number, archiveName: string, checked: boolean) => {
-    setSelectedArchives(prev => {
-      const next = { ...prev };
-      const key = `${nodeId}-${archiveName}`;
-      if (checked) {
-        if (selectedNodeForSync !== nodeId) {
-          setSelectedNodeForSync(nodeId);
-          Object.keys(next).forEach(k => delete next[k]);
-        }
-        next[key] = true;
-      } else {
-        delete next[key];
-        const remainingKeys = Object.keys(next).filter(k => next[k]);
-        if (remainingKeys.length === 0) {
-          setSelectedNodeForSync(null);
-        }
-      }
-      return next;
-    });
-  };
-
-  const getSelectedMetrics = () => {
-    const selectedItems = filteredHistory.filter(h => {
-      const key = `${h.node_id}-${h.archive_name}`;
-      return !!selectedArchives[key];
-    });
-    if (selectedItems.length === 0) return { totalOriginal: 0, totalEstimatedDownload: 0 };
-
-    const sorted = [...selectedItems].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    const totalOriginal = selectedItems.reduce((acc, h) => acc + h.original_size, 0);
-
-    const baseItem = sorted[0];
-    const baseCompressed = Math.max(baseItem.deduplicated_size, Math.round(baseItem.original_size * 0.4));
-
-    let additionalDelta = 0;
-    for (let i = 1; i < sorted.length; i++) {
-      additionalDelta += sorted[i].deduplicated_size;
-    }
-
-    return {
-      totalOriginal,
-      totalEstimatedDownload: baseCompressed + additionalDelta
-    };
-  };
-
-  const handleCopyToLocal = async () => {
-    if (selectedNodeForSync === null) return;
-    const node = nodes.find(n => n.id === selectedNodeForSync);
-    if (!node) return;
-    
-    const selectedKeys = Object.keys(selectedArchives).filter(k => selectedArchives[k]);
-    const prefix = `${selectedNodeForSync}-`;
-    const selectedNames = selectedKeys
-      .filter(k => k.startsWith(prefix))
-      .map(k => k.replace(prefix, ''));
-      
-    if (selectedNames.length === 0) return;
-    
-    setSyncing(true);
-    setSyncProgress(0);
-    setSyncSpeed(null);
-    setSyncEta(null);
-    
-    try {
-      const archiveParam = selectedNames.join(',');
-      const res = await fetch(`/api/kiosk/sync/${node.hostname}?archive=${encodeURIComponent(archiveParam)}`, {
-        method: 'POST'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.task_id) {
-          setSyncingTaskId(data.task_id);
-          // Started here rather than in a useEffect because the task id only
-          // exists once the POST returns. The handle goes into a ref so the
-          // unmount cleanup below can stop it: every terminal branch inside
-          // clears it, but closing the tab mid-sync is not one of those
-          // branches, and the callback would keep polling and calling
-          // setState on an unmounted component until the page reloaded.
-          const poll = setInterval(async () => {
-            try {
-              const statusRes = await fetch(`/api/tasks/${data.task_id}`);
-              if (statusRes.ok) {
-                const statusData = await statusRes.json();
-                if (statusData.download_speed) setSyncSpeed(statusData.download_speed);
-                if (statusData.eta) setSyncEta(statusData.eta);
-                if (typeof statusData.progress === 'number') setSyncProgress(statusData.progress);
-                
-                if (statusData.status === 'SUCCESS') {
-                  clearInterval(poll);
-                  setSyncing(false);
-                  setSyncingTaskId(null);
-                  setSelectedArchives({});
-                  setSelectedNodeForSync(null);
-                  fetchStats();
-                } else if (statusData.status === 'FAILED') {
-                  clearInterval(poll);
-                  setSyncing(false);
-                  setSyncingTaskId(null);
-                  alert('Sync failed. Please check the logs.');
-                }
-              } else {
-                clearInterval(poll);
-                setSyncing(false);
-                setSyncingTaskId(null);
-              }
-            } catch (err) {
-              clearInterval(poll);
-              setSyncing(false);
-              setSyncingTaskId(null);
-            }
-          }, 1000);
-          syncPollRef.current = poll;
-        }
-      } else {
-        const err = await res.json();
-        alert(`Failed to start copy: ${err.detail || 'Unknown error'}`);
-        setSyncing(false);
-      }
-    } catch (e: any) {
-      alert(`Error during copy: ${e.message}`);
-      setSyncing(false);
-    }
-  };
 
   const fetchStats = useCallback(async () => {
     try {
@@ -314,11 +135,16 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
     }
   }, [isKiosk, viewMode, hasCheckedInitialLocal, page, limit, sortKey, sortOrder, searchQuery]);
 
+  const sync = useKioskArchiveSync({ isKiosk, nodes, onStorageChanged: fetchStats });
+
   useEffect(() => {
     fetchStats();
     if (isKiosk) {
-      fetchStorageInfo();
+      sync.refreshStorageInfo();
     }
+    // refreshStorageInfo is stable; listing the whole hook result would re-run
+    // this on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchStats, isKiosk, viewMode]);
 
   const toggleExpand = (key: string) => {
@@ -510,6 +336,13 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
     return groups;
   }, [filteredHistory]);
 
+  // Recomputed only when the selection or the visible rows change; it walks
+  // and sorts the selected archives, and the panel below reads it twice.
+  const selectionMetrics = React.useMemo(
+    () => sync.estimateSelection(filteredHistory),
+    [sync.estimateSelection, filteredHistory],
+  );
+
   const renderArchiveTable = (archives: BackupHistory[], showNodeInfo = false) => (
     <div className="border-t border-zinc-800/60 bg-zinc-950/40 overflow-x-auto">
       <table className="min-w-full divide-y divide-zinc-800 text-left text-xs text-zinc-300">
@@ -583,7 +416,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
             const node = nodesMap[h.node_id];
             const isCached = isKiosk && localHistory.some(lh => lh.archive_name === h.archive_name && lh.node_id === h.node_id);
             const selectionKey = `${h.node_id}-${h.archive_name}`;
-            const isChecked = !!selectedArchives[selectionKey];
+            const isChecked = sync.isSelected(h.node_id, h.archive_name);
 
             return (
               <tr key={h.id} className={`hover:bg-zinc-900/40 transition-colors ${isChecked ? 'bg-indigo-950/20' : ''}`}>
@@ -598,7 +431,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                       <input
                         type="checkbox"
                         checked={isChecked}
-                        onChange={(e) => handleCheckboxChange(h.node_id, h.archive_name, e.target.checked)}
+                        onChange={(e) => sync.toggleArchive(h.node_id, h.archive_name, e.target.checked)}
                         className="rounded bg-zinc-900 border-zinc-800 text-indigo-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
                       />
                     )}
@@ -945,82 +778,8 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
       )}
 
       {/* Local Mode Storage Path Settings */}
-      {isKiosk && viewMode === 'local' && storageInfo && (
-        <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-6 mb-6">
-          <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20">
-                <HardDrive size={20} />
-              </div>
-              <div>
-                <h4 className="text-xs font-black text-zinc-200 uppercase tracking-wider">{t('localBackupStorage')}</h4>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${
-                    storageInfo.is_mounted
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                      : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                  }`}>
-                    {storageInfo.is_mounted ? t('usbMountedBadge') : t('fallbackBadge')}
-                  </span>
-                  <span className="text-[10px] text-zinc-500 font-mono truncate max-w-[200px]" title={storageInfo.path}>
-                    {storageInfo.path}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 max-w-xs space-y-1">
-              <div className="flex justify-between text-[10px] font-semibold text-zinc-400">
-                <span>{t('usedSpace', { size: formatBytes(storageInfo.used) })}</span>
-                <span>{((storageInfo.used / storageInfo.total) * 100).toFixed(0)}%</span>
-              </div>
-              <div className="w-full bg-zinc-950 h-1.5 rounded-full overflow-hidden border border-zinc-850 p-[1px]">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    storageInfo.free / storageInfo.total < 0.1
-                      ? 'bg-rose-500'
-                      : storageInfo.free / storageInfo.total < 0.25
-                      ? 'bg-amber-500'
-                      : 'bg-indigo-500'
-                  }`}
-                  style={{ width: `${(storageInfo.used / storageInfo.total) * 100}%` }}
-                />
-              </div>
-              <div className="flex justify-between text-[10px] font-medium text-zinc-500">
-                <span>{t('freeSpace')}: <span className="text-emerald-400">{formatBytes(storageInfo.free)}</span></span>
-                <span>{t('totalCapacity')}: {formatBytes(storageInfo.total)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 border-t md:border-t-0 md:border-l border-zinc-800 pt-4 md:pt-0 md:pl-6">
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">{t('mountPath') || 'Mount Path'}</span>
-              <select
-                value={storageInfo.path}
-                onChange={async (e) => {
-                  const val = e.target.value;
-                  if (val === '__custom__') {
-                    const custom = prompt(t('enterCustomStoragePath') || "Enter custom absolute storage path:", storageInfo.path);
-                    if (custom && custom.trim().startsWith("/")) {
-                      await handleStoragePathChange(custom.trim());
-                    }
-                  } else {
-                    await handleStoragePathChange(val);
-                  }
-                }}
-                className="bg-zinc-950 text-zinc-300 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs focus:ring-0 w-44 truncate cursor-pointer hover:border-zinc-700 transition-colors font-mono"
-              >
-                {(storageInfo.potential_paths || [storageInfo.path]).map((p: string) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-                <option value="__custom__">⚙️ Custom Path...</option>
-              </select>
-            </div>
-          </div>
-        </div>
+      {isKiosk && viewMode === 'local' && sync.storageInfo && (
+        <KioskStoragePanel storage={sync.storageInfo} onSelectPath={sync.setStoragePath} />
       )}
 
       {/* Admin-only: /api/stats rejects a kiosk token, so in kiosk mode these
@@ -1061,28 +820,28 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
         {/* Bulk copy action panel */}
         {isKiosk && viewMode === 'remote' && (
           <div className="animate-fade-in">
-            {syncing ? (
+            {sync.syncing ? (
               <div className="p-4 bg-indigo-950/20 border border-indigo-900/30 rounded-xl space-y-3">
                 <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
                   <span className="flex items-center gap-2">
                     <Loader2 size={13} className="text-indigo-400 animate-spin" />
                     <span>
-                      {syncProgress === 0 && !syncSpeed
+                      {sync.progress === 0 && !sync.speed
                         ? t('syncPreparing') || 'Preparing backup archive on orchestrator (please wait)...'
-                        : `${t('syncingText') || 'Syncing...'} ${syncSpeed ? `(${syncSpeed}, ETA: ${syncEta})` : ''}`
+                        : `${t('syncingText') || 'Syncing...'} ${sync.speed ? `(${sync.speed}, ETA: ${sync.eta})` : ''}`
                       }
                     </span>
                   </span>
-                  <span className="font-bold">{syncProgress}%</span>
+                  <span className="font-bold">{sync.progress}%</span>
                 </div>
                 <div className="w-full bg-zinc-950 h-2 rounded-full overflow-hidden border border-zinc-800">
                   <div
                     className="h-full bg-indigo-500 rounded-full transition-all duration-500 animate-pulse"
-                    style={{ width: `${syncProgress}%` }}
+                    style={{ width: `${sync.progress}%` }}
                   />
                 </div>
               </div>
-            ) : selectedNodeForSync !== null ? (
+            ) : sync.selectedNodeId !== null ? (
               <div className="p-4 bg-zinc-950/60 border border-zinc-800/80 rounded-xl flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-indigo-600/15 text-indigo-400 rounded-lg border border-indigo-500/20">
@@ -1093,22 +852,22 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                       Ready to copy archives
                     </p>
                     <p className="text-[10px] text-zinc-400 mt-0.5">
-                      Selected {Object.keys(selectedArchives).filter(k => selectedArchives[k]).length} archive(s) from node:{' '}
+                      Selected {Object.keys(sync.selectedArchives).filter(k => sync.selectedArchives[k]).length} archive(s) from node:{' '}
                       <span className="font-semibold text-indigo-400 mr-2">
-                        {nodes.find(n => n.id === selectedNodeForSync)?.hostname || 'Unknown'}
+                        {nodes.find(n => n.id === sync.selectedNodeId)?.hostname || 'Unknown'}
                       </span>
                       | {t('estDownloadSizeColumn') || 'Est. Download Size'}:{' '}
                       <span className="font-bold text-emerald-400">
-                        {formatBytes(getSelectedMetrics().totalEstimatedDownload)}
+                        {formatBytes(selectionMetrics.totalEstimatedDownload)}
                       </span>{' '}
                       <span className="text-[9px] text-zinc-500 font-normal">
-                        ({t('originalSizeColumn') || 'Original Size'}: {formatBytes(getSelectedMetrics().totalOriginal)})
+                        ({t('originalSizeColumn') || 'Original Size'}: {formatBytes(selectionMetrics.totalOriginal)})
                       </span>
                     </p>
                   </div>
                 </div>
                 <button
-                  onClick={handleCopyToLocal}
+                  onClick={sync.copyToLocal}
                   className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-lg shadow-indigo-600/20 hover:shadow-indigo-600/35"
                 >
                   <Download size={14} />
