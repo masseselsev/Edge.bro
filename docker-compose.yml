@@ -14,15 +14,34 @@ services:
     volumes:
       - pg-data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # Loopback only. Nothing outside this host has any business reaching
+      # Postgres directly, and "0.0.0.0:5432" put the fleet's entire database
+      # on the LAN behind one password. Containers reach it over the compose
+      # network by service name and are unaffected; `psql -h localhost` from
+      # the host still works.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
     restart: always
     ports:
-      - "6379:6379"
+      # Loopback only, as above. Redis has no password, and it holds the
+      # backup locks and the Celery queue: anything that can write here can
+      # stop every backup in the fleet or forge a task.
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   backend:
     build:
@@ -36,6 +55,7 @@ services:
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
       ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
       BORG_HOST_DATA_PATH: ${BORG_HOST_DATA_PATH}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
       PYTHONPATH: /app
       SUPERADMIN_USERNAME: ${SUPERADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
@@ -44,7 +64,6 @@ services:
       SSH_KEEPALIVE_INTERVAL: ${SSH_KEEPALIVE_INTERVAL:-30}
       SSH_KEEPALIVE_COUNT: ${SSH_KEEPALIVE_COUNT:-3}
     volumes:
-      - ./backend:/app
       - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/root/.ssh
       - ${ISO_CACHE_HOST_PATH:-iso-cache}:/opt/data/iso_cache
@@ -53,18 +72,34 @@ services:
       - frontend-build:/opt/frontend_build
     ports:
       - "8000:8000"
+    healthcheck:
+      # /api/version is unauthenticated by design and touches no database.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/version || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     depends_on:
-      - db
-      - redis
+      # Ready, not merely started. Plain `depends_on` only waits for the
+      # container to exist, so every service raced Postgres accepting
+      # connections and relied on restart:always to eventually win.
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     dns:
-      - 8.8.8.8
-      - 10.102.1.21
+      - ${UPSTREAM_DNS:-8.8.8.8}
+      - ${SITE_DNS:-10.102.1.21}
 
   worker:
     build:
       context: ./backend
       dockerfile: ../docker/backend/Dockerfile
     restart: always
+    # Bare-metal restore runs here: it partitions disks, formats them, mounts
+    # the result and chroots into it. That needs the whole capability set and
+    # /dev, so this one stays privileged. Everything it reaches is on the
+    # backups and iso queues; see celery_app.py for the routing.
     privileged: true
     # Long work only: borg transfers, ansible runs, ISO builds. Kept off the
     # periodic queue so a multi-hour backup can never delay a 60s scheduler
@@ -88,7 +123,6 @@ services:
       SSH_KEEPALIVE_INTERVAL: ${SSH_KEEPALIVE_INTERVAL:-30}
       SSH_KEEPALIVE_COUNT: ${SSH_KEEPALIVE_COUNT:-3}
     volumes:
-      - ./backend:/app
       - /dev:/dev
       - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/root/.ssh
@@ -96,20 +130,24 @@ services:
       - frontend-build:/opt/frontend_build
       - ./payload_client:/payload_client
       - /proc:/host/proc:ro
-      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     dns:
-      - 8.8.8.8
-      - 10.102.1.21
+      - ${UPSTREAM_DNS:-8.8.8.8}
+      - ${SITE_DNS:-10.102.1.21}
 
   worker-periodic:
     build:
       context: ./backend
       dockerfile: ../docker/backend/Dockerfile
     restart: always
-    privileged: true
+    # Not privileged, and no /dev. This pool runs the scheduler tick, the
+    # reachability sweep, the monitoring and alert sweeps and the prunes -
+    # database, Redis and SSH, none of which touches a block device. It was
+    # copied from the worker above along with privileges it never used.
     # Short, timer-driven work: the scheduler tick, the reachability sweep,
     # the monitoring and alert sweeps, the nightly prunes. Its own pool so it
     # stays responsive no matter how backed up the backup queue is.
@@ -130,21 +168,28 @@ services:
       SSH_KEEPALIVE_INTERVAL: ${SSH_KEEPALIVE_INTERVAL:-30}
       SSH_KEEPALIVE_COUNT: ${SSH_KEEPALIVE_COUNT:-3}
     volumes:
-      - ./backend:/app
-      - /dev:/dev
       - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/root/.ssh
       - ${ISO_CACHE_HOST_PATH:-iso-cache}:/opt/data/iso_cache
       - frontend-build:/opt/frontend_build
       - ./payload_client:/payload_client
       - /proc:/host/proc:ro
+      # Mounted only here, and only for the weekly image prune - which routes
+      # to this queue. The socket is unrestricted root on the host, so the
+      # backup worker, which does not use it, no longer has it. The task
+      # itself skips cleanly when the socket is absent.
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - db
-      - redis
+      # Ready, not merely started. Plain `depends_on` only waits for the
+      # container to exist, so every service raced Postgres accepting
+      # connections and relied on restart:always to eventually win.
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     dns:
-      - 8.8.8.8
-      - 10.102.1.21
+      - ${UPSTREAM_DNS:-8.8.8.8}
+      - ${SITE_DNS:-10.102.1.21}
 
   beat:
     build:
@@ -164,12 +209,16 @@ services:
       SSH_KEEPALIVE_INTERVAL: ${SSH_KEEPALIVE_INTERVAL:-30}
       SSH_KEEPALIVE_COUNT: ${SSH_KEEPALIVE_COUNT:-3}
     volumes:
-      - ./backend:/app
       - ${BORG_HOST_DATA_PATH:-borg-data}:/data/borg
       - ssh-keys:/root/.ssh
     depends_on:
-      - db
-      - redis
+      # Ready, not merely started. Plain `depends_on` only waits for the
+      # container to exist, so every service raced Postgres accepting
+      # connections and relied on restart:always to eventually win.
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   borg-server:
     build:
@@ -185,7 +234,8 @@ services:
       # node's known_hosts entry is invalidated and backups stop.
       - borg-hostkeys:/etc/ssh/keys
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   frontend:
     build:
@@ -197,7 +247,8 @@ services:
     volumes:
       - frontend-build:/usr/share/nginx/html
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   apt-proxy:
     build:
@@ -209,8 +260,8 @@ services:
     volumes:
       - apt-cache:/var/cache/apt-cacher-ng
     dns:
-      - 8.8.8.8
-      - 10.102.1.21
+      - ${UPSTREAM_DNS:-8.8.8.8}
+      - ${SITE_DNS:-10.102.1.21}
 
 # Fixed volume names keep data attached even if the stack directory is renamed.
 # external: false lets Compose create them on first run.

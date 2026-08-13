@@ -29,10 +29,41 @@ from routers import notifications as notifications_router
 
 app = FastAPI(title="Edge-B.R.O. API", version=VERSION)
 
-# Configure CORS
+# CORS. The UI is served from :7777 and this API answers on :8000, so they are
+# different origins and the browser needs to be told this is allowed.
+#
+# It used to be told rather too much: `allow_origins=["*"]` together with
+# `allow_credentials=True`. The wildcard is illegal with credentials per the
+# fetch spec, so Starlette quietly echoes back whatever Origin arrived, and the
+# result is that *any* website an operator visits could make credentialed
+# requests to their orchestrator using their session cookie — trigger a
+# restore, delete a node, read the fleet.
+#
+# The allowlist is a regex rather than a list because the orchestrator is
+# reached by whichever of its addresses the operator happened to type, and a
+# kiosk reaches its own backend on localhost. Both are private by construction;
+# a public website is not, and that is the case this shuts out. Set
+# CORS_ALLOWED_ORIGINS to a comma-separated list to pin it exactly.
+_explicit_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
+#: localhost, 10/8, 192.168/16 and 172.16-31/12, on any port, http or https.
+PRIVATE_ORIGIN_REGEX = (
+    r"^https?://("
+    r"localhost|127(\.\d{1,3}){3}|\[::1\]"
+    r"|10(\.\d{1,3}){3}"
+    r"|192\.168(\.\d{1,3}){2}"
+    r"|172\.(1[6-9]|2\d|3[01])(\.\d{1,3}){2}"
+    r")(:\d+)?$"
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_explicit_origins,
+    allow_origin_regex=None if _explicit_origins else PRIVATE_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

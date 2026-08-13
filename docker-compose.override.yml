@@ -1,0 +1,30 @@
+# Development overrides. Compose loads this automatically alongside
+# docker-compose.yml, so `docker compose up` in a checkout behaves exactly as
+# it always has.
+#
+# It exists so that `docker-compose.yml` on its own describes a deployment that
+# runs the image it built. The bind mount below replaces /app with the host's
+# working copy, which is what you want while editing and is not what you want
+# in production: the running system becomes whatever is checked out in the
+# stack directory, so a half-finished edit, an interrupted `git pull` or a
+# stashed change is live immediately, and the built image's contents are
+# irrelevant. Nothing records which of the two is actually running.
+#
+# To deploy without it: `docker compose -f docker-compose.yml up -d`, or do not
+# copy this file to the server.
+services:
+  backend:
+    volumes:
+      - ./backend:/app
+
+  worker:
+    volumes:
+      - ./backend:/app
+
+  worker-periodic:
+    volumes:
+      - ./backend:/app
+
+  beat:
+    volumes:
+      - ./backend:/app
