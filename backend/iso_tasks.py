@@ -10,6 +10,7 @@ from core.db_session import session_scope
 from typing import Dict, Any
 
 import paths
+from core import iso_build, task_log
 from core.task_log import log_to_task
 
 logger = logging.getLogger(__name__)
@@ -22,22 +23,11 @@ CACHE_DIR = paths.ISO_CACHE_DIR
 BASE_ISO_PATH = paths.BASE_ISO_PATH
 BASE_ISO_PATH_TMP = paths.BASE_ISO_TMP_PATH
 
-#: Files from backend/core/ that get copied into the offline kiosk payload.
-#: The kiosk runs the same bare-metal restore the orchestrator does, from the
-#: same source, so these are shipped rather than duplicated.
-#:
-#: **Every module these import from core/ must be in this list.** The payload
-#: client wraps its `from core.disk_ops import ...` in a bare except, so a
-#: missing file does not crash the kiosk — it produces a kiosk whose Restore
-#: button quietly does nothing, discovered by a technician standing in front of
-#: a dead server. That is exactly how the routers below shipped broken.
-#: `tests/test_iso_payload_injection.py` walks the imports and fails if this
-#: list falls behind.
-INJECTED_CORE_MODULES = ("disk_ops.py", "guest_config.py")
+# The injection lists live with the build steps that use them; re-exported
+# because tests/test_iso_payload_injection.py reads them from here.
+INJECTED_CORE_MODULES = iso_build.INJECTED_CORE_MODULES
+INJECTED_ROUTER_MODULES = iso_build.INJECTED_ROUTER_MODULES
 
-#: Same contract for backend/routers/. network.py imports both sub-routers at
-#: module scope, so all three ship together.
-INJECTED_ROUTER_MODULES = ("network.py", "network_dhcp.py", "network_wg.py")
 
 @celery_app.task(bind=True)
 def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
@@ -196,12 +186,43 @@ def generate_kiosk_id() -> str:
     digits = "".join(random.choices(string.digits, k=4))
     return f"{letters}{digits}"
 
+def _authorize_orchestrator_key_for_kiosks() -> None:
+    """Let the orchestrator's own key into its own authorized_keys.
+
+    The kiosk pulls archives over SSH using the orchestrator's private key
+    (shipped in the image), so the orchestrator has to accept that key against
+    itself. Restricted to borg serve by BORG_SERVE_OPTIONS, and tagged so the
+    SSH key audit can tell this self-grant apart from a stray key somebody
+    added by hand.
+
+    Failure is logged, not raised: the ISO is still worth producing, and the
+    grant can be repaired without rebuilding several gigabytes.
+    """
+    # Deferred: tasks/__init__.py imports this module, so importing it back at
+    # module scope closes a cycle. Unlike run_command_with_logging, these two
+    # have not been moved out of the tasks package.
+    from tasks import ensure_orchestrator_ssh_key, fix_ssh_permissions
+    try:
+        orch_pub_key = ensure_orchestrator_ssh_key()
+        action = ssh_keys.authorize(
+            ssh_keys.ORCHESTRATOR_AUTHORIZED_KEYS,
+            orch_pub_key,
+            options=ssh_keys.BORG_SERVE_OPTIONS,
+            tag=ssh_keys.SELFGRANT_TAG,
+        )
+        fix_ssh_permissions()
+        logger.info(
+            "Orchestrator self-grant for kiosk access: %s (%s)",
+            action.value, ssh_keys.fingerprint(orch_pub_key),
+        )
+    except Exception as ke:
+        logger.error(f"Failed to setup SSH authorized_keys for kiosk: {ke}")
+
+
 @celery_app.task(bind=True)
 def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str, Any]:
-    from tasks import run_command_with_logging
     from models import TaskLog
     import redis
-    import os
     
     task_id = self.request.id
 
@@ -249,7 +270,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
                 download_url = DEFAULT_MIRROR_URLS[0]
                 logger.warning(f"All mirror checks failed. Falling back to primary URL: {download_url}")
 
-            run_command_with_logging(task_id, [
+            task_log.run_command_with_logging(task_id, [
                 "curl", "-4", "--connect-timeout", "15", "--retry", "3", "--retry-delay", "2",
                 "-f", "-L", "-o", BASE_ISO_PATH, download_url
             ])
@@ -264,336 +285,73 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
     payload_dir = os.path.join(work_dir, "payload_initrd")
     
     try:
-        # 1. Unpack Base ISO
+        # 1. Unpack the base ISO into a writable tree.
         log_to_task(task_id, "[PROGRESS] 10:Unpacking base ISO...")
         os.makedirs(work_dir, exist_ok=True)
-        # Denominator for the unpack progress bar below: xorriso reports how
-        # much it has restored, and this turns that into a percentage. The
-        # 3800 MB is the approximate size of the Debian live image we ship and
-        # is only a fallback for the case where the file cannot be stat'd —
-        # wrong by a few hundred MB just makes the bar finish slightly early or
-        # late, so it is not worth failing the build over.
-        base_size_mb = 3800.0
-        try:
-            if os.path.exists(base_iso_to_use):
-                base_size_mb = os.path.getsize(base_iso_to_use) / (1024.0 * 1024.0)
-        except Exception:
-            pass
+        iso_build.unpack_iso(task_id, base_iso_to_use, iso_unpacked, progress_from=10, progress_to=20)
 
-        def on_unpack_line(line: str) -> None:
-            import re
-            m = re.search(r"files restored \(([0-9.]+)([mg])\)", line)
-            if m:
-                try:
-                    val, unit = float(m.group(1)), m.group(2).lower()
-                    mb = val * 1024.0 if unit == 'g' else val
-                    pct = min(100.0, max(0.0, (mb / base_size_mb) * 100.0))
-                    log_to_task(task_id, f"[PROGRESS] {int(10 + (pct * 0.10))}:Unpacking base ISO...")
-                except Exception:
-                    pass
-
-        run_command_with_logging(task_id, ["xorriso", "-osirrox", "on", "-indev", base_iso_to_use, "-extract", "/", iso_unpacked], on_log_line=on_unpack_line)
-
-        # Make iso_unpacked writable
-        log_to_task(task_id, "[PROGRESS] 20:Preparing directory write permissions...")
-        run_command_with_logging(task_id, ["chmod", "-v", "-R", "+w", iso_unpacked])
-
-        # 2. Prepare Secondary Initrd Payload
+        # 2. Stage everything the offline client needs into a second initrd.
         log_to_task(task_id, "[PROGRESS] 30:Injecting payload and configurations...")
-        opt_offline = os.path.join(payload_dir, "opt", "offline-client")
-        os.makedirs(os.path.join(opt_offline, "backend", "core"), exist_ok=True)
-        os.makedirs(os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants"), exist_ok=True)
-        os.makedirs(os.path.join(payload_dir, "etc", "xdg", "autostart"), exist_ok=True)
+        opt_offline = iso_build.stage_payload_tree(payload_dir)
+        task_log.run_command_with_logging(
+            task_id, f"cp -v -r /payload_client/backend/* {os.path.join(opt_offline, 'backend')}/", shell=True,
+        )
+        iso_build.inject_shared_backend_modules(opt_offline)
+        iso_build.inject_binaries_and_frontend(payload_dir, opt_offline)
+        iso_build.inject_services(payload_dir)
+        iso_build.inject_scripts(payload_dir)
+        iso_build.inject_offline_packages(payload_dir)
 
-        # Copy Payload Backend
-        run_command_with_logging(task_id, f"cp -v -r /payload_client/backend/* {os.path.join(opt_offline, 'backend')}/", shell=True)
-        
-        # Inject the shared bare-metal restore modules.
-        # disk_ops imports guest_config at module scope, so both have to ship.
-        # See INJECTED_CORE_MODULES for why this is a list and not two lines.
-        for _core_file in INJECTED_CORE_MODULES:
-            shutil.copy2(
-                f"/app/core/{_core_file}",
-                os.path.join(opt_offline, "backend", "core", _core_file),
-            )
-
-        # Inject Shared Network settings router. When the sub-routers were
-        # split out of network.py this list was not updated, and the kiosk's
-        # whole /api/network/* surface — WiFi, wired, VPN — silently 404'd,
-        # because the payload client swallows the resulting ImportError.
-        os.makedirs(os.path.join(opt_offline, "backend", "routers"), exist_ok=True)
-        open(os.path.join(opt_offline, "backend", "routers", "__init__.py"), "w").close()
-        for _router_file in INJECTED_ROUTER_MODULES:
-            shutil.copy2(
-                f"/app/routers/{_router_file}",
-                os.path.join(opt_offline, "backend", "routers", _router_file),
-            )
-
-        # Inject Unified version configuration
-        shutil.copy2("/app/version.py", os.path.join(opt_offline, "backend", "version.py"))
-
-        # Inject static borg binary
-        borg_src = "/payload_client/bin/borg"
-        if os.path.exists(borg_src):
-            borg_dst_dir = os.path.join(payload_dir, "usr", "local", "bin")
-            os.makedirs(borg_dst_dir, exist_ok=True)
-            shutil.copy2(borg_src, os.path.join(borg_dst_dir, "borg"))
-
-        # Inject Frontend Build (mapped via named volume to /opt/frontend_build)
-        if os.path.exists("/opt/frontend_build"):
-            shutil.copytree("/opt/frontend_build", os.path.join(opt_offline, "backend", "frontend_build"))
-
-        # Inject Systemd Backend Service
-        svc_src = "/payload_client/systemd/offline-backend.service"
-        svc_dst = os.path.join(payload_dir, "etc", "systemd", "system", "offline-backend.service")
-        shutil.copy2(svc_src, svc_dst)
-        os.symlink("/etc/systemd/system/offline-backend.service", os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants", "offline-backend.service"))
-
-        # Inject SSH Installer Service
-        ssh_svc_src = "/payload_client/systemd/offline-ssh-install.service"
-        ssh_svc_dst = os.path.join(payload_dir, "etc", "systemd", "system", "offline-ssh-install.service")
-        shutil.copy2(ssh_svc_src, ssh_svc_dst)
-        os.symlink("/etc/systemd/system/offline-ssh-install.service", os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants", "offline-ssh-install.service"))
-
-        # Inject VPN Setup Service
-        vpn_svc_src = "/payload_client/systemd/kiosk-vpn-setup.service"
-        vpn_svc_dst = os.path.join(payload_dir, "etc", "systemd", "system", "kiosk-vpn-setup.service")
-        shutil.copy2(vpn_svc_src, vpn_svc_dst)
-        os.symlink("/etc/systemd/system/kiosk-vpn-setup.service", os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants", "kiosk-vpn-setup.service"))
-
-        # Copy Offline SSH Packages (.deb files)
-        pkg_dst = os.path.join(payload_dir, "opt", "offline-client", "packages")
-        os.makedirs(pkg_dst, exist_ok=True)
-        if os.path.exists("/opt/offline-packages"):
-            for file in os.listdir("/opt/offline-packages"):
-                if file.endswith(".deb"):
-                    shutil.copy2(os.path.join("/opt/offline-packages", file), os.path.join(pkg_dst, file))
-
-        # Inject Kiosk Launcher Script
-        launcher_src = "/payload_client/kiosk-launcher.sh"
-        launcher_dst = os.path.join(payload_dir, "opt", "offline-client", "kiosk-launcher.sh")
-        shutil.copy2(launcher_src, launcher_dst)
-        os.chmod(launcher_dst, 0o755)
-
-        # Inject Kiosk Persistent USB Storage Setup Script & Service
-        setup_script_src = "/payload_client/kiosk-storage-setup.sh"
-        setup_script_dst = os.path.join(payload_dir, "opt", "offline-client", "kiosk-storage-setup.sh")
-        shutil.copy2(setup_script_src, setup_script_dst)
-        os.chmod(setup_script_dst, 0o755)
-
-        setup_svc_src = "/payload_client/systemd/kiosk-storage-setup.service"
-        setup_svc_dst = os.path.join(payload_dir, "etc", "systemd", "system", "kiosk-storage-setup.service")
-        shutil.copy2(setup_svc_src, setup_svc_dst)
-        os.symlink("/etc/systemd/system/kiosk-storage-setup.service", os.path.join(payload_dir, "etc", "systemd", "system", "multi-user.target.wants", "kiosk-storage-setup.service"))
-
-
-        # Inject Kiosk Desktop Entry
-        kiosk_src = "/payload_client/systemd/offline-kiosk.desktop"
-        kiosk_dst = os.path.join(payload_dir, "etc", "xdg", "autostart", "offline-kiosk.desktop")
-        shutil.copy2(kiosk_src, kiosk_dst)
-
-        # Inject Kiosk Desktop Shortcut on User Desktop template
-        desktop_dir = os.path.join(payload_dir, "etc", "skel", "Desktop")
-        os.makedirs(desktop_dir, exist_ok=True)
-        desktop_dst = os.path.join(desktop_dir, "offline-kiosk.desktop")
-        shutil.copy2(kiosk_src, desktop_dst)
-        os.chmod(desktop_dst, 0o755)
-
-        # Inject Init-bottom Copy Script to persist payload files across switch_root
-        init_bottom_dir = os.path.join(payload_dir, "scripts", "init-bottom")
-        os.makedirs(init_bottom_dir, exist_ok=True)
-        init_bottom_src = "/payload_client/init-bottom-copy-payload.sh"
-        init_bottom_dst = os.path.join(init_bottom_dir, "copy-payload")
-        shutil.copy2(init_bottom_src, init_bottom_dst)
-        os.chmod(init_bottom_dst, 0o755)
-
-        # Inject param.conf trigger to execute init-bottom copy-payload hook
-        conf_dir = os.path.join(payload_dir, "conf")
-        os.makedirs(conf_dir, exist_ok=True)
-        conf_src = "/payload_client/conf/param.conf"
-        conf_dst = os.path.join(conf_dir, "param.conf")
-        shutil.copy2(conf_src, conf_dst)
-
-        # Inject Python site-packages dependencies
         log_to_task(task_id, "[PROGRESS] 35:Injecting python environment dependencies...")
-        import sys
-        py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
-        site_packages_dst = os.path.join(opt_offline, "backend", "site-packages")
-        os.makedirs(site_packages_dst, exist_ok=True)
-        packages_to_copy = [
-            "fastapi", "pydantic", "pydantic_core", "uvicorn", "starlette",
-            "anyio", "h11", "click", "annotated_types", "idna",
-            "annotated_doc", "typing_inspection", "watchfiles", "python_multipart", "multipart",
-            "serial"
-        ]
-        for pkg in packages_to_copy:
-            pkg_src = f"/usr/local/lib/{py_ver}/site-packages/{pkg}"
-            if os.path.isdir(pkg_src):
-                shutil.copytree(pkg_src, os.path.join(site_packages_dst, pkg))
-            elif os.path.isfile(pkg_src + ".py"):
-                shutil.copy2(pkg_src + ".py", os.path.join(site_packages_dst, pkg + ".py"))
-        
-        shutil.copy2(f"/usr/local/lib/{py_ver}/site-packages/typing_extensions.py", os.path.join(site_packages_dst, "typing_extensions.py"))
+        iso_build.inject_site_packages(opt_offline)
 
-        # Write Config JSON
         log_to_task(task_id, "[PROGRESS] 42:Generating kiosk configuration...")
         import models
-        # Reads through the session opened at the top of this task, which was
-        # closed long before the build reached here.
+        # A fresh scope: the one opened at the top of this task was closed long
+        # before the build reached here.
         with session_scope() as db:
             settings = db.query(models.Settings).first()
             lang = settings.language if settings else "en"
             server_ips = list(settings.server_ips) if (settings and settings.server_ips) else []
-        kiosk_id = generate_kiosk_id()
-        config_data = {
+
+        iso_build.write_kiosk_config(opt_offline, {
             "orchestrator_ip": target_ip,
             "available_server_ips": server_ips,
             "auth_token": auth_token,
             "language": lang,
-            "kiosk_id": kiosk_id
-        }
-        with open(os.path.join(opt_offline, "backend", "config.json"), "w") as f:
-            json.dump(config_data, f, indent=4)
+            "kiosk_id": generate_kiosk_id(),
+        })
 
-
-
-        # Save token for validation in routers/iso.py
+        # Read back by routers/iso.py to validate download requests.
         with open(os.path.join(CACHE_DIR, "auth_token.txt"), "w") as f:
             f.write(auth_token.strip())
 
-        # Ensure orchestrator SSH key exists and get public key content
-        from tasks import ensure_orchestrator_ssh_key, fix_ssh_permissions
-        try:
-            orch_pub_key = ensure_orchestrator_ssh_key()
-            action = ssh_keys.authorize(
-                ssh_keys.ORCHESTRATOR_AUTHORIZED_KEYS,
-                orch_pub_key,
-                options=ssh_keys.BORG_SERVE_OPTIONS,
-                tag=ssh_keys.SELFGRANT_TAG,
-            )
-            fix_ssh_permissions()
-            logger.info(
-                "Orchestrator self-grant for kiosk access: %s (%s)",
-                action.value, ssh_keys.fingerprint(orch_pub_key),
-            )
-        except Exception as ke:
-            logger.error(f"Failed to setup SSH authorized_keys for kiosk: {ke}")
+        _authorize_orchestrator_key_for_kiosks()
+        iso_build.inject_orchestrator_ssh_key(opt_offline)
 
-        # Copy orchestrator SSH keypair to kiosk backend (both private + public)
-        shutil.copy2("/root/.ssh/id_ed25519", os.path.join(opt_offline, "backend", "id_ed25519"))
-        os.chmod(os.path.join(opt_offline, "backend", "id_ed25519"), 0o600)
-        if os.path.exists("/root/.ssh/id_ed25519.pub"):
-            shutil.copy2("/root/.ssh/id_ed25519.pub", os.path.join(opt_offline, "backend", "id_ed25519.pub"))
-
-        # 3. Create payload.img
+        # 3. Pack the staged tree as the second initrd.
         log_to_task(task_id, "[PROGRESS] 45:Packaging secondary initrd...")
-        payload_img = os.path.join(iso_unpacked, "live", "payload.img")
-        run_command_with_logging(task_id, f"cd {payload_dir} && find . -print0 | cpio -v --null --create --format=newc | gzip > {payload_img}", shell=True)
+        iso_build.pack_payload_initrd(
+            task_id, payload_dir, os.path.join(iso_unpacked, "live", "payload.img"),
+        )
 
-        # 4. Modify Bootloaders (GRUB & Syslinux) to load payload.img
+        # 4. Teach both bootloaders to load it. Which one runs depends on the
+        #    machine, so neither can be skipped.
         log_to_task(task_id, "[PROGRESS] 60:Updating bootloader configurations...")
-        
-        # Update GRUB
-        grub_cfg = os.path.join(iso_unpacked, "boot", "grub", "grub.cfg")
-        if os.path.exists(grub_cfg):
-            with open(grub_cfg, "r") as f:
-                content = f.read()
-            
-            lines = []
-            timeout_set = False
-            for line in content.splitlines():
-                if line.strip().startswith("set timeout="):
-                    line = "set timeout=5"
-                    timeout_set = True
-                elif line.strip().startswith("initrd") and "/live/initrd.img" in line and "payload.img" not in line:
-                    line = line.rstrip() + " /live/payload.img"
-                lines.append(line)
-            
-            if not timeout_set:
-                lines.insert(0, "set timeout=5")
-                
-            new_content = "\n".join(lines) + "\n"
-            
-            with open(grub_cfg, "w") as f:
-                f.write(new_content)
+        iso_build.patch_grub_config(iso_unpacked)
+        iso_build.patch_syslinux_configs(iso_unpacked)
 
-        # Update Syslinux (isolinux)
-        for root_dir, _, files in os.walk(os.path.join(iso_unpacked, "isolinux")):
-            for file in files:
-                if file.endswith(".cfg"):
-                    filepath = os.path.join(root_dir, file)
-                    with open(filepath, "r") as f:
-                        content = f.read()
-                    
-                    lines = []
-                    for line in content.splitlines():
-                        if line.strip().startswith("#"):
-                            lines.append(line)
-                            continue
-                        
-                        parts = line.strip().split()
-                        if parts and parts[0].lower() == "timeout":
-                            indent = line[:line.find("timeout")]
-                            line = indent + "timeout 50"
-                        elif "initrd" in line and "/live/initrd.img" in line and "payload.img" not in line:
-                            if "initrd=" in line:
-                                parts_initrd = line.split("initrd=", 1)
-                                val_parts = parts_initrd[1].split(maxsplit=1)
-                                val = val_parts[0]
-                                rest = " " + val_parts[1] if len(val_parts) > 1 else ""
-                                line = parts_initrd[0] + "initrd=" + val + ",/live/payload.img" + rest
-                            else:
-                                parts_initrd = line.split("initrd", 1)
-                                val_parts = parts_initrd[1].split(maxsplit=1)
-                                val = val_parts[0]
-                                rest = " " + val_parts[1] if len(val_parts) > 1 else ""
-                                line = parts_initrd[0] + "initrd" + val + ",/live/payload.img" + rest
-                        lines.append(line)
-                    new_content = "\n".join(lines) + "\n"
-                    
-                    with open(filepath, "w") as f:
-                        f.write(new_content)
-
-        # 5. Update MD5 Sums
+        # 5. The media self-check compares against these.
         log_to_task(task_id, "[PROGRESS] 75:Updating ISO checksums...")
-        md5_txt = os.path.join(iso_unpacked, "md5sum.txt")
-        if os.path.exists(md5_txt):
-            run_command_with_logging(task_id, f"cd {iso_unpacked} && find . -type f -not -name md5sum.txt -not -path './isolinux/*' -exec md5sum {{}} \\; > md5sum.txt", shell=True)
+        iso_build.update_md5sums(task_id, iso_unpacked)
 
-        # 6. Repack ISO
+        # 6. Repack.
         log_to_task(task_id, "[PROGRESS] 85:Repacking Live-USB ISO...")
         output_iso = os.path.join(CACHE_DIR, "technician_client_v1.iso")
-        if os.path.exists(output_iso):
-            os.remove(output_iso)
-
-        def on_repack_line(line: str) -> None:
-            import re
-            m = re.search(r"UPDATE\s*:\s*([0-9.]+)%\s*done", line)
-            if m:
-                try:
-                    pct = float(m.group(1))
-                    overall_pct = int(85 + (pct * 0.14)) # map 0-100% to 85-99%
-                    log_to_task(task_id, f"[PROGRESS] {overall_pct}:Repacking Live-USB ISO...")
-                except Exception:
-                    pass
-
-        run_command_with_logging(task_id, [
-            "xorriso",
-            "-as", "mkisofs",
-            "-r", "-J", "-joliet-long",
-            "-l", "-cache-inodes",
-            "-isohybrid-mbr", "/usr/lib/ISOLINUX/isohdpfx.bin",
-            "-partition_offset", "16",
-            "-A", "Borg-Restore-Technician-Client",
-            "-b", "isolinux/isolinux.bin",
-            "-c", "isolinux/boot.cat",
-            "-no-emul-boot", "-boot-load-size", "4", "-boot-info-table",
-            "-eltorito-alt-boot",
-            "-e", "boot/grub/efi.img",
-            "-no-emul-boot", "-isohybrid-gpt-basdat", "-isohybrid-apm-hfsplus",
-            "-o", output_iso,
-            iso_unpacked
-        ], on_log_line=on_repack_line)
+        iso_build.repack_iso(
+            task_id, iso_unpacked, output_iso,
+            progress_from=85, progress_to=99, replace_existing=True,
+        )
 
         log_to_task(task_id, "[PROGRESS] 100:Client ISO generated successfully!", status="SUCCESS")
 
@@ -642,7 +400,6 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
 @celery_app.task(bind=True)
 def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
-    from tasks import run_command_with_logging
     from models import TaskLog, Kiosk, Settings
 
     task_id = self.request.id
@@ -702,18 +459,19 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
         payload_unpacked = os.path.join(work_dir, "payload_unpacked")
         os.makedirs(work_dir, exist_ok=True)
 
-        # 1. Unpack generic template ISO
+        # 1. Unpack the generic template — the per-kiosk ISO is the shared
+        #    image with one config file swapped, not a rebuild from scratch.
+        #    A full build takes tens of minutes; this takes a few.
         log_to_task(task_id, "[PROGRESS] 10:Extracting generic ISO template...")
-        run_command_with_logging(task_id, ["xorriso", "-osirrox", "on", "-indev", template_iso, "-extract", "/", iso_unpacked])
-        run_command_with_logging(task_id, ["chmod", "-R", "+w", iso_unpacked])
+        iso_build.unpack_iso(task_id, template_iso, iso_unpacked, progress_from=10, progress_to=25)
 
-        # 2. Extract payload.img
+        # 2. Unpack the payload initrd we appended when the template was built.
         log_to_task(task_id, "[PROGRESS] 30:Extracting secondary initrd payload...")
         os.makedirs(payload_unpacked, exist_ok=True)
         payload_img_path = os.path.join(iso_unpacked, "live", "payload.img")
         if not os.path.exists(payload_img_path):
             raise Exception("payload.img not found in template ISO")
-            
+
         subprocess.run(
             f"gzip -dc {payload_img_path} | cpio -idmv",
             shell=True,
@@ -723,24 +481,21 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
             check=True
         )
 
-        # 3. Update config.json with kiosk details
+        # 3. Swap in this kiosk's identity. Everything else in the payload is
+        #    identical across kiosks, which is what makes the shortcut sound.
         log_to_task(task_id, "[PROGRESS] 50:Updating configuration token...")
-        config_path = os.path.join(payload_unpacked, "opt", "offline-client", "backend", "config.json")
-        config_data = {}
-        if os.path.exists(config_path):
-            with open(config_path, "r") as f:
-                config_data = json.load(f)
-                
-        config_data["auth_token"] = kiosk_auth_token
-        config_data["kiosk_id"] = kiosk_label
-        config_data["available_server_ips"] = available_ips
-        config_data["orchestrator_ip"] = target_ip
-        config_data["language"] = lang
-
-        with open(config_path, "w") as f:
+        config_data = iso_build.read_kiosk_config(payload_unpacked)
+        config_data.update({
+            "auth_token": kiosk_auth_token,
+            "kiosk_id": kiosk_label,
+            "available_server_ips": available_ips,
+            "orchestrator_ip": target_ip,
+            "language": lang,
+        })
+        with open(iso_build.kiosk_config_path(payload_unpacked), "w") as f:
             json.dump(config_data, f, indent=4)
 
-        # 4. Repack payload.img
+        # 4. Repack the initrd in place. The bootloaders already reference it.
         log_to_task(task_id, "[PROGRESS] 70:Repacking secondary initrd...")
         subprocess.run(
             f"find . -print0 | cpio -o -H newc --null | gzip > {payload_img_path}",
@@ -751,44 +506,13 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
             check=True
         )
 
-        # 5. Compile custom ISO
+        # 5. Compile.
         log_to_task(task_id, "[PROGRESS] 80:Compiling custom kiosk ISO...")
-        run_command_with_logging(task_id, [
-            "xorriso",
-            "-as", "mkisofs",
-            "-r", "-J", "-joliet-long",
-            "-l", "-cache-inodes",
-            "-isohybrid-mbr", "/usr/lib/ISOLINUX/isohdpfx.bin",
-            "-partition_offset", "16",
-            "-A", "Borg-Restore-Technician-Client",
-            "-b", "isolinux/isolinux.bin",
-            "-c", "isolinux/boot.cat",
-            "-no-emul-boot", "-boot-load-size", "4", "-boot-info-table",
-            "-eltorito-alt-boot",
-            "-e", "boot/grub/efi.img",
-            "-no-emul-boot", "-isohybrid-gpt-basdat", "-isohybrid-apm-hfsplus",
-            "-o", output_kiosk_iso,
-            iso_unpacked
-        ])
+        iso_build.repack_iso(task_id, iso_unpacked, output_kiosk_iso)
 
-        # 6. Run history pruning
+        # 6. Each of these is several gigabytes; keep only the newest few.
         log_to_task(task_id, "[PROGRESS] 95:Pruning old repository ISOs...")
-        iso_files = []
-        for file in os.listdir(history_dir):
-            if file.endswith(".iso") and "-kiosk-" in file:
-                filepath = os.path.join(history_dir, file)
-                iso_files.append((filepath, os.path.getmtime(filepath)))
-                
-        # Sort by mtime ascending (oldest first)
-        iso_files.sort(key=lambda x: x[1])
-        if len(iso_files) > max_kiosk_isos:
-            to_delete = len(iso_files) - max_kiosk_isos
-            for i in range(to_delete):
-                try:
-                    os.remove(iso_files[i][0])
-                    logger.info(f"Pruned old kiosk ISO: {iso_files[i][0]}")
-                except Exception as pe:
-                    logger.error(f"Failed to prune old ISO {iso_files[i][0]}: {pe}")
+        iso_build.prune_kiosk_iso_history(history_dir, max_kiosk_isos)
 
         from datetime import datetime
         with session_scope() as db:

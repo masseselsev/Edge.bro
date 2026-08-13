@@ -11,7 +11,9 @@ from models import TaskLog, Node, BackupHistory, Settings
 from ansible_utils import run_ansible_playbook
 # Re-exported: importing tasks pulls in Celery and every task module, so
 # the definition lives in core.task_log where anything can reach it.
-from core.task_log import log_to_task  # noqa: F401
+# Re-exported: both moved to core/ to break the tasks <-> iso_tasks cycle,
+# and many call sites still reach them through this package.
+from core.task_log import log_to_task, run_command_with_logging  # noqa: F401
 
 from celery import Celery
 from celery.schedules import crontab
@@ -105,43 +107,6 @@ celery_app.conf.beat_schedule = {
 }
 celery_app.conf.timezone = 'UTC'
 
-
-def run_command_with_logging(
-    task_id: str,
-    cmd: Union[str, List[str]],
-    shell: bool = False,
-    on_log_line: Optional[Callable[[str], None]] = None
-) -> None:
-    """
-    Runs a subprocess command and streams its stdout/stderr line-by-line
-    to the TaskLog record via log_to_task.
-    """
-    cmd_str = cmd if isinstance(cmd, str) else " ".join(cmd)
-    log_to_task(task_id, f"[EXEC] {cmd_str}")
-
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        shell=shell,
-        bufsize=1
-    )
-
-    if process.stdout:
-        for line in iter(process.stdout.readline, ""):
-            log_line = line.rstrip("\r\n")
-            log_to_task(task_id, log_line)
-            if on_log_line:
-                try:
-                    on_log_line(log_line)
-                except Exception as ex:
-                    logger.error(f"Error in on_log_line callback: {str(ex)}")
-        process.stdout.close()
-
-    return_code = process.wait()
-    if return_code != 0:
-        raise subprocess.CalledProcessError(return_code, cmd)
 
 def fix_ssh_permissions() -> None:
     """

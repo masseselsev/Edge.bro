@@ -469,7 +469,7 @@ def test_repack_kiosk_iso_task_updates_timestamp(db_session):
     mock_request.id = "test-task-uuid"
     
     with patch("database.SessionLocal") as mock_session, \
-         patch("tasks.run_command_with_logging") as mock_run, \
+         patch("core.task_log.run_command_with_logging") as mock_run, \
          patch("tasks.log_to_task") as mock_log, \
          patch("subprocess.run") as mock_sub, \
          patch("os.path.exists") as mock_exists, \

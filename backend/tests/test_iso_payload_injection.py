@@ -101,13 +101,16 @@ def test_injected_modules_only_import_other_injected_modules(package, filename):
         )
 
 
-def test_the_injection_loop_uses_the_declared_lists():
-    """Guard the guard: a literal path in build_client_iso_task bypasses all this.
+@pytest.mark.parametrize("module", ["core/iso_build.py", "iso_tasks.py"])
+def test_the_injection_loop_uses_the_declared_lists(module):
+    """Guard the guard: a literal path in the build bypasses all of the above.
 
     The check above is worth nothing if someone adds `shutil.copy2` with a
-    hardcoded `/app/core/something.py` next to the loop.
+    hardcoded `/app/core/something.py` next to the loop. Both the build steps
+    and the task that drives them are scanned, because the copying has lived in
+    each of them at different times.
     """
-    with open(os.path.join(BACKEND_DIR, "iso_tasks.py"), "r", encoding="utf-8") as f:
+    with open(os.path.join(BACKEND_DIR, module), "r", encoding="utf-8") as f:
         source = f.read()
 
     tree = ast.parse(source)
@@ -123,8 +126,11 @@ def test_the_injection_loop_uses_the_declared_lists():
         ):
             hardcoded.append(value)
 
+    # version.py is not part of either package and has no imports to follow.
+    hardcoded = [v for v in hardcoded if v != "/app/version.py"]
+
     assert hardcoded == [], (
-        f"iso_tasks.py copies {hardcoded} by literal path. Add the file to "
+        f"{module} copies {hardcoded} by literal path. Add the file to "
         f"INJECTED_CORE_MODULES / INJECTED_ROUTER_MODULES instead, so the "
         f"import-closure check above can see it."
     )
