@@ -3,6 +3,7 @@ import { AlertTriangle, Info, Loader2, RefreshCw, X } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import { scoreTextColour } from './NodeHealthBadges';
 import type { NodeHealth, SmartHealth, ThermalHealth } from './NodeHealthBadges';
+import SmartReportView from './SmartReportView';
 
 /**
  * The detail view behind a health badge: the full statistics of the latest
@@ -90,7 +91,7 @@ const TELEMETRY_SERIES: SeriesSpec[] = [
 
 const DEPTH_OPTIONS = [7, 30, 90, 365];
 
-function formatBytes(bytes: number | null | undefined): string {
+export function formatBytes(bytes: number | null | undefined): string {
   if (bytes === null || bytes === undefined) return '—';
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
   const i = bytes > 0 ? Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1) : 0;
@@ -266,7 +267,7 @@ function MultiSeriesChart({
   );
 }
 
-function Field({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
+export function Field({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
   return (
     <div className="min-w-0">
       <p className="text-[9px] uppercase tracking-wider text-zinc-500 truncate">{label}</p>
@@ -530,9 +531,9 @@ export default function NodeHealthModal({ nodeId, hostname, initialTab = 'smart'
                         {showRaw ? t('healthHideRaw') : t('healthShowRaw')}
                       </button>
                       {showRaw && rawReport && (
-                        <pre className="mt-2 p-3 bg-zinc-950 border border-zinc-800 rounded-lg text-[10px] text-zinc-400 overflow-auto max-h-72">
-                          {JSON.stringify(rawReport, null, 2)}
-                        </pre>
+                        <div className="mt-2">
+                          <SmartReportView report={rawReport} t={t} />
+                        </div>
                       )}
                     </div>
                   </div>
