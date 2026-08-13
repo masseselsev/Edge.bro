@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, defer
 from database import get_db
 import models
 import schemas
-from routers.users import require_admin, require_kiosk_or_admin
+from auth import require_admin, require_kiosk_or_admin
 
 router = APIRouter(prefix="/api/tasks")
 

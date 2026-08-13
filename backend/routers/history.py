@@ -21,7 +21,8 @@ import models
 import schemas
 from core import archive_cleanup
 from database import get_db, log_user_action
-from routers.users import require_admin
+from auth import require_admin
+from routers.deps import node_or_404
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +58,7 @@ def purge_failed(
 
     node = None
     if payload.node_id is not None:
-        node = db.query(models.Node).filter(models.Node.id == payload.node_id).first()
-        if not node:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+        node = node_or_404(db, payload.node_id)
         query = query.filter(models.BackupHistory.node_id == payload.node_id)
 
     if payload.before is not None:

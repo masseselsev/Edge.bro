@@ -3,6 +3,7 @@ import json
 import subprocess
 from sqlalchemy.orm import Session
 from database import SessionLocal
+from core.task_log import log_to_task
 
 def get_archive_total_files(db: Session, archive_name: str) -> int:
     """Reads backup history for the archive and extracts the total file count from its JSON log."""
@@ -18,7 +19,6 @@ def get_archive_total_files(db: Session, archive_name: str) -> int:
 
 def recreate_postgres_log_dirs(task_id: str, target_mnt: str) -> None:
     """Recreates custom PostgreSQL log directories inside target if they are symlinked."""
-    from tasks import log_to_task
     log_to_task(task_id, "Checking for custom PostgreSQL log directories to recreate...")
     log_to_task(task_id, "[PROGRESS] 92:Checking database configuration...")
     try:

@@ -1,0 +1,193 @@
+"""Authentication and authorization for the whole API.
+
+This lived in `routers/users.py`, which meant every other router imported its
+security guards from a sibling router. That is what produced the worst bug in
+the codebase: `routers/network.py` wrapped the import in
+`except ImportError: def require_admin(): pass`, so any unrelated import error
+anywhere in the user router silently turned authorization off for every VPN
+and WiFi write endpoint. Guards belong somewhere nothing else depends on.
+
+The principals are two unrelated model classes. A **User** is an operator with
+a password and a JWT. A **Kiosk** is a technician's USB restore stick holding
+a static token. They are not related by inheritance and — this is the part
+that bites — their primary keys come from independent sequences, so User 7 and
+Kiosk 7 both exist. Any route that resolves a row by `auth.id` must therefore
+say which kind it wants; `require_kiosk_or_admin` deliberately does not.
+"""
+import os
+from datetime import datetime, timedelta
+from typing import Union
+
+import bcrypt
+import jwt
+from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy.orm import Session
+
+from database import get_db
+import models
+
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-key-change-me-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
+
+def get_password_hash(password: str) -> str:
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception:
+        return False
+
+def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM)
+
+
+# --- Dependency Guards ---
+
+def get_current_auth(request: Request = None, db: Session = Depends(get_db)) -> Union[models.User, models.Kiosk]:
+    """Resolve the caller to a User or a Kiosk, or raise 401.
+
+    Everything else in this file builds on this, so its surprises are worth
+    stating outright:
+
+    * **Three token sources**, in order: `Authorization: Bearer`, the
+      `admin_session` cookie, then a `?token=` query parameter. The query
+      parameter exists for the kiosk's log viewer, which opens URLs in a
+      context that cannot set headers — it also means tokens can land in
+      access logs and browser history, which is why the orchestrator's own UI
+      never uses it.
+    * **The `PyJWTError` branch is the normal path, not the error path.** A
+      kiosk token is a plain hex string and never parses as a JWT, so failing
+      to decode is how we discover we are looking at one. A genuinely
+      corrupt admin JWT takes the same branch and falls through to the 401 at
+      the bottom.
+    * **The offline restore token is a fallback constant.** A technician's
+      stick that was built before the orchestrator wrote its token file
+      authenticates against the literal "offline-token-1234". It is compared
+      case-insensitively because the operator types it by hand off a label.
+    * **The Kiosk it returns in that case is not persisted.** It exists only
+      for the duration of the request and has no primary key, so anything
+      reading `auth.id` gets None rather than someone else's row.
+
+    Callers must not use the return value to look up a row by id — see the
+    module docstring on colliding User and Kiosk keys — unless they went
+    through `require_user`, `require_admin` or another guard that pins the
+    type.
+    """
+    token = None
+    if request:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+        else:
+            token = request.cookies.get("admin_session")
+            if not token:
+                token = request.query_params.get("token")
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        # Check if it's a valid JWT admin token
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        
+        user = db.query(models.User).filter(models.User.username == username).first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        return user
+    except jwt.PyJWTError:
+        # Check if it's an approved kiosk token (simple hex key)
+        kiosk = db.query(models.Kiosk).filter(
+            models.Kiosk.auth_token == token,
+            models.Kiosk.status == "APPROVED"
+        ).first()
+        if kiosk:
+            return kiosk
+        
+        # Check if it matches the offline restore token
+        try:
+            from iso_tasks import CACHE_DIR
+            token_path = os.path.join(CACHE_DIR, "auth_token.txt")
+            if os.path.exists(token_path):
+                with open(token_path, "r") as f:
+                    expected_token = f.read().strip()
+            else:
+                expected_token = "offline-token-1234"
+            if token.strip().upper() == expected_token.strip().upper():
+                return models.Kiosk(name="Offline Restore Client", status="APPROVED", auth_token=token)
+        except Exception:
+            pass
+        
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session or token")
+
+
+def require_admin(auth = Depends(get_current_auth)) -> models.User:
+    if not isinstance(auth, models.User):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator permissions required"
+        )
+    return auth
+
+
+def require_user(auth = Depends(get_current_auth)) -> models.User:
+    """Like require_admin, but named for routes whose only requirement is
+    "acting principal is a User row", not admin-specific permissions — e.g.
+    a caller's own notification preferences. Kiosk and User primary keys are
+    independent sequences and can collide, so any route that resolves a User
+    row by `current_auth.id` must depend on this (or require_admin) rather
+    than bare get_current_auth, or a kiosk token can act on an unrelated
+    user's account.
+    """
+    if not isinstance(auth, models.User):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account required"
+        )
+    return auth
+
+
+def require_superadmin(auth = Depends(get_current_auth)) -> models.User:
+    if not isinstance(auth, models.User) or not auth.is_superadmin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super-administrator permissions required"
+        )
+    return auth
+
+
+def require_admin_plus_or_superadmin(auth = Depends(get_current_auth)) -> models.User:
+    if not isinstance(auth, models.User) or (not auth.is_superadmin and not auth.is_admin_plus):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin+ or Super-administrator permissions required"
+        )
+    return auth
+
+
+def require_kiosk_or_admin(auth = Depends(get_current_auth)) -> Union[models.User, models.Kiosk]:
+    """Any authenticated principal, of either kind.
+
+    The bare `return auth` is the whole implementation and is deliberate: this
+    is for read endpoints a technician's restore stick legitimately needs
+    (node lists, task logs, archive contents) as much as an operator does.
+
+    Because it can return either kind, a route depending on this must never
+    resolve a row by `auth.id`. User and Kiosk ids come from independent
+    sequences and collide. Use `require_user` where the caller's own account
+    is the subject.
+    """
+    return auth

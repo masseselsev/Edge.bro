@@ -19,7 +19,8 @@ from tasks import run_bootstrap_task, purge_node_archives
 from tasks.bootstrap import revoke_node_access_task
 from core import repo_usage, ssh_keys
 from core.borg_local import borg_kwargs, grant_workdir
-from routers.users import require_admin, require_kiosk_or_admin
+from auth import require_admin, require_kiosk_or_admin
+from routers.deps import node_or_404
 
 logger = logging.getLogger(__name__)
 
@@ -722,9 +723,7 @@ def delete_node(node_id: int, request: Request = None, db: Session = Depends(get
     cleans up its specific backup archives from the shared repository, and removes its restricted
     SSH public key entry from /root/.ssh/authorized_keys.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
     
     # 1. Clean up node archives in the shared Borg repository
     repo_path = "/data/borg/fleet"
@@ -807,10 +806,5 @@ def get_node(
     fleet-shared figure that costs a full walk of the borg repo, and no
     single-node view has ever displayed it.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Node not found",
-        )
+    node = node_or_404(db, node_id)
     return _serialize_node(node, 0)

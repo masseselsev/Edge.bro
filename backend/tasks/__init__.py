@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import TaskLog, Node, BackupHistory, Settings
 from ansible_utils import run_ansible_playbook
+# Re-exported: importing tasks pulls in Celery and every task module, so
+# the definition lives in core.task_log where anything can reach it.
+from core.task_log import log_to_task  # noqa: F401
 
 from celery import Celery
 from celery.schedules import crontab
@@ -102,25 +105,6 @@ celery_app.conf.beat_schedule = {
 }
 celery_app.conf.timezone = 'UTC'
 
-def log_to_task(task_id: str, message: str, status: Optional[str] = None) -> None:
-    """
-    Appends a log line to the specified TaskLog record in the database.
-    """
-    db: Session = SessionLocal()
-    try:
-        task = db.query(TaskLog).filter(TaskLog.id == task_id).first()
-        if task:
-            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-            task.log_output += f"[{timestamp}] {message}\n"
-            if status:
-                task.status = status
-            elif task.status not in ("SUCCESS", "FAILED"):
-                task.status = "RUNNING"
-            db.commit()
-    except Exception as e:
-        logger.error(f"Error logging to task {task_id}: {str(e)}")
-    finally:
-        db.close()
 
 def run_command_with_logging(
     task_id: str,

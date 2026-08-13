@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from database import get_db
-from routers.users import require_admin
+from auth import require_admin
 import paths
 
 router = APIRouter(prefix="/api/health", dependencies=[Depends(require_admin)])

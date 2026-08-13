@@ -11,7 +11,8 @@ from core import ssh
 import models
 import schemas
 from tasks import run_bootstrap_task, run_prepare_task, run_backup_task, purge_node_archives
-from routers.users import require_admin, require_kiosk_or_admin
+from auth import require_admin, require_kiosk_or_admin
+from routers.deps import node_or_404
 
 router = APIRouter(prefix="/api/nodes", tags=["Nodes"])
 
@@ -23,9 +24,7 @@ def trigger_prepare(node_id: int, request: Request = None, db: Session = Depends
     """
     Triggers the Auto-Prepare disk labels playbook task for a node.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
 
     node.status = "NEEDS_FIX"
     db.commit()
@@ -41,9 +40,7 @@ def trigger_backup(node_id: int, request: Request = None, payload: schemas.Backu
     """
     Triggers immediate remote backup execution.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
 
     comment = payload.comment if payload else None
     task = run_backup_task.delay(node.id, comment=comment)
@@ -57,9 +54,7 @@ def purge_node_backups(node_id: int, request: Request = None, db: Session = Depe
     """
     Deletes all Borg backup archives for a specific node.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
 
     task = purge_node_archives.delay(node.id)
     from database import log_user_action
@@ -84,9 +79,7 @@ def trigger_provision(node_id: int, payload: schemas.NodeProvisionRequest, reque
     except Exception:
         pass
 
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
 
     node.status = "NEEDS_BOOTSTRAP"
     db.commit()
@@ -116,9 +109,7 @@ def update_node_notes(node_id: int, payload: schemas.NodeNotesUpdate, request: R
     """
     Updates the notes field for a specific node.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
     
     node.notes = payload.notes
     db.commit()
@@ -133,9 +124,7 @@ def update_node_nat_override(node_id: int, payload: schemas.NodeNatOverrideUpdat
     Overrides whether the orchestrator is behind NAT for this specific node.
     None clears the override so the node inherits from its group, then global.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
 
     node.orchestrator_behind_nat = payload.orchestrator_behind_nat
     db.commit()
@@ -155,9 +144,7 @@ def update_node_rate_limit(node_id: int, payload: schemas.NodeRateLimitUpdate, r
     Overrides the upload rate limit for this specific node, in KiB/s.
     None clears the override so the node inherits its group limit, then unlimited.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
 
     if payload.upload_rate_limit is not None and payload.upload_rate_limit < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Rate limit cannot be negative.")
@@ -176,9 +163,7 @@ def trigger_backup_today(node_id: int, request: Request = None, db: Session = De
     """
     Sets backup_today to True for the node.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
     
     node.backup_today = True
     db.commit()
@@ -192,9 +177,7 @@ def toggle_backup_pause(node_id: int, request: Request = None, db: Session = Dep
     """
     Toggles backup_paused state for the node.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
     
     node.backup_paused = not node.backup_paused
     db.commit()
@@ -208,9 +191,7 @@ def assign_node_group(node_id: int, group_id: int, request: Request = None, db: 
     """
     Assigns the node to a backup group. If group_id is 0 or negative, unassigns the node.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
     
     if group_id <= 0:
         node.group_id = None
@@ -231,9 +212,7 @@ def get_node_task_logs(node_id: int, db: Session = Depends(get_db), current_user
     """
     Retrieves background execution logs associated with a specific node.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
     return db.query(models.TaskLog).filter(models.TaskLog.node_id == node_id).order_by(models.TaskLog.created_at.desc()).limit(20).all()
 
 

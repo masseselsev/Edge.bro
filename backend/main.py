@@ -19,6 +19,7 @@ from routers import iso as iso_router
 from routers import network as network_router
 from routers import groups as groups_router
 from routers import kiosks as kiosks_router
+import auth
 from routers import users as users_router
 from routers import health as health_router
 from routers import ssh_keys as ssh_keys_router
@@ -263,7 +264,7 @@ app.include_router(iso_router.router, prefix="/api/iso", tags=["Client ISO"])
 app.include_router(
     network_router.router,
     prefix="/api",
-    dependencies=[Depends(users_router.require_admin)],
+    dependencies=[Depends(auth.require_admin)],
 )
 app.include_router(groups_router.router)
 app.include_router(kiosks_router.router)

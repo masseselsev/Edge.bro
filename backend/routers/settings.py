@@ -4,7 +4,7 @@ from database import get_db
 import models
 import schemas
 from version import VERSION
-from routers.users import require_admin
+from auth import require_admin
 
 router = APIRouter(prefix="/api")
 

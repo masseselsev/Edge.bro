@@ -10,6 +10,7 @@ from core.db_session import session_scope
 from typing import Dict, Any
 
 import paths
+from core.task_log import log_to_task
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +181,7 @@ def generate_kiosk_id() -> str:
 
 @celery_app.task(bind=True)
 def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str, Any]:
-    from tasks import log_to_task, run_command_with_logging
+    from tasks import run_command_with_logging
     from models import TaskLog
     import redis
     import os
@@ -614,7 +615,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
 @celery_app.task(bind=True)
 def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
-    from tasks import log_to_task, run_command_with_logging
+    from tasks import run_command_with_logging
     from models import TaskLog, Kiosk, Settings
 
     task_id = self.request.id

@@ -9,7 +9,7 @@ import models
 import schemas
 from core import ssh_audit, ssh_keys
 from database import get_db, log_user_action
-from routers.users import require_admin
+from auth import require_admin
 
 logger = logging.getLogger(__name__)
 

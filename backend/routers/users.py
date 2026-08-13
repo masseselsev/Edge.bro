@@ -9,133 +9,25 @@ from database import get_db
 import models
 import schemas
 
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-key-change-me-in-production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
+# Re-exported so this module keeps working as the login/user-management
+# router; the definitions live in backend/auth.py so that nothing has to
+# import a guard from a sibling router.
+from auth import (  # noqa: F401
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    ALGORITHM,
+    JWT_SECRET_KEY,
+    create_access_token,
+    get_current_auth,
+    get_password_hash,
+    require_admin,
+    require_admin_plus_or_superadmin,
+    require_kiosk_or_admin,
+    require_superadmin,
+    require_user,
+    verify_password,
+)
 
 router = APIRouter()
-
-def get_password_hash(password: str) -> str:
-    pwd_bytes = password.encode('utf-8')
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    try:
-        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
-    except Exception:
-        return False
-
-def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM)
-
-
-# --- Dependency Guards ---
-
-def get_current_auth(request: Request = None, db: Session = Depends(get_db)) -> Union[models.User, models.Kiosk]:
-    token = None
-    if request:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-        else:
-            token = request.cookies.get("admin_session")
-            if not token:
-                token = request.query_params.get("token")
-
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    try:
-        # Check if it's a valid JWT admin token
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-        
-        user = db.query(models.User).filter(models.User.username == username).first()
-        if not user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-        return user
-    except jwt.PyJWTError:
-        # Check if it's an approved kiosk token (simple hex key)
-        kiosk = db.query(models.Kiosk).filter(
-            models.Kiosk.auth_token == token,
-            models.Kiosk.status == "APPROVED"
-        ).first()
-        if kiosk:
-            return kiosk
-        
-        # Check if it matches the offline restore token
-        try:
-            from iso_tasks import CACHE_DIR
-            token_path = os.path.join(CACHE_DIR, "auth_token.txt")
-            if os.path.exists(token_path):
-                with open(token_path, "r") as f:
-                    expected_token = f.read().strip()
-            else:
-                expected_token = "offline-token-1234"
-            if token.strip().upper() == expected_token.strip().upper():
-                return models.Kiosk(name="Offline Restore Client", status="APPROVED", auth_token=token)
-        except Exception:
-            pass
-        
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session or token")
-
-
-def require_admin(auth = Depends(get_current_auth)) -> models.User:
-    if not isinstance(auth, models.User):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Administrator permissions required"
-        )
-    return auth
-
-
-def require_user(auth = Depends(get_current_auth)) -> models.User:
-    """Like require_admin, but named for routes whose only requirement is
-    "acting principal is a User row", not admin-specific permissions — e.g.
-    a caller's own notification preferences. Kiosk and User primary keys are
-    independent sequences and can collide, so any route that resolves a User
-    row by `current_auth.id` must depend on this (or require_admin) rather
-    than bare get_current_auth, or a kiosk token can act on an unrelated
-    user's account.
-    """
-    if not isinstance(auth, models.User):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account required"
-        )
-    return auth
-
-
-def require_superadmin(auth = Depends(get_current_auth)) -> models.User:
-    if not isinstance(auth, models.User) or not auth.is_superadmin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Super-administrator permissions required"
-        )
-    return auth
-
-
-def require_admin_plus_or_superadmin(auth = Depends(get_current_auth)) -> models.User:
-    if not isinstance(auth, models.User) or (not auth.is_superadmin and not auth.is_admin_plus):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin+ or Super-administrator permissions required"
-        )
-    return auth
-
-
-def require_kiosk_or_admin(auth = Depends(get_current_auth)) -> Union[models.User, models.Kiosk]:
-    return auth
 
 
 # --- Endpoints ---

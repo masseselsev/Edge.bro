@@ -185,6 +185,49 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
       });
   }, []);
 
+  /**
+   * The complete settings payload, from current form state.
+   *
+   * POST /api/settings replaces the whole row, so every field has to be
+   * present on every save. This was written out twice — once here and once in
+   * the credentials modal's onChange — and the two copies had already drifted:
+   * a field added to one was silently reverted by the other the next time it
+   * fired.
+   */
+  const buildSettingsPayload = (overrides: Record<string, any> = {}) => ({
+    borg_ssh_port: sshPort,
+    borg_repo_path: repoPath,
+    keep_daily: policyKeepDaily,
+    keep_weekly: policyKeepWeekly,
+    keep_monthly: policyKeepMonthly,
+    global_exclusions: globalExclusions,
+    orchestrator_ip: orchestratorIp,
+    orchestrator_behind_nat: orchestratorBehindNat,
+    // 'Browser Local' is stored as a literal so the server knows the
+    // operator wants whatever the viewing browser says, not a fixed zone.
+    timezone: useLocalTime ? 'Browser Local' : timezone,
+    language: language,
+    default_compression: defaultCompression,
+    default_cpu_quota: defaultCpuQuota === '' ? null : Number(defaultCpuQuota),
+    server_ips: manualIps,
+    max_kiosk_isos: maxKioskIsos,
+    server_name: serverName,
+    server_net_capacity_mbps: serverNetCapacityMbps === '' ? 1000 : Number(serverNetCapacityMbps),
+
+    bootstrap_credentials: bootstrapCredentials,
+    default_credentials_id: defaultCredentialsId,
+    retention_policy: {
+      type: policyType,
+      keep_daily: policyKeepDaily,
+      keep_weekly: policyKeepWeekly,
+      keep_monthly: policyKeepMonthly,
+      keep_last: policyKeepLast,
+      within_value: policyWithinValue,
+      within_unit: policyWithinUnit
+    },
+    ...overrides,
+  });
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -197,40 +240,10 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
       return;
     }
     try {
-      const savedTz = useLocalTime ? 'Browser Local' : timezone;
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          borg_ssh_port: sshPort,
-          borg_repo_path: repoPath,
-          keep_daily: policyKeepDaily,
-          keep_weekly: policyKeepWeekly,
-          keep_monthly: policyKeepMonthly,
-          global_exclusions: globalExclusions,
-          orchestrator_ip: orchestratorIp,
-          orchestrator_behind_nat: orchestratorBehindNat,
-          timezone: savedTz,
-          language: language,
-          default_compression: defaultCompression,
-          default_cpu_quota: defaultCpuQuota === '' ? null : Number(defaultCpuQuota),
-          server_ips: manualIps,
-          max_kiosk_isos: maxKioskIsos,
-          server_name: serverName,
-          server_net_capacity_mbps: serverNetCapacityMbps === '' ? 1000 : Number(serverNetCapacityMbps),
-
-          bootstrap_credentials: bootstrapCredentials,
-          default_credentials_id: defaultCredentialsId,
-          retention_policy: {
-            type: policyType,
-            keep_daily: policyKeepDaily,
-            keep_weekly: policyKeepWeekly,
-            keep_monthly: policyKeepMonthly,
-            keep_last: policyKeepLast,
-            within_value: policyWithinValue,
-            within_unit: policyWithinUnit
-          }
-        })
+        body: JSON.stringify(buildSettingsPayload()),
       });
       if (res.ok) {
         const data = await res.json();
@@ -835,40 +848,13 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
             setBootstrapCredentials(newCreds);
             setDefaultCredentialsId(newDefaultId);
             try {
-              const savedTz = useLocalTime ? 'Browser Local' : timezone;
               const res = await fetch('/api/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  borg_ssh_port: sshPort,
-                  borg_repo_path: repoPath,
-                  keep_daily: policyKeepDaily,
-                  keep_weekly: policyKeepWeekly,
-                  keep_monthly: policyKeepMonthly,
-                  global_exclusions: globalExclusions,
-                  orchestrator_ip: orchestratorIp,
-          orchestrator_behind_nat: orchestratorBehindNat,
-                  timezone: savedTz,
-                  language: language,
-                  default_compression: defaultCompression,
-                  default_cpu_quota: defaultCpuQuota === '' ? null : Number(defaultCpuQuota),
-                  server_ips: manualIps,
-                  max_kiosk_isos: maxKioskIsos,
-                  server_name: serverName,
-                  server_net_capacity_mbps: serverNetCapacityMbps === '' ? 1000 : Number(serverNetCapacityMbps),
-
+                body: JSON.stringify(buildSettingsPayload({
                   bootstrap_credentials: newCreds,
                   default_credentials_id: newDefaultId,
-                  retention_policy: {
-                    type: policyType,
-                    keep_daily: policyKeepDaily,
-                    keep_weekly: policyKeepWeekly,
-                    keep_monthly: policyKeepMonthly,
-                    keep_last: policyKeepLast,
-                    within_value: policyWithinValue,
-                    within_unit: policyWithinUnit
-                  }
-                })
+                })),
               });
               if (res.ok) {
                 const data = await res.json();

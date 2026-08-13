@@ -15,6 +15,7 @@ from core.borg_local import borg_kwargs
 from core.db_session import session_scope
 from core import ssh
 from core import backup_stats, transfer_speed
+from core.task_log import log_to_task
 
 # Re-use logging configuration from tasks
 logger = logging.getLogger(__name__)
@@ -149,7 +150,6 @@ def force_cleanup_stale_repo_locks(task_id: str, repo_path: str) -> None:
     Fallback lock cleanup: if borg break-lock fails (e.g. due to permissions or stale socket issues),
     force-removes any stale lock.* files inside repo_path on the file system level.
     """
-    from tasks import log_to_task
     try:
         if os.path.exists(repo_path):
             removed = []
@@ -189,7 +189,6 @@ def cleanup_locks_and_resolve_ip(
     falling back" message. Lock cleanup still runs. The return value is None in
     that case; callers must use resolve_borg_target() for the repo URL instead.
     """
-    from tasks import log_to_task  # local import to avoid circular deps
 
     # In NAT mode direct reachability is impossible by definition, so don't even
     # attempt the /dev/tcp probe — it can only waste a timeout.
@@ -287,7 +286,6 @@ def run_prepare_task(self, node_id: int) -> Dict[str, Any]:
     Returns:
         Status result dictionary.
     """
-    from tasks import log_to_task
     return _run_prepare(node_id, self.request.id, log_to_task)
 
 
@@ -366,7 +364,7 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         Status dictionary.
     """
     task_id = self.request.id
-    from tasks import log_to_task, fix_repo_permissions
+    from tasks import fix_repo_permissions
     import redis
     import time
 

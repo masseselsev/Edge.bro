@@ -21,7 +21,7 @@ from core.schedule_slots import (
 from core import scheduler
 from core.schedule_estimate import DEFAULT_BACKUP_MINUTES, estimate_node_backup_minutes
 
-from routers.users import require_admin
+from auth import require_admin
 
 router = APIRouter(prefix="/api/groups", dependencies=[Depends(require_admin)])
 

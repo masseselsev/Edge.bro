@@ -15,8 +15,9 @@ import models
 import schemas
 from core import smart, monitoring_verdicts
 from database import get_db, log_user_action
-from routers.users import get_current_auth, require_admin, require_user
+from auth import get_current_auth, require_admin, require_user
 from tasks.monitoring import resolve_setting
+from routers.deps import node_or_404
 
 router = APIRouter(prefix="/api/monitoring", tags=["Monitoring"])
 
@@ -89,9 +90,7 @@ def _smart_response(db: Session, node_id: int, snapshot: models.SmartSnapshot):
 def get_node_health(node_id: int, db: Session = Depends(get_db),
                     current_user=Depends(require_admin)):
     """Everything the node cards need: drive scores and the thermal verdict."""
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
 
     settings = db.query(models.Settings).first()
     now = datetime.utcnow()
@@ -204,9 +203,7 @@ def get_telemetry(
 @router.get("/nodes/{node_id}/thresholds", response_model=schemas.MonitoringThresholds)
 def get_node_thresholds(node_id: int, db: Session = Depends(get_db),
                         current_user=Depends(require_admin)):
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
     settings = db.query(models.Settings).first()
 
     fields = ("monitoring_enabled", "monitoring_interval_days",
@@ -230,9 +227,7 @@ def set_node_thresholds(
     current_user=Depends(require_admin),
 ):
     """Set or clear this node's overrides. Null clears one back to inherited."""
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
 
     warn = payload.smart_temp_warn_c
     crit = payload.smart_temp_crit_c
@@ -260,9 +255,7 @@ def set_node_thresholds(
 def trigger_harvest(node_id: int, request: Request = None, db: Session = Depends(get_db),
                     current_user=Depends(require_admin)):
     """Harvest one node now, outside its schedule."""
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, node_id)
 
     from tasks.monitoring import harvest_node_task
     task = harvest_node_task.apply_async(args=[node_id], retry=False)

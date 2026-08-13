@@ -3,6 +3,7 @@ from typing import Dict, Any
 from core.db_session import session_scope
 from models import Settings, TaskLog, Node
 from restore_utils import get_archive_total_files, recreate_postgres_log_dirs
+from core.task_log import log_to_task
 
 
 def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = False) -> Dict[str, Any]:
@@ -10,7 +11,6 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
     Executes the bare-metal restore partition flashing, filesystem formatting,
     Borg backup extraction, and network wildcard injection options.
     """
-    from tasks import log_to_task
     from core.disk_ops import format_and_restore
 
     task_id = task_obj.request.id

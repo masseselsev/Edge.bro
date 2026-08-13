@@ -8,6 +8,7 @@ from core.db_session import session_scope
 from models import Node, TaskLog, BackupHistory
 from restore_logic import execute_restore
 from core.borg_local import borg_kwargs
+from core.task_log import log_to_task
 
 @celery_app.task(bind=True)
 def flash_restore_device(self, node_id: int, archive_name: str, target_dev: str, keep_network_configs: bool = True, wipe_mac_bindings: bool = False) -> Dict[str, Any]:
@@ -26,7 +27,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
     Preserves the initialized repository — only removes archive snapshots.
     Also cleans up related BackupHistory records from the database.
     """
-    from tasks import log_to_task, fix_repo_permissions
+    from tasks import fix_repo_permissions
 
     task_id = self.request.id
     repo_path = "/data/borg/fleet"

@@ -22,7 +22,7 @@ import models
 import schemas
 from core import backup_stats, repo_usage, transfer_speed
 from database import get_db
-from routers.users import require_admin
+from auth import require_admin
 
 router = APIRouter(prefix="/api/stats", dependencies=[Depends(require_admin)])
 

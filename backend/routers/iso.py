@@ -14,7 +14,7 @@ from iso_tasks import generate_client_iso_task, download_base_iso_task, CACHE_DI
 from models import TaskLog
 from database import SessionLocal, get_db
 from sqlalchemy.orm import Session
-from routers.users import require_admin, require_kiosk_or_admin
+from auth import require_admin, require_kiosk_or_admin
 from core.borg_local import borg_kwargs
 import models
 import schemas

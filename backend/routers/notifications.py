@@ -12,7 +12,7 @@ import models
 import schemas
 from core.notify import telegram
 from database import get_db, log_user_action
-from routers.users import require_admin, require_user
+from auth import require_admin, require_user
 
 router = APIRouter(prefix="/api", tags=["Notifications"])
 

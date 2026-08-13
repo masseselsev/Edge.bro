@@ -9,7 +9,8 @@ import models
 import schemas
 from tasks import flash_restore_device
 
-from routers.users import require_admin
+from auth import require_admin
+from routers.deps import node_or_404
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_admin)])
 
@@ -148,9 +149,7 @@ def trigger_restore(payload: schemas.RestoreRequest, request: Request = None, db
     Triggers bare-metal flashing restore process.
     Validates NVMe/SATA mismatch and starts flashing task.
     """
-    node = db.query(models.Node).filter(models.Node.id == payload.node_id).first()
-    if not node:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+    node = node_or_404(db, payload.node_id)
 
     if not node.efi_uuid:
         raise HTTPException(
@@ -200,9 +199,7 @@ def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_us
     """
     Downloads the genuine Sentinel HASP C2V fingerprint file from the node using the hasp_update tool.
     """
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
+    node = node_or_404(db, node_id)
     
     import redis
     import os
@@ -331,9 +328,7 @@ def get_node_hasp_status(node_id: int, db: Session = Depends(get_db), current_us
     Retrieves the live Sentinel HASP license activation status and features list from the node.
     """
     import re
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
+    node = node_or_404(db, node_id)
         
     if not node.hasp_runtime_version or node.hasp_runtime_version == "None":
         return {"status": "inactive", "features": []}
@@ -419,9 +414,7 @@ async def upload_hasp_license(
     """
     import base64
     import re
-    node = db.query(models.Node).filter(models.Node.id == node_id).first()
-    if not node:
-        raise HTTPException(status_code=404, detail="Node not found")
+    node = node_or_404(db, node_id)
         
     import redis
     import os
