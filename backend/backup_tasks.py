@@ -15,7 +15,12 @@ from core.borg_local import borg_kwargs
 from core.db_session import session_scope
 from core import ssh
 from core import backup_stats, repo_paths, transfer_speed
-from core.repo_lock import maintenance_in_progress, repository_maintenance
+from core.repo_lock import (
+    maintenance_in_progress,
+    repository_maintenance,
+    repository_writer,
+    writer_in_progress,
+)
 from core.task_log import log_to_task
 
 # Re-use logging configuration from tasks
@@ -29,6 +34,12 @@ logger = logging.getLogger(__name__)
 #: has to be retried from scratch. Bounded so a wedged lock cannot hold a
 #: Celery worker forever.
 LOCK_WAIT_SECONDS = int(os.getenv("BORG_LOCK_WAIT_SECONDS", "600"))
+
+#: How often a running transfer refreshes its writer registration. Well under
+#: the shortest TTL `backup_lock_ttl_seconds` produces, so a backup that runs
+#: longer than its estimate is still registered rather than aging out and
+#: leaving its lock exposed to the next node's pre-flight.
+WRITER_HEARTBEAT_SECONDS = 60
 
 
 def compute_checkpoint_interval(rate_kib: Optional[int]) -> int:
@@ -249,15 +260,26 @@ def cleanup_locks_and_resolve_ip(
     #
     # This used to be unconditional, and the lock it took away was as likely to
     # belong to the running nightly prune as to a dead worker. Breaking a live
-    # lock does not queue the backup behind the prune — it lets both write to
+    # lock does not queue the backup behind the holder — it lets both write to
     # the same segments and manifest at once, which is repository corruption,
     # not contention. See core/repo_lock.py.
-    owner = maintenance_in_progress(repo_path)
-    if owner:
+    #
+    # Another *backup* is as real a holder as the prune, and is the common one:
+    # every node in a shard shares that shard's repository. Guarding only on
+    # maintenance also made `--lock-wait` inert, since a backup that tears the
+    # lock away never reaches the wait it was given.
+    if maintenance_in_progress(repo_path):
         log_to_task(
             task_id,
             "[Lock cleanup] Repository maintenance is in progress; leaving the "
             "repo lock alone. This backup will be retried on the next tick.",
+        )
+    elif writer_in_progress(repo_path):
+        log_to_task(
+            task_id,
+            f"[Lock cleanup] Another backup is writing to {repo_path}; leaving "
+            f"the repo lock alone. This backup will queue behind it for up to "
+            f"{LOCK_WAIT_SECONDS}s.",
         )
     else:
         try:
@@ -602,112 +624,132 @@ def _transfer_and_record(
         repo_path=plan.repo_path,
     )
 
-    fix_repo_permissions(plan.repo_path)
+    # Announce this backup as a live writer of the repository before any
+    # borg touches it, and keep the registration until the transfer is
+    # done. Another node bound for the same shard reads this in its own
+    # pre-flight and leaves our lock alone; without it, that pre-flight
+    # breaks the lock out from under this transfer. TTL comes from this
+    # node's own history, the same estimate the node-level backup lock
+    # uses, and the heartbeat below carries a backup that outruns it.
+    with repository_writer(
+        f"backup:{plan.node_id}", plan.repo_path, ttl=plan.lock_ttl
+    ) as writer_beat:
+        fix_repo_permissions(plan.repo_path)
 
-    init_cmd = ssh.command(
-        plan.ip_address, plan.ssh_port,
-        # Compression on: `borg init` writes a tiny repo config, not chunks.
-        f"BORG_RSH='{ssh.borg_rsh(compression=True)}' "
-        f"BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' "
-        f"BORG_RELOCATED_REPO_ACCESS_IS_OK=yes "
-        f"borg init --lock-wait {LOCK_WAIT_SECONDS} "
-        f"--encryption=repokey {borg_repo_url}",
-        connect_timeout=None,
-        keepalive=True,
-        extra_args=extra_ssh_args,
-    )
-    log_to_task(task_id, "Checking/Initializing Borg repository...")
-    try:
-        res_init = subprocess.run(init_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if res_init.returncode not in (0, 2):
-            log_to_task(task_id, f"WARNING: Repository initialization status: {res_init.stderr.strip()}")
-    except Exception as e:
-        log_to_task(task_id, f"Repository initialization check warning: {str(e)}")
-
-    exclude_args = []
-    for ex in plan.global_exclusions:
-        pattern = None
-        if isinstance(ex, dict):
-            pattern = ex.get("pattern")
-        elif isinstance(ex, str):
-            pattern = ex
-
-        if pattern:
-            pat_stripped = pattern.strip()
-            if pat_stripped:
-                exclude_args.append(f"--exclude '{pat_stripped}'")
-    exclude_str = " ".join(exclude_args)
-
-    rate_limit_kib = plan.rate_limit_kib
-    limit_mbps = transfer_speed.kib_s_to_mbps(rate_limit_kib) if rate_limit_kib else None
-    if rate_limit_kib:
-        rate_text = (
-            f"{rate_limit_kib} KiB/s ({transfer_speed.format_mbps(limit_mbps)}), "
-            f"set on the {plan.rate_limit_source}"
+        init_cmd = ssh.command(
+            plan.ip_address, plan.ssh_port,
+            # Compression on: `borg init` writes a tiny repo config, not chunks.
+            f"BORG_RSH='{ssh.borg_rsh(compression=True)}' "
+            f"BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' "
+            f"BORG_RELOCATED_REPO_ACCESS_IS_OK=yes "
+            f"borg init --lock-wait {LOCK_WAIT_SECONDS} "
+            f"--encryption=repokey {borg_repo_url}",
+            connect_timeout=None,
+            keepalive=True,
+            extra_args=extra_ssh_args,
         )
-    else:
-        rate_text = "unlimited"
+        log_to_task(task_id, "Checking/Initializing Borg repository...")
+        try:
+            res_init = subprocess.run(init_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if res_init.returncode not in (0, 2):
+                log_to_task(task_id, f"WARNING: Repository initialization status: {res_init.stderr.strip()}")
+        except Exception as e:
+            log_to_task(task_id, f"Repository initialization check warning: {str(e)}")
 
-    log_to_task(task_id, (
-        f"Resource limits — compression: {plan.compression}, "
-        f"upload rate: {rate_text}, "
-        f"checkpoint: {plan.checkpoint_secs}s, "
-        f"cpu_quota: {plan.cpu_quota}%"
-    ))
+        exclude_args = []
+        for ex in plan.global_exclusions:
+            pattern = None
+            if isinstance(ex, dict):
+                pattern = ex.get("pattern")
+            elif isinstance(ex, str):
+                pattern = ex
 
-    ssh_cmd = build_borg_create_cmd(
-        node_ip=plan.ip_address,
-        node_ssh_port=plan.ssh_port,
-        borg_repo_url=borg_repo_url,
-        archive_name=archive_name,
-        exclude_str=exclude_str,
-        compression=plan.compression,
-        rate_limit_kib=rate_limit_kib,
-        checkpoint_secs=plan.checkpoint_secs,
-        cpu_quota=plan.cpu_quota,
-        borg_passphrase=os.getenv('BORG_PASSPHRASE', ''),
-        extra_ssh_args=extra_ssh_args,
-    )
+            if pattern:
+                pat_stripped = pattern.strip()
+                if pat_stripped:
+                    exclude_args.append(f"--exclude '{pat_stripped}'")
+        exclude_str = " ".join(exclude_args)
 
-    log_to_task(task_id, f"Running remote command on node: {' '.join(ssh_cmd[:6])} [COMMAND MASKED]")
+        rate_limit_kib = plan.rate_limit_kib
+        limit_mbps = transfer_speed.kib_s_to_mbps(rate_limit_kib) if rate_limit_kib else None
+        if rate_limit_kib:
+            rate_text = (
+                f"{rate_limit_kib} KiB/s ({transfer_speed.format_mbps(limit_mbps)}), "
+                f"set on the {plan.rate_limit_source}"
+            )
+        else:
+            rate_text = "unlimited"
 
-    # Locks have been cleaned up and IP resolved at the start of the task
+        log_to_task(task_id, (
+            f"Resource limits — compression: {plan.compression}, "
+            f"upload rate: {rate_text}, "
+            f"checkpoint: {plan.checkpoint_secs}s, "
+            f"cpu_quota: {plan.cpu_quota}%"
+        ))
 
-    # stderr is consumed line by line: borg reports cumulative byte counters
-    # there several times a second, which is the only way to see how fast
-    # the transfer actually ran rather than just its average.
-    process = subprocess.Popen(
-        ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
-    )
+        ssh_cmd = build_borg_create_cmd(
+            node_ip=plan.ip_address,
+            node_ssh_port=plan.ssh_port,
+            borg_repo_url=borg_repo_url,
+            archive_name=archive_name,
+            exclude_str=exclude_str,
+            compression=plan.compression,
+            rate_limit_kib=rate_limit_kib,
+            checkpoint_secs=plan.checkpoint_secs,
+            cpu_quota=plan.cpu_quota,
+            borg_passphrase=os.getenv('BORG_PASSPHRASE', ''),
+            extra_ssh_args=extra_ssh_args,
+        )
 
-    tracker = transfer_speed.SpeedTracker()
-    stdout_chunks: list = []
-    stderr_lines: list = []
-    started_at = time_module.monotonic()
+        log_to_task(task_id, f"Running remote command on node: {' '.join(ssh_cmd[:6])} [COMMAND MASKED]")
 
-    def _drain_stdout() -> None:
-        # Read concurrently, otherwise a full stdout pipe deadlocks the
-        # child while we are still blocked reading stderr.
-        for chunk in process.stdout:
-            stdout_chunks.append(chunk)
+        # Locks have been cleaned up and IP resolved at the start of the task
 
-    stdout_reader = threading.Thread(target=_drain_stdout, daemon=True)
-    stdout_reader.start()
+        # stderr is consumed line by line: borg reports cumulative byte counters
+        # there several times a second, which is the only way to see how fast
+        # the transfer actually ran rather than just its average.
+        process = subprocess.Popen(
+            ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
+        )
 
-    for raw_line in process.stderr:
-        kind, payload = transfer_speed.parse_borg_log_line(raw_line)
-        if kind is transfer_speed.LineKind.PROGRESS:
-            tracker.sample(payload.get("time"), payload.get("deduplicated_size"))
-        elif kind is transfer_speed.LineKind.MESSAGE:
-            stderr_lines.append(transfer_speed.render_message(payload))
-        elif kind is transfer_speed.LineKind.PLAIN:
-            stderr_lines.append(payload["message"])
+        tracker = transfer_speed.SpeedTracker()
+        stdout_chunks: list = []
+        stderr_lines: list = []
+        started_at = time_module.monotonic()
 
-    process.wait()
-    stdout_reader.join(timeout=30)
-    stdout = "".join(stdout_chunks)
-    stderr = "\n".join(stderr_lines)
-    wall_seconds = time_module.monotonic() - started_at
+        def _drain_stdout() -> None:
+            # Read concurrently, otherwise a full stdout pipe deadlocks the
+            # child while we are still blocked reading stderr.
+            for chunk in process.stdout:
+                stdout_chunks.append(chunk)
+
+        stdout_reader = threading.Thread(target=_drain_stdout, daemon=True)
+        stdout_reader.start()
+
+        # Borg emits progress several times a second; refreshing the writer
+        # registration on every one would be thousands of pointless Redis
+        # writes, so it is refreshed on a wall-clock interval instead.
+        last_beat = started_at
+
+        for raw_line in process.stderr:
+            now = time_module.monotonic()
+            if now - last_beat >= WRITER_HEARTBEAT_SECONDS:
+                writer_beat()
+                last_beat = now
+
+            kind, payload = transfer_speed.parse_borg_log_line(raw_line)
+            if kind is transfer_speed.LineKind.PROGRESS:
+                tracker.sample(payload.get("time"), payload.get("deduplicated_size"))
+            elif kind is transfer_speed.LineKind.MESSAGE:
+                stderr_lines.append(transfer_speed.render_message(payload))
+            elif kind is transfer_speed.LineKind.PLAIN:
+                stderr_lines.append(payload["message"])
+
+        process.wait()
+        stdout_reader.join(timeout=30)
+        stdout = "".join(stdout_chunks)
+        stderr = "\n".join(stderr_lines)
+        wall_seconds = time_module.monotonic() - started_at
 
     log_to_task(task_id, f"Remote execution stdout:\n{stdout}")
     if stderr:

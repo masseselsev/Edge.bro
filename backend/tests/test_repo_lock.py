@@ -1,4 +1,4 @@
-"""A backup must not take the repository lock away from a live prune.
+"""A backup must not take the repository lock away from whoever is using it.
 
 `cleanup_locks_and_resolve_ip` ran `borg break-lock` before every backup,
 unconditionally, and force-removed every `lock.*` file if that failed. Neither
@@ -9,6 +9,15 @@ to the same segments and manifest.
 
 That is repository corruption, and the repository is the only copy of every
 backup in the fleet.
+
+The other holder is another *backup*, and it is the common one: every node in a
+shard shares that shard's repository, so at 2000 nodes across five shards this
+is routine rather than a nightly overlap. It also made `--lock-wait` inert — a
+backup that breaks the lock never reaches the wait that was supposed to queue
+it. Verified against real borg 1.4: with the lock held, `borg create
+--lock-wait 10` waits the full ten seconds and then reports a timeout; run
+`borg break-lock` first and the same create starts immediately, while the
+holder later dies with `NotLocked`.
 """
 from unittest.mock import MagicMock, patch
 
@@ -48,6 +57,25 @@ def fake_redis(monkeypatch):
                 del self.store[key]
                 return 1
             return 0
+
+        # The writer registry is a sorted set scored by expiry time.
+        def zadd(self, key, mapping):
+            self.store.setdefault(key, {}).update(mapping)
+
+        def zrem(self, key, member):
+            self.store.get(key, {}).pop(member, None)
+
+        def zremrangebyscore(self, key, low, high):
+            members = self.store.get(key)
+            if not members:
+                return 0
+            expired = [m for m, score in members.items() if score <= high]
+            for m in expired:
+                del members[m]
+            return len(expired)
+
+        def zcard(self, key):
+            return len(self.store.get(key, {}))
 
     fake = FakeRedis()
     monkeypatch.setattr(repo_lock, "redis_client", fake)
@@ -101,9 +129,13 @@ def test_an_unreachable_redis_reads_as_no_maintenance(monkeypatch):
 
 # --- the gate in the backup path ---
 
-def _run_cleanup(monkeypatch, subprocess_run):
+def _run_cleanup(monkeypatch, subprocess_run, writer=False):
     monkeypatch.setattr(backup_tasks.subprocess, "run", subprocess_run)
     monkeypatch.setattr(backup_tasks, "log_to_task", lambda *a, **k: None)
+    # Stated explicitly in every case: the two holders are independent gates,
+    # and a test that left one to the ambient Redis would pass or fail on
+    # whatever the last test happened to register.
+    monkeypatch.setattr(backup_tasks, "writer_in_progress", lambda repo_path: writer)
     return backup_tasks.cleanup_locks_and_resolve_ip(
         task_id="t1",
         node_ip="10.0.0.9",
@@ -163,3 +195,94 @@ def test_a_backup_still_clears_a_genuinely_stale_lock_when_nothing_is_running(mo
     _run_cleanup(monkeypatch, spy)
 
     assert any(c[:2] == ["borg", "break-lock"] for c in calls)
+
+
+# --- the other holder: a concurrent backup on the same repository -----------
+
+
+def test_a_backup_does_not_break_the_lock_of_another_backup(monkeypatch):
+    """The case sharding makes routine. Two nodes in one shard write to one
+    repository, and the second one's pre-flight used to take the first one's
+    lock away mid-transfer."""
+    calls = []
+
+    def spy(cmd, *args, **kwargs):
+        calls.append(cmd)
+        return MagicMock(returncode=0, stdout="10.0.0.9 5000 203.0.113.5 12345\nREACHABLE:yes\nOK\n", stderr="")
+
+    monkeypatch.setattr(backup_tasks, "maintenance_in_progress", lambda repo_path=None: None)
+    _run_cleanup(monkeypatch, spy, writer=True)
+
+    assert not any(c[:2] == ["borg", "break-lock"] for c in calls), (
+        "the backup broke a lock that another live backup was holding"
+    )
+
+
+def test_the_force_remove_is_skipped_for_a_live_backup_too(monkeypatch):
+    """break-lock is the polite path; this is the one that deletes lock files
+    off the filesystem regardless of what borg would have refused to do."""
+    monkeypatch.setattr(backup_tasks, "maintenance_in_progress", lambda repo_path=None: None)
+    removed = []
+    monkeypatch.setattr(
+        backup_tasks, "force_cleanup_stale_repo_locks",
+        lambda task_id, repo_path: removed.append(repo_path),
+    )
+    _run_cleanup(
+        monkeypatch,
+        lambda cmd, *a, **k: MagicMock(returncode=1, stdout="10.0.0.9 5000 x 1\nREACHABLE:yes\nOK\n", stderr="failed"),
+        writer=True,
+    )
+    assert removed == []
+
+
+# --- the writer registry itself ---------------------------------------------
+
+
+def test_a_repository_with_no_registered_writer_reads_as_free(fake_redis):
+    assert repo_lock.writer_in_progress("/data/borg/fleet") is False
+
+
+def test_a_registered_writer_is_visible_while_it_runs(fake_redis):
+    with repo_lock.repository_writer("backup:7", "/data/borg/shard-1"):
+        assert repo_lock.writer_in_progress("/data/borg/shard-1") is True
+    assert repo_lock.writer_in_progress("/data/borg/shard-1") is False
+
+
+def test_a_writer_on_one_shard_does_not_shield_another(fake_redis):
+    """The point of sharding: a backup on shard 1 must not stop shard 2's
+    pre-flight from clearing a genuinely stale lock."""
+    with repo_lock.repository_writer("backup:7", "/data/borg/shard-1"):
+        assert repo_lock.writer_in_progress("/data/borg/shard-2") is False
+
+
+def test_several_backups_may_write_to_one_repository(fake_redis):
+    """Registration records writers, it does not admit them — borg's own lock
+    serialises them and --lock-wait makes the losers queue. Making this
+    exclusive would re-serialise what sharding exists to parallelise."""
+    with repo_lock.repository_writer("backup:1", "/data/borg/fleet"):
+        with repo_lock.repository_writer("backup:2", "/data/borg/fleet") as second:
+            assert second is not None
+            assert repo_lock.writer_in_progress("/data/borg/fleet") is True
+        # The first is still running; the second leaving must not clear it.
+        assert repo_lock.writer_in_progress("/data/borg/fleet") is True
+    assert repo_lock.writer_in_progress("/data/borg/fleet") is False
+
+
+def test_a_writer_that_died_ages_out(fake_redis):
+    """A worker killed mid-transfer never runs its cleanup. The registration
+    has to expire on its own, or that repository's lock could never be
+    recovered again."""
+    repo_lock.repository_writer("backup:9", "/data/borg/fleet", ttl=-1).__enter__()
+    assert repo_lock.writer_in_progress("/data/borg/fleet") is False
+
+
+def test_an_unreadable_registry_is_treated_as_busy(monkeypatch):
+    """Opposite of the maintenance flag, deliberately. Guessing "nobody"
+    wrongly breaks a live lock and corrupts the repository; guessing
+    "somebody" wrongly costs one delayed backup."""
+    class Broken:
+        def zremrangebyscore(self, *a, **k):
+            raise ConnectionError("redis is down")
+
+    monkeypatch.setattr(repo_lock, "redis_client", Broken())
+    assert repo_lock.writer_in_progress("/data/borg/fleet") is True
