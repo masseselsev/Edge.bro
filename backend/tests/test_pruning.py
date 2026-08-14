@@ -246,8 +246,10 @@ def test_the_whole_fleet_is_pruned_in_three_borg_invocations(
     assert res["deleted"] == 75
 
     delete_cmd = next(c[0][0] for c in mock_run.call_args_list if c[0][0][:2] == ["borg", "delete"])
-    assert delete_cmd[2] == "/data/borg/fleet"
-    assert len(delete_cmd) == 3 + 75
+    # Matched by content, not position: the argv carries --lock-wait too, and
+    # an index here would break the moment another flag is added.
+    assert "/data/borg/fleet" in delete_cmd
+    assert len([a for a in delete_cmd if a.startswith("node-")]) == 75
 
 
 @patch('database.SessionLocal')
@@ -372,7 +374,9 @@ def test_every_initialized_shard_is_pruned(mock_run, mock_session, session_facto
     mock_run.side_effect = _borg_responses(archives_for("alpha", 3))
     res = global_daily_prune()
 
-    pruned = {c[0][0][2] for c in mock_run.call_args_list if c[0][0][:2] == ["borg", "compact"]}
+    pruned = {
+        c[0][0][-1] for c in mock_run.call_args_list if c[0][0][:2] == ["borg", "compact"]
+    }
     assert pruned == {"/data/borg/fleet", "/data/borg/shard-1"}
     assert set(res["shards"]) == {"/data/borg/fleet", "/data/borg/shard-1"}
 

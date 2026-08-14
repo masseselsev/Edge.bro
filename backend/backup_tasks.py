@@ -16,6 +16,7 @@ from core.db_session import session_scope
 from core import ssh
 from core import backup_stats, repo_paths, transfer_speed
 from core.repo_lock import (
+    LOCK_WAIT_SECONDS,
     maintenance_in_progress,
     repository_maintenance,
     repository_writer,
@@ -25,15 +26,6 @@ from core.task_log import log_to_task
 
 # Re-use logging configuration from tasks
 logger = logging.getLogger(__name__)
-
-#: Borg holds the repository lock for the whole of `borg create`, not a brief
-#: critical section, so two backups landing on one repository contend for the
-#: entire duration of the first. Borg's own default wait is one second, which
-#: turns that contention into an outright failure for the loser. Wait instead:
-#: a backup that queues behind another finishes late, a backup that errors out
-#: has to be retried from scratch. Bounded so a wedged lock cannot hold a
-#: Celery worker forever.
-LOCK_WAIT_SECONDS = int(os.getenv("BORG_LOCK_WAIT_SECONDS", "600"))
 
 #: How often a running transfer refreshes its writer registration. Well under
 #: the shortest TTL `backup_lock_ttl_seconds` produces, so a backup that runs
@@ -900,7 +892,7 @@ def _list_archives(repo_path: str, env: dict) -> Optional[list]:
     from core.retention import Archive
 
     res = subprocess.run(
-        ["borg", "list", "--json", repo_path],
+        ["borg", "list", "--lock-wait", str(LOCK_WAIT_SECONDS), "--json", repo_path],
         env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env),
     )
     if res.returncode != 0:
@@ -1097,7 +1089,7 @@ def _prune_one_shard(repo_path: str, fix_repo_permissions) -> tuple:
             heartbeat()
             try:
                 res = subprocess.run(
-                    ["borg", "delete", repo_path, *batch],
+                    ["borg", "delete", "--lock-wait", str(LOCK_WAIT_SECONDS), repo_path, *batch],
                     env=env, capture_output=True, text=True,
                     **borg_kwargs(repo_path, env),
                 )
@@ -1118,7 +1110,7 @@ def _prune_one_shard(repo_path: str, fix_repo_permissions) -> tuple:
         try:
             logger.info("Starting Borg repository compaction after daily prunes...")
             res_compact = subprocess.run(
-                ["borg", "compact", repo_path],
+                ["borg", "compact", "--lock-wait", str(LOCK_WAIT_SECONDS), repo_path],
                 env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env),
             )
             if res_compact.returncode == 0:

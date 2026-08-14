@@ -5,6 +5,7 @@ from typing import Dict, Any
 from celery_app import celery_app
 
 from core import repo_paths
+from core.repo_lock import LOCK_WAIT_SECONDS
 from core.db_session import session_scope
 from models import Node, TaskLog, BackupHistory
 from restore_logic import execute_restore
@@ -56,7 +57,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
             return {"status": "SUCCESS", "deleted": 0}
 
         # List all archives in the repository
-        list_cmd = ["borg", "list", "--json", repo_path]
+        list_cmd = ["borg", "list", "--lock-wait", str(LOCK_WAIT_SECONDS), "--json", repo_path]
         list_res = subprocess.run(list_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
 
         if list_res.returncode != 0:
@@ -76,7 +77,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
         deleted_count = 0
         for archive in archives:
             name = archive["name"]
-            del_cmd = ["borg", "delete", f"{repo_path}::{name}"]
+            del_cmd = ["borg", "delete", "--lock-wait", str(LOCK_WAIT_SECONDS), f"{repo_path}::{name}"]
             del_res = subprocess.run(del_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
             if del_res.returncode == 0:
                 deleted_count += 1
@@ -87,7 +88,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
         # Run compaction to reclaim disk space immediately if any archives were deleted
         if deleted_count > 0:
             log_to_task(task_id, "Compacting Borg repository to reclaim disk space...")
-            compact_cmd = ["borg", "compact", repo_path]
+            compact_cmd = ["borg", "compact", "--lock-wait", str(LOCK_WAIT_SECONDS), repo_path]
             compact_res = subprocess.run(compact_cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
             if compact_res.returncode == 0:
                 log_to_task(task_id, "Repository compaction completed successfully.")

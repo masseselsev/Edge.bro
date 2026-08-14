@@ -16,6 +16,7 @@ from database import SessionLocal, get_db
 from sqlalchemy.orm import Session
 from auth import require_admin, require_kiosk_or_admin
 from core import repo_paths
+from core.repo_lock import LOCK_WAIT_SECONDS
 from core.borg_local import borg_kwargs
 import models
 import schemas
@@ -368,7 +369,7 @@ def download_repo(
     
     try:
         list_res = subprocess.run(
-            ["borg", "list", "--json", shared_repo],
+            ["borg", "list", "--lock-wait", str(LOCK_WAIT_SECONDS), "--json", shared_repo],
             env=env,
             capture_output=True,
             text=True,
@@ -423,7 +424,7 @@ def download_repo(
     try:
         for archive in node_archives:
             export_proc = subprocess.Popen(
-                ["borg", "export-tar", f"{shared_repo}::{archive}", "-"],
+                ["borg", "export-tar", "--lock-wait", str(LOCK_WAIT_SECONDS), f"{shared_repo}::{archive}", "-"],
                 env=export_env,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

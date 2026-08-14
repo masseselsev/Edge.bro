@@ -50,6 +50,28 @@ logger = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 redis_client = redis.Redis.from_url(REDIS_URL)
 
+#: How long any borg command waits for the repository lock before giving up.
+#:
+#: Borg holds the lock for the whole of `borg create`, not a brief critical
+#: section, so two operations landing on one repository contend for the entire
+#: duration of the first. Borg's own default wait is one second, which turns
+#: that contention into an outright failure for the loser — a prune that cannot
+#: delete, a node deletion that leaves its archives behind, a backup that has
+#: to start over. Wait instead, bounded so a wedged lock cannot hold a worker
+#: forever.
+#:
+#: It lives here rather than in `backup_tasks` because every module that
+#: touches a repository needs it, and importing the Celery task module to
+#: reach a number is how the previous version ended up applying it to `create`
+#: and `init` alone.
+LOCK_WAIT_SECONDS = int(os.getenv("BORG_LOCK_WAIT_SECONDS", "600"))
+
+
+def lock_wait_args() -> list:
+    """`--lock-wait N`, for splicing into a borg argv."""
+    return ["--lock-wait", str(LOCK_WAIT_SECONDS)]
+
+
 MAINTENANCE_KEY = "borg_repo_maintenance"
 
 

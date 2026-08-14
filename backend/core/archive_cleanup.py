@@ -18,6 +18,7 @@ import subprocess
 from typing import Iterable, Optional
 
 from core import repo_paths
+from core.repo_lock import LOCK_WAIT_SECONDS
 from core.borg_local import borg_kwargs
 
 logger = logging.getLogger(__name__)
@@ -110,7 +111,7 @@ def delete_archives(names: Iterable[str], path: Optional[str] = None) -> int:
     for name in wanted:
         try:
             result = subprocess.run(
-                ["borg", "delete", f"{target}::{name}"],
+                ["borg", "delete", "--lock-wait", str(LOCK_WAIT_SECONDS), f"{target}::{name}"],
                 env=env,
                 capture_output=True,
                 text=True,

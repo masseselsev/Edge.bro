@@ -18,6 +18,7 @@ import schemas
 from tasks import run_bootstrap_task, purge_node_archives
 from tasks.bootstrap import revoke_node_access_task
 from core import repo_paths, repo_usage, ssh_keys
+from core.repo_lock import LOCK_WAIT_SECONDS
 from core.borg_local import borg_kwargs, grant_workdir
 from auth import require_admin, require_kiosk_or_admin
 from routers.deps import node_or_404
@@ -538,7 +539,8 @@ def delete_node(node_id: int, request: Request = None, db: Session = Depends(get
         try:
             env = os.environ.copy()
             env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
-            cmd = ["borg", "delete", "--glob-archives", f"{node.hostname}-*", repo_path]
+            cmd = ["borg", "delete", "--lock-wait", str(LOCK_WAIT_SECONDS),
+                   "--glob-archives", f"{node.hostname}-*", repo_path]
             subprocess.run(cmd, env=env, capture_output=True, text=True, **borg_kwargs(repo_path, env))
 
             from tasks import fix_repo_permissions
