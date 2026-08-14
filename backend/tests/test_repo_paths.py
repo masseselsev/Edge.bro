@@ -1,11 +1,15 @@
-"""Which repository a node's archives live in.
+"""Which repository a node's archives live in, and who may reach it.
 
 Getting a node's shard wrong does not fail loudly — it points borg at a
 repository that does not hold that node's archives, so a backup silently
 starts a second chain and a restore reports the archive missing. These pin the
 parts that decide it.
 """
-from core import repo_paths
+import os
+
+import pytest
+
+from core import repo_lock, repo_paths
 
 
 class FakeNode:
@@ -85,3 +89,71 @@ def test_a_node_stored_without_a_shard_lands_on_zero(tmp_path):
     assert node.borg_shard_index == 0
     assert repo_paths.repo_path_for_node(node) == "/data/borg/fleet"
     session.close()
+
+
+# --- one maintenance flag per repository ---
+
+@pytest.fixture
+def fake_redis(monkeypatch):
+    class FakeRedis:
+        def __init__(self):
+            self.store = {}
+
+        def get(self, key):
+            value = self.store.get(key)
+            return value.encode() if isinstance(value, str) else value
+
+        def set(self, key, value, nx=False, ex=None):
+            if nx and key in self.store:
+                return None
+            self.store[key] = value
+            return True
+
+        def expire(self, key, ttl):
+            return key in self.store
+
+        def delete(self, key):
+            return self.store.pop(key, None) is not None
+
+        def eval(self, script, numkeys, key, arg):
+            if self.store.get(key) == arg:
+                del self.store[key]
+                return 1
+            return 0
+
+    fake = FakeRedis()
+    monkeypatch.setattr(repo_lock, "redis_client", fake)
+    return fake
+
+
+def test_two_shards_can_be_maintained_at_once(fake_redis):
+    """The point of sharding: pruning one repository must not stand down
+    backups bound for another."""
+    with repo_lock.repository_maintenance("prune", repo_path="/data/borg/fleet") as a:
+        assert a is not None
+        with repo_lock.repository_maintenance("prune", repo_path="/data/borg/shard-1") as b:
+            assert b is not None
+            assert repo_lock.maintenance_in_progress("/data/borg/fleet")
+            assert repo_lock.maintenance_in_progress("/data/borg/shard-1")
+
+
+def test_one_shard_still_excludes_a_second_prune_of_itself(fake_redis):
+    """Two prunes against one repository is the corruption case the flag exists
+    for; sharding must not have loosened it."""
+    with repo_lock.repository_maintenance("prune-a", repo_path="/data/borg/shard-2") as first:
+        assert first is not None
+        with repo_lock.repository_maintenance("prune-b", repo_path="/data/borg/shard-2") as second:
+            assert second is None
+
+
+def test_maintaining_one_shard_leaves_the_others_free(fake_redis):
+    with repo_lock.repository_maintenance("prune", repo_path="/data/borg/shard-1"):
+        assert not repo_lock.maintenance_in_progress("/data/borg/fleet")
+        assert not repo_lock.maintenance_in_progress("/data/borg/shard-2")
+
+
+def test_a_shards_flag_is_released_after_its_prune(fake_redis):
+    with repo_lock.repository_maintenance("prune", repo_path="/data/borg/shard-3"):
+        pass
+    assert not repo_lock.maintenance_in_progress("/data/borg/shard-3")
+    assert fake_redis.store == {}

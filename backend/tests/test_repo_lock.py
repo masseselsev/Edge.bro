@@ -122,7 +122,7 @@ def test_a_backup_does_not_break_the_lock_while_maintenance_runs(monkeypatch):
         calls.append(cmd)
         return MagicMock(returncode=0, stdout="10.0.0.9 5000 203.0.113.5 12345\nREACHABLE:yes\nOK\n", stderr="")
 
-    monkeypatch.setattr(backup_tasks, "maintenance_in_progress", lambda: "global_daily_prune:abc")
+    monkeypatch.setattr(backup_tasks, "maintenance_in_progress", lambda repo_path=None: "global_daily_prune:abc")
     _run_cleanup(monkeypatch, spy)
 
     assert not any(c[:2] == ["borg", "break-lock"] for c in calls), (
@@ -137,7 +137,7 @@ def test_the_force_remove_of_lock_files_is_also_skipped(monkeypatch):
     while a prune holds the lock removes the lock of a live writer regardless
     of what borg itself would have refused to do.
     """
-    monkeypatch.setattr(backup_tasks, "maintenance_in_progress", lambda: "prune:abc")
+    monkeypatch.setattr(backup_tasks, "maintenance_in_progress", lambda repo_path=None: "prune:abc")
     removed = []
     monkeypatch.setattr(
         backup_tasks, "force_cleanup_stale_repo_locks",
@@ -159,7 +159,7 @@ def test_a_backup_still_clears_a_genuinely_stale_lock_when_nothing_is_running(mo
         calls.append(cmd)
         return MagicMock(returncode=0, stdout="10.0.0.9 5000 203.0.113.5 12345\nREACHABLE:yes\nOK\n", stderr="")
 
-    monkeypatch.setattr(backup_tasks, "maintenance_in_progress", lambda: None)
+    monkeypatch.setattr(backup_tasks, "maintenance_in_progress", lambda repo_path=None: None)
     _run_cleanup(monkeypatch, spy)
 
     assert any(c[:2] == ["borg", "break-lock"] for c in calls)

@@ -252,7 +252,7 @@ def cleanup_locks_and_resolve_ip(
     # lock does not queue the backup behind the prune — it lets both write to
     # the same segments and manifest at once, which is repository corruption,
     # not contention. See core/repo_lock.py.
-    owner = maintenance_in_progress()
+    owner = maintenance_in_progress(repo_path)
     if owner:
         log_to_task(
             task_id,
@@ -952,7 +952,58 @@ PRUNE_DRY_RUN = os.getenv("BORG_PRUNE_DRY_RUN", "").lower() in ("1", "true", "ye
 
 
 def _run_global_daily_prune(fix_repo_permissions) -> Dict[str, Any]:
-    """Prune the whole fleet in three borg invocations: list, delete, compact.
+    """Prune every shard, then reconcile history against all of them at once.
+
+    Each shard is an independent repository with its own lock, so they are
+    pruned under separate maintenance flags — pruning one must not stand down
+    backups bound for another, which is the whole reason for sharding.
+
+    Reconciliation deliberately happens once, after every shard has been
+    listed: it deletes history rows whose archive is absent, so handing it one
+    shard's archives would delete the history of every node in the others.
+    A shard that could not be listed suppresses it entirely rather than
+    reconciling against a partial view.
+    """
+    results: Dict[str, Any] = {"deleted": 0, "nodes": {}, "shards": {}}
+    surviving: set = set()
+    listing_complete = True
+
+    for repo_path in repo_paths.all_shard_paths():
+        if not repo_paths.is_initialized(repo_path):
+            # Shards past 0 do not exist until the first node assigned to one
+            # runs `borg init` on its first backup. Nothing to prune is not an
+            # error, and must not fail the rest of the nightly run.
+            results["shards"][repo_path] = "SKIPPED: not initialized"
+            continue
+
+        shard_result, remaining = _prune_one_shard(repo_path, fix_repo_permissions)
+        results["shards"][repo_path] = shard_result
+        results["deleted"] += shard_result.get("deleted", 0)
+        results["nodes"].update(shard_result.get("nodes", {}))
+
+        if remaining is None:
+            listing_complete = False
+        else:
+            surviving |= remaining
+
+    if listing_complete and not PRUNE_DRY_RUN:
+        try:
+            logger.info("Synchronizing backup history database records with active archives...")
+            stale = _reconcile_history_with_repo(surviving)
+            logger.info(f"Database history sync completed. Removed {stale} stale records.")
+        except Exception as e:
+            logger.error(f"Exception during backup history DB sync: {str(e)}")
+    elif not listing_complete:
+        logger.warning(
+            "Skipping history reconciliation: at least one shard could not be listed, "
+            "and reconciling against a partial view would delete live history."
+        )
+
+    return results
+
+
+def _prune_one_shard(repo_path: str, fix_repo_permissions) -> tuple:
+    """Prune one repository in three borg invocations: list, delete, compact.
 
     It used to be one `borg prune --prefix <host>` per node. Each took the
     repository's exclusive lock and re-read a manifest holding every archive of
@@ -962,27 +1013,27 @@ def _run_global_daily_prune(fix_repo_permissions) -> Dict[str, Any]:
 
     Deciding in Python (core/retention.py, a port of borg's own algorithm)
     makes it one list, batched deletes, one compact.
-    """
-    repo_path = "/data/borg/fleet"
-    if not os.path.exists(repo_path):
-        return {"error": "Repository path not found"}
 
+    Returns (results, surviving_archive_names). The names are None if the
+    repository could not be listed, which the caller must not mistake for "no
+    archives survived".
+    """
     env = os.environ.copy()
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
 
-    with repository_maintenance(owner="global_daily_prune") as heartbeat:
+    with repository_maintenance(owner="global_daily_prune", repo_path=repo_path) as heartbeat:
         if heartbeat is None:
-            # Another prune already holds the repository. Two of these against
+            # Another prune already holds this repository. Two of these against
             # one repository is exactly what the flag exists to prevent, and
             # skipping costs nothing — the next nightly run picks it up.
-            logger.warning("Repository maintenance already in progress; skipping this prune.")
-            return {"status": "SKIPPED", "reason": "maintenance already in progress"}
+            logger.warning(f"Maintenance already in progress on {repo_path}; skipping its prune.")
+            return {"status": "SKIPPED", "reason": "maintenance already in progress"}, None
 
         results: Dict[str, Any] = {"deleted": 0, "nodes": {}, "compact": "PENDING"}
 
         archives = _list_archives(repo_path, env)
         if archives is None:
-            return {"error": "Could not list the repository"}
+            return {"error": "Could not list the repository"}, None
 
         retention = _retention_by_hostname()
         to_delete, report = plan_deletions(archives, retention)
@@ -990,10 +1041,13 @@ def _run_global_daily_prune(fix_repo_permissions) -> Dict[str, Any]:
 
         if PRUNE_DRY_RUN:
             logger.warning(
-                f"BORG_PRUNE_DRY_RUN is set: {len(to_delete)} archive(s) would be "
-                f"deleted, nothing was. {to_delete}"
+                f"BORG_PRUNE_DRY_RUN is set: {len(to_delete)} archive(s) in {repo_path} "
+                f"would be deleted, nothing was. {to_delete}"
             )
-            return {"status": "DRY_RUN", "would_delete": len(to_delete), "nodes": report}
+            return (
+                {"status": "DRY_RUN", "would_delete": len(to_delete), "nodes": report},
+                {a.name for a in archives},
+            )
 
         deleted = 0
         for index in range(0, len(to_delete), DELETE_BATCH):
@@ -1035,18 +1089,12 @@ def _run_global_daily_prune(fix_repo_permissions) -> Dict[str, Any]:
             logger.error(f"Exception compacting Borg repository: {str(e)}")
             results["compact"] = f"ERROR: {str(e)}"
 
-        # Reconcile database history with what is actually left. Re-listed
-        # rather than derived from `to_delete`, so a delete that silently
-        # failed does not remove a history row for an archive still present.
+        # What actually survived. Re-listed rather than derived from
+        # `to_delete`, so a delete that silently failed does not cost the
+        # caller a history row for an archive still present.
         heartbeat()
-        try:
-            logger.info("Synchronizing backup history database records with active archives...")
-            remaining = _list_archives(repo_path, env)
-            if remaining is not None:
-                stale = _reconcile_history_with_repo({a.name for a in remaining})
-                logger.info(f"Database history sync completed. Removed {stale} stale records.")
-        except Exception as e:
-            logger.error(f"Exception during backup history DB sync: {str(e)}")
+        remaining = _list_archives(repo_path, env)
+        surviving = None if remaining is None else {a.name for a in remaining}
 
     fix_repo_permissions(repo_path)
-    return results
+    return results, surviving

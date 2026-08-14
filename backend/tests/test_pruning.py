@@ -42,6 +42,23 @@ def session_factory():
             pass
 
 
+@pytest.fixture(autouse=True)
+def one_initialized_shard(monkeypatch):
+    """Confine these to a single repository.
+
+    The prune iterates every shard, but each of these tests is about what it
+    does to one repository — invocation count, batching, dry run, standing
+    down. Letting them see five would multiply every assertion by five without
+    testing anything the shard-loop tests below do not already cover.
+    """
+    monkeypatch.setattr(
+        "backup_tasks.repo_paths.all_shard_paths", lambda: ["/data/borg/fleet"]
+    )
+    monkeypatch.setattr(
+        "backup_tasks.repo_paths.is_initialized", lambda path: True
+    )
+
+
 def archives_for(host, count, start=NOW, step=timedelta(days=1)):
     return [
         Archive(f"{host}-{(start - step * i).strftime('%Y%m%d%H%M%S')}", start - step * i)
@@ -272,13 +289,13 @@ def test_a_second_prune_stands_down_rather_than_running_concurrently(
     from contextlib import contextmanager
 
     @contextmanager
-    def already_held(owner, ttl=None):
+    def already_held(owner, ttl=None, repo_path=None):
         yield None
 
     with patch('backup_tasks.repository_maintenance', already_held):
         res = global_daily_prune()
 
-    assert res["status"] == "SKIPPED"
+    assert res["shards"]["/data/borg/fleet"]["status"] == "SKIPPED"
     mock_run.assert_not_called()
 
 
@@ -301,8 +318,9 @@ def test_dry_run_decides_but_deletes_nothing(mock_exists, mock_run, mock_session
     with patch('backup_tasks.PRUNE_DRY_RUN', True):
         res = global_daily_prune()
 
-    assert res["status"] == "DRY_RUN"
-    assert res["would_delete"] == 4
+    shard = res["shards"]["/data/borg/fleet"]
+    assert shard["status"] == "DRY_RUN"
+    assert shard["would_delete"] == 4
     assert not any(c[0][0][:2] == ["borg", "delete"] for c in mock_run.call_args_list)
 
 
@@ -331,3 +349,154 @@ def test_history_is_reconciled_against_a_fresh_listing_not_the_delete_list(
 
     list_calls = [c[0][0] for c in mock_run.call_args_list if c[0][0][:2] == ["borg", "list"]]
     assert len(list_calls) == 2
+
+
+# --- the shard loop ---
+
+@patch('database.SessionLocal')
+@patch('backup_tasks.subprocess.run')
+def test_every_initialized_shard_is_pruned(mock_run, mock_session, session_factory, monkeypatch):
+    monkeypatch.setattr(
+        "backup_tasks.repo_paths.all_shard_paths",
+        lambda: ["/data/borg/fleet", "/data/borg/shard-1"],
+    )
+    monkeypatch.setattr("backup_tasks.repo_paths.is_initialized", lambda path: True)
+    mock_session.side_effect = session_factory
+
+    db = session_factory()
+    db.add(models.Settings(retention_policy={"type": "count", "keep_last": 1}))
+    db.add(models.Node(hostname="alpha", ip_address="192.168.1.10"))
+    db.commit()
+    db.close()
+
+    mock_run.side_effect = _borg_responses(archives_for("alpha", 3))
+    res = global_daily_prune()
+
+    pruned = {c[0][0][2] for c in mock_run.call_args_list if c[0][0][:2] == ["borg", "compact"]}
+    assert pruned == {"/data/borg/fleet", "/data/borg/shard-1"}
+    assert set(res["shards"]) == {"/data/borg/fleet", "/data/borg/shard-1"}
+
+
+@patch('database.SessionLocal')
+@patch('backup_tasks.subprocess.run')
+def test_a_shard_with_no_repository_yet_is_skipped_not_failed(
+    mock_run, mock_session, session_factory, monkeypatch
+):
+    """Shards past 0 do not exist until the first node routed to one backs up.
+    An empty directory is 'nothing to do', not a failed nightly run."""
+    monkeypatch.setattr(
+        "backup_tasks.repo_paths.all_shard_paths",
+        lambda: ["/data/borg/fleet", "/data/borg/shard-1"],
+    )
+    monkeypatch.setattr(
+        "backup_tasks.repo_paths.is_initialized",
+        lambda path: path == "/data/borg/fleet",
+    )
+    mock_session.side_effect = session_factory
+
+    db = session_factory()
+    db.add(models.Settings(retention_policy={"type": "count", "keep_last": 1}))
+    db.add(models.Node(hostname="alpha", ip_address="192.168.1.10"))
+    db.commit()
+    db.close()
+
+    mock_run.side_effect = _borg_responses(archives_for("alpha", 3))
+    res = global_daily_prune()
+
+    assert res["shards"]["/data/borg/shard-1"] == "SKIPPED: not initialized"
+    touched = {c[0][0][-1] for c in mock_run.call_args_list if c[0][0][:2] == ["borg", "list"]}
+    assert touched == {"/data/borg/fleet"}
+
+
+@patch('database.SessionLocal')
+@patch('backup_tasks.subprocess.run')
+def test_history_is_reconciled_against_every_shard_at_once(
+    mock_run, mock_session, session_factory, monkeypatch
+):
+    """The dangerous case. Reconciliation deletes history rows whose archive is
+    absent, so running it per shard would wipe the history of every node living
+    in the other shards."""
+    monkeypatch.setattr(
+        "backup_tasks.repo_paths.all_shard_paths",
+        lambda: ["/data/borg/fleet", "/data/borg/shard-1"],
+    )
+    monkeypatch.setattr("backup_tasks.repo_paths.is_initialized", lambda path: True)
+    mock_session.side_effect = session_factory
+
+    db = session_factory()
+    db.add(models.Settings(retention_policy={"type": "count", "keep_last": 5}))
+    db.add(models.Node(hostname="alpha", ip_address="192.168.1.10"))
+    db.add(models.Node(hostname="beta", ip_address="192.168.1.11"))
+    alpha = archives_for("alpha", 1)[0]
+    beta = archives_for("beta", 1)[0]
+    db.add(models.BackupHistory(node_id=1, archive_name=alpha.name, status="SUCCESS",
+                                original_size=1, deduplicated_size=1))
+    db.add(models.BackupHistory(node_id=2, archive_name=beta.name, status="SUCCESS",
+                                original_size=1, deduplicated_size=1))
+    db.commit()
+    db.close()
+
+    # Each shard reports only its own node's archive, as real shards would.
+    import json as _json
+
+    def per_shard(cmd, *args, **kwargs):
+        if cmd[:2] == ["borg", "list"]:
+            owned = alpha if cmd[-1] == "/data/borg/fleet" else beta
+            return MagicMock(
+                returncode=0,
+                stdout=_json.dumps({"archives": [
+                    {"name": owned.name, "start": owned.ts.isoformat()}
+                ]}),
+                stderr="",
+            )
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    mock_run.side_effect = per_shard
+    global_daily_prune()
+
+    db = session_factory()
+    surviving = {r.archive_name for r in db.query(models.BackupHistory).all()}
+    db.close()
+    assert surviving == {alpha.name, beta.name}, (
+        "reconciliation ran against one shard's listing and deleted the other's history"
+    )
+
+
+@patch('database.SessionLocal')
+@patch('backup_tasks.subprocess.run')
+def test_an_unreadable_shard_suppresses_reconciliation_entirely(
+    mock_run, mock_session, session_factory, monkeypatch
+):
+    """A partial view of the fleet's archives must not be used to decide which
+    history rows are stale."""
+    monkeypatch.setattr(
+        "backup_tasks.repo_paths.all_shard_paths",
+        lambda: ["/data/borg/fleet", "/data/borg/shard-1"],
+    )
+    monkeypatch.setattr("backup_tasks.repo_paths.is_initialized", lambda path: True)
+    mock_session.side_effect = session_factory
+
+    db = session_factory()
+    db.add(models.Settings(retention_policy={"type": "count", "keep_last": 5}))
+    db.add(models.Node(hostname="alpha", ip_address="192.168.1.10"))
+    db.add(models.BackupHistory(node_id=1, archive_name="ghost-20260101000000", status="SUCCESS",
+                                original_size=1, deduplicated_size=1))
+    db.commit()
+    db.close()
+
+    def one_shard_unreadable(cmd, *args, **kwargs):
+        if cmd[:2] == ["borg", "list"]:
+            if cmd[-1] == "/data/borg/shard-1":
+                return MagicMock(returncode=2, stdout="", stderr="repository unreadable")
+            return MagicMock(returncode=0, stdout='{"archives": []}', stderr="")
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    mock_run.side_effect = one_shard_unreadable
+    global_daily_prune()
+
+    db = session_factory()
+    still_there = db.query(models.BackupHistory).count()
+    db.close()
+    assert still_there == 1, (
+        "history was reconciled despite a shard that could not be listed"
+    )

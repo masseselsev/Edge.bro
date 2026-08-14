@@ -38,6 +38,18 @@ redis_client = redis.Redis.from_url(REDIS_URL)
 
 MAINTENANCE_KEY = "borg_repo_maintenance"
 
+
+def maintenance_key(repo_path: Optional[str] = None) -> str:
+    """The flag for one repository.
+
+    Repositories are independent — each has its own borg lock — so pruning one
+    must not stand down backups bound for another. Without a path this is the
+    original fleet-wide key, which is what shard 0 keeps using.
+    """
+    if repo_path is None:
+        return MAINTENANCE_KEY
+    return f"{MAINTENANCE_KEY}:{repo_path}"
+
 #: Long enough for a prune and compact of a fleet-sized repository, short
 #: enough that a worker killed mid-prune does not block backups all day.
 #: Refreshed by `heartbeat` while the work is actually running, so the TTL
@@ -45,7 +57,7 @@ MAINTENANCE_KEY = "borg_repo_maintenance"
 DEFAULT_TTL_SECONDS = int(os.getenv("BORG_MAINTENANCE_TTL", "900"))
 
 
-def maintenance_owner() -> Optional[str]:
+def maintenance_owner(repo_path: Optional[str] = None) -> Optional[str]:
     """Who holds the repository, or None. Never raises.
 
     A Redis that cannot be reached returns None — the caller then behaves as it
@@ -53,7 +65,7 @@ def maintenance_owner() -> Optional[str]:
     the fleet the moment Redis blinked.
     """
     try:
-        value = redis_client.get(MAINTENANCE_KEY)
+        value = redis_client.get(maintenance_key(repo_path))
     except Exception as e:
         logger.warning(f"Could not read the repository maintenance flag: {e}")
         return None
@@ -62,12 +74,14 @@ def maintenance_owner() -> Optional[str]:
     return value.decode("utf-8") if isinstance(value, bytes) else str(value)
 
 
-def maintenance_in_progress() -> bool:
-    return maintenance_owner() is not None
+def maintenance_in_progress(repo_path: Optional[str] = None) -> bool:
+    return maintenance_owner(repo_path) is not None
 
 
 @contextmanager
-def repository_maintenance(owner: str, ttl: int = DEFAULT_TTL_SECONDS):
+def repository_maintenance(
+    owner: str, ttl: int = DEFAULT_TTL_SECONDS, repo_path: Optional[str] = None
+):
     """Claim the repository for exclusive maintenance.
 
     Yields a `heartbeat()` callable — call it between long steps so the TTL
@@ -77,9 +91,10 @@ def repository_maintenance(owner: str, ttl: int = DEFAULT_TTL_SECONDS):
     caller decides whether to proceed. Losing the race means another prune is
     already running, which is a reason to skip, not to crash.
     """
+    key = maintenance_key(repo_path)
     token = f"{owner}:{uuid.uuid4().hex}"
     try:
-        acquired = redis_client.set(MAINTENANCE_KEY, token, nx=True, ex=ttl)
+        acquired = redis_client.set(key, token, nx=True, ex=ttl)
     except Exception as e:
         logger.warning(f"Could not claim the repository maintenance flag: {e}")
         acquired = None
@@ -92,18 +107,18 @@ def repository_maintenance(owner: str, ttl: int = DEFAULT_TTL_SECONDS):
         try:
             # Only extends our own claim. If the TTL lapsed and someone else
             # took it, silently refreshing theirs would give two owners.
-            if maintenance_owner() == token:
-                redis_client.expire(MAINTENANCE_KEY, ttl)
+            if maintenance_owner(repo_path) == token:
+                redis_client.expire(key, ttl)
         except Exception as e:
             logger.warning(f"Could not refresh the repository maintenance flag: {e}")
 
     try:
         yield heartbeat
     finally:
-        _release(token)
+        _release(token, key)
 
 
-def _release(token: str) -> None:
+def _release(token: str, key: str = MAINTENANCE_KEY) -> None:
     """Delete the flag, but only if it is still ours.
 
     Compare-and-delete in Lua, for the same reason the alert sweep does it: a
@@ -116,6 +131,6 @@ def _release(token: str) -> None:
         "return redis.call('del', KEYS[1]) else return 0 end"
     )
     try:
-        redis_client.eval(script, 1, MAINTENANCE_KEY, token)
+        redis_client.eval(script, 1, key, token)
     except Exception as e:
         logger.warning(f"Could not release the repository maintenance flag: {e}")
