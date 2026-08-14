@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+from core import repo_paths
+
 logger = logging.getLogger(__name__)
 
 TAG_PREFIX = "edge-bro"
@@ -35,11 +37,29 @@ ORCHESTRATOR_AUTHORIZED_KEYS = "/root/.ssh/authorized_keys"
 #: no second credential to the fleet.
 ORCHESTRATOR_PRIVATE_KEY = "/root/.ssh/id_ed25519"
 
-# Must stay byte-identical to the option string already deployed on the fleet.
-BORG_SERVE_OPTIONS = (
-    'command="borg serve --restrict-to-path /data/borg/fleet",'
-    "no-port-forwarding,no-X11-forwarding,no-pty"
-)
+def _borg_serve_options() -> str:
+    """The forced command every node and kiosk key is restricted to.
+
+    One `--restrict-to-path` per shard: a node cannot know which repository it
+    will be routed to from the key alone, and borg accepts the flag repeatedly.
+    This grants no access that did not already exist — before sharding, one
+    repository held every node's archives and every node's key could reach all
+    of it.
+
+    Changing this string changes what already-deployed keys are allowed to
+    reach, so anything that alters it has to re-run `authorize` across the
+    fleet. See scripts/reauthorize_shard_access.py.
+    """
+    restrictions = " ".join(
+        f"--restrict-to-path {path}" for path in repo_paths.all_shard_paths()
+    )
+    return (
+        f'command="borg serve {restrictions}",'
+        "no-port-forwarding,no-X11-forwarding,no-pty"
+    )
+
+
+BORG_SERVE_OPTIONS = _borg_serve_options()
 
 KEY_TYPES = frozenset({
     "ssh-rsa",

@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from core import repo_lock, repo_paths
+from core import repo_lock, repo_paths, ssh_keys
 
 
 class FakeNode:
@@ -89,6 +89,45 @@ def test_a_node_stored_without_a_shard_lands_on_zero(tmp_path):
     assert node.borg_shard_index == 0
     assert repo_paths.repo_path_for_node(node) == "/data/borg/fleet"
     session.close()
+
+
+# --- the SSH forced command has to cover every shard ---
+
+def test_the_forced_command_restricts_to_every_shard():
+    """A node cannot know from its key which repository it will be routed to,
+    so the grant has to name all of them."""
+    for path in repo_paths.all_shard_paths():
+        assert f"--restrict-to-path {path}" in ssh_keys.BORG_SERVE_OPTIONS
+
+    assert ssh_keys.BORG_SERVE_OPTIONS.count("--restrict-to-path") == repo_paths.SHARD_COUNT
+    # The hardening flags are the other half of the grant and must survive.
+    assert "no-port-forwarding" in ssh_keys.BORG_SERVE_OPTIONS
+    assert "no-pty" in ssh_keys.BORG_SERVE_OPTIONS
+
+
+def test_reauthorizing_rewrites_an_existing_grant_rather_than_duplicating_it(tmp_path):
+    """What the shard-access migration script relies on: an entry whose options
+    changed is rewritten in place. A duplicate would leave the old, narrower
+    restriction in the file, still matching first."""
+    key = (
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGvSn4KpVvV3z0dQ0Kx7Zn8sVJ3xQ1lWc2mB4tYuIoPq"
+    )
+    path = str(tmp_path / "authorized_keys")
+    old_options = (
+        'command="borg serve --restrict-to-path /data/borg/fleet",'
+        "no-port-forwarding,no-X11-forwarding,no-pty"
+    )
+
+    ssh_keys.authorize(path, key, options=old_options, tag=ssh_keys.node_tag(7))
+    action = ssh_keys.authorize(
+        path, key, options=ssh_keys.BORG_SERVE_OPTIONS, tag=ssh_keys.node_tag(7)
+    )
+
+    assert action is ssh_keys.Action.REWRITTEN
+    entries = ssh_keys.list_entries(path)
+    assert len(entries) == 1
+    assert entries[0].options == ssh_keys.BORG_SERVE_OPTIONS
+    assert entries[0].tag == ssh_keys.node_tag(7)
 
 
 # --- one maintenance flag per repository ---
