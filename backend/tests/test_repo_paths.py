@@ -236,3 +236,87 @@ def test_the_node_response_carries_the_repository_path():
     )
     payload = schemas.NodeResponse.model_validate(node).model_dump()
     assert payload["borg_repo_path"] == repo_paths.shard_path(1)
+
+
+# --- changing BORG_SHARD_COUNT after nodes exist ----------------------------
+#
+# A deployment that starts small should be able to start at 1 — which is the
+# pre-sharding layout exactly — and add shards when it grows. Whether that is
+# safe is not a matter of taste: a node's shard is stored, never recomputed, so
+# raising the count leaves every existing node exactly where it was, while
+# lowering it strands any node above the new ceiling.
+
+
+def _with_shard_count(monkeypatch, count):
+    monkeypatch.setattr(repo_paths, "SHARD_COUNT", count)
+
+
+def test_a_single_shard_is_the_pre_sharding_layout(monkeypatch):
+    """The opt-out. One shard must be indistinguishable from before sharding
+    existed, or "turn it off" is not actually available."""
+    _with_shard_count(monkeypatch, 1)
+    assert repo_paths.all_shard_paths() == [repo_paths.LEGACY_REPO_PATH]
+    for node_id in (1, 7, 114, 2000):
+        assert repo_paths.shard_index_for_new_node(node_id) == 0
+        assert repo_paths.repo_path_for_node(FakeNode(0)) == repo_paths.LEGACY_REPO_PATH
+
+
+def test_raising_the_count_leaves_existing_nodes_where_they_are(monkeypatch):
+    """The growth path. Their shard is read from the column, not recomputed, so
+    a node enrolled under one setting keeps its repository under another."""
+    _with_shard_count(monkeypatch, 1)
+    settled = [FakeNode(repo_paths.shard_index_for_new_node(i)) for i in range(1, 20)]
+    before = [repo_paths.repo_path_for_node(n) for n in settled]
+
+    _with_shard_count(monkeypatch, 5)
+    assert [repo_paths.repo_path_for_node(n) for n in settled] == before
+
+
+def test_raising_the_count_routes_only_new_nodes_to_new_shards(monkeypatch):
+    _with_shard_count(monkeypatch, 5)
+    fresh = {repo_paths.shard_index_for_new_node(i) for i in range(100, 120)}
+    assert fresh == {0, 1, 2, 3, 4}
+
+
+def test_lowering_the_count_strands_the_nodes_above_it(monkeypatch):
+    """Why the docs may say "raise, never lower". The node still resolves to
+    its own repository, but the fleet-wide list no longer contains it: the
+    nightly prune skips it and, worse, the SSH forced command stops naming it,
+    so the node cannot write to its own archives."""
+    _with_shard_count(monkeypatch, 5)
+    stranded = FakeNode(4)
+    its_repo = repo_paths.repo_path_for_node(stranded)
+
+    _with_shard_count(monkeypatch, 2)
+    assert repo_paths.repo_path_for_node(stranded) == its_repo
+    assert its_repo not in repo_paths.all_shard_paths(), (
+        "this is the failure being pinned, not a passing condition"
+    )
+
+
+def test_the_grant_follows_the_count(monkeypatch):
+    """The forced command is derived, so raising the count is not complete
+    until the fleet's keys are re-authorized against the longer path list."""
+    _with_shard_count(monkeypatch, 1)
+    assert ssh_keys._borg_serve_options().count("--restrict-to-path") == 1
+
+    _with_shard_count(monkeypatch, 3)
+    assert ssh_keys._borg_serve_options().count("--restrict-to-path") == 3
+
+
+def test_nodes_left_above_the_ceiling_are_reported(monkeypatch):
+    """So lowering the count is caught at startup rather than as a restricted
+    path error on the next backup."""
+    _with_shard_count(monkeypatch, 2)
+    assert repo_paths.stranded_shards([0, 1, 4, 4, 3]) == [3, 4]
+
+
+def test_nothing_is_reported_when_every_node_fits(monkeypatch):
+    _with_shard_count(monkeypatch, 5)
+    assert repo_paths.stranded_shards([0, 1, 4]) == []
+
+
+def test_a_node_with_no_shard_recorded_is_not_stranded(monkeypatch):
+    """Null means pre-sharding, which is shard 0 — always valid."""
+    _with_shard_count(monkeypatch, 1)
+    assert repo_paths.stranded_shards([None, 0]) == []

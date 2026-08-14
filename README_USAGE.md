@@ -268,9 +268,56 @@ the entire duration of `borg create`, so with a single repository only one node
 in the whole fleet can be writing at any moment. Five shards buy five
 simultaneous writers for a few extra GB.
 
-A node's shard is `node.id % BORG_SHARD_COUNT`, fixed when it is enrolled.
-**Set `BORG_SHARD_COUNT` before adding nodes.** Changing it afterwards points
-existing nodes at a repository that does not hold their archives.
+A node's shard is `node.id % BORG_SHARD_COUNT`, worked out once when it is
+enrolled and then stored on the node, never recomputed.
+
+**You can raise `BORG_SHARD_COUNT` later. You cannot lower it.** Because the
+shard is stored, adding shards leaves every existing node in the repository
+that holds its archives and routes only new enrolments to the new ones. So a
+small deployment can start at `1` — byte-for-byte the layout that predates
+sharding — and add capacity when it grows:
+
+```bash
+# in .env
+BORG_SHARD_COUNT=2
+
+docker compose up -d --build
+docker compose exec backend python3 -m scripts.reauthorize_shard_access
+```
+
+The re-authorize step is required: the SSH forced command names the
+repositories a key may reach, and it is derived from the count.
+
+Lowering it strands every node already assigned above the new ceiling — their
+repository drops out of the fleet-wide list, so the nightly prune skips it and
+their key is no longer granted it, and the backup fails with a "restricted
+path" error that points nowhere near the setting responsible. The orchestrator
+checks for this on startup and says so plainly.
+
+#### How many nodes fit in one shard
+
+The limit is not fleet size, it is **backups per night**, because borg holds
+the repository lock for the whole of `borg create` and the nodes sharing a
+shard take it in turn.
+
+Measured on a 3.4 GB / 59k-file node over a LAN: **~31 s** for an incremental
+run, ~225 s for that node's very first backup. Budget 2–3x for slower links,
+larger filesystems and retries, and one shard absorbs roughly **300 backups per
+8-hour window**.
+
+What matters is how many nodes are *due on the same night*, which the backup
+group interval decides:
+
+| Backup interval | 2000 nodes → due per night | One shard enough? |
+|-----------------|----------------------------|-------------------|
+| Quarterly | ~22 | yes, easily |
+| Monthly | ~67 | yes |
+| Weekly | ~285 | yes, at the limit |
+| Nightly | 2000 | no — needs 5+ |
+
+The first backup of each node is the expensive one and it only happens once.
+Enrolling a large fleet is a one-off wave that can be left to run outside the
+normal window; it does not size the steady state.
 
 ### 4.4 Default backup exclusions
 

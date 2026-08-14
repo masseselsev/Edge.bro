@@ -59,6 +59,23 @@ def repo_path_for_node(node) -> str:
     return shard_path(getattr(node, "borg_shard_index", 0) or 0)
 
 
+def stranded_shards(shard_indexes) -> list:
+    """Shards that hold nodes but are no longer part of the fleet.
+
+    `SHARD_COUNT` can safely be *raised* on a running deployment: a node's shard
+    is stored, never recomputed, so existing nodes stay in their repository and
+    only new enrolments reach the new shards. Lowering it is what breaks, and it
+    breaks quietly — the node still resolves to its own repository, but that
+    repository has dropped out of `all_shard_paths`, so the nightly prune skips
+    it and the SSH forced command stops naming it. The node cannot write to its
+    own archives and the failure says "restricted path", which points nowhere
+    near the setting that caused it.
+
+    Returns the offending indexes, sorted, so a caller can name them.
+    """
+    return sorted({i for i in shard_indexes if i is not None and i >= SHARD_COUNT})
+
+
 def is_initialized(path: str) -> bool:
     """Whether a path is a borg repository rather than an empty directory.
 

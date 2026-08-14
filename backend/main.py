@@ -94,6 +94,31 @@ def startup_db_init():
     except Exception as e:
         print(f"Error ensuring repository permissions on startup: {str(e)}")
 
+    # BORG_SHARD_COUNT can be raised on a running deployment; lowering it
+    # strands every node already assigned above the new ceiling, and the
+    # symptom is a "restricted path" error that points nowhere near the cause.
+    # Said once, loudly, at the only moment anyone is reading the logs for
+    # configuration problems.
+    try:
+        from core import repo_paths
+        from core.db_session import session_scope
+        import models as _models
+
+        with session_scope() as _db:
+            stranded = repo_paths.stranded_shards(
+                i for (i,) in _db.query(_models.Node.borg_shard_index).distinct()
+            )
+        if stranded:
+            print(
+                f"CONFIGURATION ERROR: BORG_SHARD_COUNT is {repo_paths.SHARD_COUNT}, but "
+                f"nodes are assigned to shard(s) {stranded}. Those nodes cannot back up "
+                f"or restore: their repository is no longer granted to their SSH key and "
+                f"the nightly prune will skip it. Raise BORG_SHARD_COUNT back to at least "
+                f"{max(stranded) + 1} and re-run scripts.reauthorize_shard_access."
+            )
+    except Exception as e:
+        print(f"Error checking shard assignment on startup: {str(e)}")
+
     # A restart is exactly what orphans a kiosk repository download: its
     # cleanup lives in the streaming generator, which a killed process never
     # gets to finish. Each leftover is as large as the archive it holds.

@@ -85,7 +85,7 @@ Seven containers in `docker-compose.yml`:
 - **Sharded repositories**: the fleet is spread over `BORG_SHARD_COUNT` independent Borg repositories (default 5). Borg holds a repository's lock for the *whole* of `borg create`, not a brief critical section, so a single repository means exactly one node in the fleet can be writing at any moment — regardless of what a group's concurrency limit says. Each shard is another genuinely parallel writer.
   - A node's shard is `node.id % BORG_SHARD_COUNT`, fixed at enrolment. Groups are freely reassignable and so cannot decide where a node's *data* lives; a node's identity is stable for its whole life.
   - Shard 0 **is** the pre-existing `/data/borg/fleet`, unrenamed and unmoved, so every existing node keeps backing up and restoring exactly where it already did.
-  - Changing `BORG_SHARD_COUNT` on a running fleet is not supported — archives do not follow a node to another repository.
+  - **`BORG_SHARD_COUNT` can be raised later, never lowered.** A node's shard is stored, not recomputed, so adding shards leaves every existing node in its own repository and routes only new enrolments to the new ones — re-run `scripts/reauthorize_shard_access.py` afterwards so the SSH grants name them. Lowering it strands every node already assigned above the new ceiling: their repository drops out of the fleet-wide list, the nightly prune skips it and their key is no longer granted it. The orchestrator refuses to stay quiet about that and reports it on startup.
 - **Cross-device deduplication**: nodes sharing a shard store identical OS files once.
   - 1st node in a shard: 55–65% compression savings (~6 GB → ~2.5 GB)
   - Each cloned node adds only ~100–200 MB
