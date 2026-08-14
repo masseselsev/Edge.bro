@@ -49,6 +49,11 @@ class NodeResponse(BaseModel):
     orchestrator_behind_nat: Optional[bool] = None
     # KiB/s. None = inherit the group limit, then unlimited.
     upload_rate_limit: Optional[int] = None
+    # Which repository holds this node's archives, resolved from its shard (see
+    # models.Node.borg_repo_path). Carried in the response because the restore
+    # kiosk builds its own borg URL and has no way to derive the shard layout —
+    # before this it assumed every node lived in the pre-sharding repository.
+    borg_repo_path: Optional[str] = None
 
     class Config:
         from_attributes = True

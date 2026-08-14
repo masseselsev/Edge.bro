@@ -332,12 +332,18 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
         hostname = None
         partitions = None
         efi_uuid = "458C-37BB"
+        server_repo_path = None
 
         # Resolve hostname
         nodes = get_kiosk_nodes(mode=active_mode)
         for n in nodes:
             if n["id"] == req.node_id:
                 hostname = n["hostname"].split(" (")[0]
+                # Which repository on the orchestrator holds this node's
+                # archives. The orchestrator shards them, and only it knows the
+                # layout; an orchestrator older than sharding omits the field
+                # and every node is in the one repository below.
+                server_repo_path = n.get("borg_repo_path")
                 break
 
         if not hostname:
@@ -367,7 +373,9 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
         # Resolve repository path and load layout
         if active_mode == "online":
             log_callback("Using online restore from orchestrator.")
-            repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}/data/borg/fleet"
+            remote_repo = server_repo_path or "/data/borg/fleet"
+            repo_path = f"ssh://borg@{orchestrator_ip}:{orchestrator_ssh_port}{remote_repo}"
+            log_callback(f"Orchestrator repository for this node: {remote_repo}")
         else:
             if archive_exists_locally:
                 log_callback(f"Archive {req.archive_name} found in local USB cache. Using offline restore.")

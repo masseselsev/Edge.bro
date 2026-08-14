@@ -196,3 +196,43 @@ def test_a_shards_flag_is_released_after_its_prune(fake_redis):
         pass
     assert not repo_lock.maintenance_in_progress("/data/borg/shard-3")
     assert fake_redis.store == {}
+
+
+# --- The repository path the restore kiosk is told to use -------------------
+#
+# The kiosk builds its own `ssh://borg@orchestrator/<path>` URL and has no way
+# to derive the shard layout: it knows a node's id and hostname, not the
+# orchestrator's `BORG_SHARD_COUNT` or its directory convention. It used to
+# assume every node lived in the pre-sharding repository, which is correct for
+# shard 0 and silently wrong for every other node — "archive does not exist",
+# at a customer site, with the disk already wiped. So the orchestrator states
+# the path in the node payload the kiosk reads.
+
+
+def test_a_node_reports_the_repository_its_shard_resolves_to():
+    import models
+
+    node = models.Node(hostname="ws-1", ip_address="10.0.0.1", borg_shard_index=3)
+    assert node.borg_repo_path == repo_paths.shard_path(3)
+
+
+def test_a_shard_zero_node_reports_the_pre_sharding_repository():
+    import models
+
+    node = models.Node(hostname="ws-0", ip_address="10.0.0.2", borg_shard_index=0)
+    assert node.borg_repo_path == repo_paths.LEGACY_REPO_PATH
+
+
+def test_the_node_response_carries_the_repository_path():
+    """Serialization is the part that actually reaches the kiosk: a property
+    the response model does not declare is a property the kiosk never sees."""
+    import models
+    import schemas
+
+    node = models.Node(
+        id=11, hostname="ws-11", ip_address="10.0.0.11", ssh_port=22,
+        status="READY", disk_type="SSD", borg_shard_index=1,
+        backup_paused=False, backup_today=False, missed_window=False,
+    )
+    payload = schemas.NodeResponse.model_validate(node).model_dump()
+    assert payload["borg_repo_path"] == repo_paths.shard_path(1)

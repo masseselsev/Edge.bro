@@ -58,6 +58,12 @@ export interface Node {
   orchestrator_behind_nat?: boolean | null;
   /** KiB/s. null = inherit the group limit, then unlimited. */
   upload_rate_limit?: number | null;
+  /**
+   * Absolute path of the borg repository holding this node's archives,
+   * resolved from its shard. Read by the restore kiosk, which builds its own
+   * borg URL and cannot derive the orchestrator's shard layout.
+   */
+  borg_repo_path?: string | null;
 }
 
 /** `schemas.BackupHistoryResponse`. */

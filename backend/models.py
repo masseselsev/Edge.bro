@@ -177,6 +177,20 @@ class Node(Base):
     # leaving an empty panel unexplained.
     monitoring_capabilities = Column(JSON, nullable=True)
 
+    @property
+    def borg_repo_path(self) -> str:
+        """Absolute path of the repository holding this node's archives.
+
+        Derived from `borg_shard_index` rather than stored, so it cannot drift
+        from the column. It is a property on the model, not a field computed in
+        a router, because `NodeResponse` is returned from a dozen places and
+        `from_attributes` picks this up in all of them — including the node list
+        the restore kiosk reads, which is the one consumer that cannot work out
+        the shard layout on its own.
+        """
+        from core import repo_paths
+        return repo_paths.repo_path_for_node(self)
+
 
 class BackupHistory(Base):
     """
