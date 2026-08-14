@@ -53,6 +53,13 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
+      # Must be identical in every service: backend derives the SSH
+      # forced command from it while the workers route nodes by it.
+      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-5}
+      BORG_LOCK_WAIT_SECONDS: ${BORG_LOCK_WAIT_SECONDS:-600}
+      BORG_MAINTENANCE_TTL: ${BORG_MAINTENANCE_TTL:-900}
+      BORG_DELETE_BATCH: ${BORG_DELETE_BATCH:-200}
+      BORG_PRUNE_DRY_RUN: ${BORG_PRUNE_DRY_RUN:-}
       ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
       BORG_HOST_DATA_PATH: ${BORG_HOST_DATA_PATH}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
@@ -114,6 +121,13 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
+      # Must be identical in every service: backend derives the SSH
+      # forced command from it while the workers route nodes by it.
+      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-5}
+      BORG_LOCK_WAIT_SECONDS: ${BORG_LOCK_WAIT_SECONDS:-600}
+      BORG_MAINTENANCE_TTL: ${BORG_MAINTENANCE_TTL:-900}
+      BORG_DELETE_BATCH: ${BORG_DELETE_BATCH:-200}
+      BORG_PRUNE_DRY_RUN: ${BORG_PRUNE_DRY_RUN:-}
       ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
       PYTHONPATH: /app
       SUPERADMIN_USERNAME: ${SUPERADMIN_USERNAME}
@@ -159,6 +173,13 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
+      # Must be identical in every service: backend derives the SSH
+      # forced command from it while the workers route nodes by it.
+      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-5}
+      BORG_LOCK_WAIT_SECONDS: ${BORG_LOCK_WAIT_SECONDS:-600}
+      BORG_MAINTENANCE_TTL: ${BORG_MAINTENANCE_TTL:-900}
+      BORG_DELETE_BATCH: ${BORG_DELETE_BATCH:-200}
+      BORG_PRUNE_DRY_RUN: ${BORG_PRUNE_DRY_RUN:-}
       ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
       PYTHONPATH: /app
       SUPERADMIN_USERNAME: ${SUPERADMIN_USERNAME}
@@ -201,6 +222,13 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
+      # Must be identical in every service: backend derives the SSH
+      # forced command from it while the workers route nodes by it.
+      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-5}
+      BORG_LOCK_WAIT_SECONDS: ${BORG_LOCK_WAIT_SECONDS:-600}
+      BORG_MAINTENANCE_TTL: ${BORG_MAINTENANCE_TTL:-900}
+      BORG_DELETE_BATCH: ${BORG_DELETE_BATCH:-200}
+      BORG_PRUNE_DRY_RUN: ${BORG_PRUNE_DRY_RUN:-}
       ORCHESTRATOR_IP: ${ORCHESTRATOR_IP}
       PYTHONPATH: /app
       SUPERADMIN_USERNAME: ${SUPERADMIN_USERNAME}
