@@ -294,30 +294,39 @@ their key is no longer granted it, and the backup fails with a "restricted
 path" error that points nowhere near the setting responsible. The orchestrator
 checks for this on startup and says so plainly.
 
-#### How many nodes fit in one shard
+#### How many shards do you need
 
-The limit is not fleet size, it is **backups per night**, because borg holds
-the repository lock for the whole of `borg create` and the nodes sharing a
-shard take it in turn.
+**Not one per N nodes.** Backup groups spread the fleet across weeks and months
+— that is what `interval`, `target_week` and `randomize_days` are for, and
+Settings → Scheduler Load shows the resulting calendar — so the number of
+backups due on any one night is small by design and is rarely the constraint.
 
-Measured on a 3.4 GB / 59k-file node over a LAN: **~31 s** for an incremental
-run, ~225 s for that node's very first backup. Budget 2–3x for slower links,
-larger filesystems and retries, and one shard absorbs roughly **300 backups per
-8-hour window**.
+What sizes the shard count is **peak concurrency**, because backups landing on
+one repository run strictly one at a time: borg holds its lock for the whole of
+`borg create`. A group with `concurrency_limit: 5` on a single shard gets one
+writer, not five.
 
-What matters is how many nodes are *due on the same night*, which the backup
-group interval decides:
+> **Rule of thumb: set `BORG_SHARD_COUNT` to the largest `concurrency_limit`
+> any of your groups uses.** The default of 5 matches the default group limit.
+> Groups capped at 2 need only 2 shards.
 
-| Backup interval | 2000 nodes → due per night | One shard enough? |
-|-----------------|----------------------------|-------------------|
-| Quarterly | ~22 | yes, easily |
-| Monthly | ~67 | yes |
-| Weekly | ~285 | yes, at the limit |
-| Nightly | 2000 | no — needs 5+ |
+The Scheduler Load calendar accounts for this — a group's usable concurrency is
+reported as the smaller of its limit and the shard count, so a plan that would
+overrun a serialised window is shown as not fitting rather than looking fine.
 
-The first backup of each node is the expensive one and it only happens once.
-Enrolling a large fleet is a one-off wave that can be left to run outside the
-normal window; it does not size the steady state.
+For reference, measured on a 3.4 GB / 59k-file node over a LAN: **~31 s** for an
+incremental run, ~225 s for that node's first backup. Against the default
+02:00–05:00 window that is a few hundred serialised backups a night per shard,
+which a spread schedule will not come close to.
+
+The one place more shards genuinely pay off is **onboarding**. First backups
+are the expensive ones and they all fall due at once: 2000 nodes × ~225 s is
+about five days serialised on one shard, roughly one on five. That wave runs
+once and can be left outside the normal window, so it is a reason to start with
+more shards, not a reason to keep them forever.
+
+If in doubt, start low. `BORG_SHARD_COUNT` can be raised later and each shard
+costs one extra copy of the base image.
 
 ### 4.4 Default backup exclusions
 

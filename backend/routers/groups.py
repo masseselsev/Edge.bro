@@ -18,7 +18,7 @@ from core.schedule_slots import (
     parse_window,
     week_of_month,
 )
-from core import scheduler
+from core import repo_paths, scheduler
 from core.schedule_estimate import DEFAULT_BACKUP_MINUTES, estimate_node_backup_minutes
 
 from auth import require_admin
@@ -180,6 +180,11 @@ def get_scheduler_load(db: Session = Depends(get_db)):
 
     Recurrence is evaluated with core.schedule_slots, the same module the real
     scheduler uses, so this projection cannot drift from what will actually run.
+
+    A group's usable concurrency is capped by `BORG_SHARD_COUNT`. Permitting
+    five parallel backups does not produce five if they all queue for one
+    repository lock, and reporting capacity the storage cannot deliver is how a
+    plan that overruns its window looks fine on the calendar.
     """
     target_tz = get_tzinfo('Browser Local', db)
     now_target = datetime.now(target_tz)
@@ -259,6 +264,14 @@ def get_scheduler_load(db: Session = Depends(get_db)):
         concurrency = group.concurrency_limit or 5
         if group.upload_rate_limit:
             concurrency = min(concurrency, max(1, group.upload_rate_limit // 2048))
+        # Capped by the number of repositories, because that is the real ceiling
+        # on parallel writers: borg holds a repository's lock for the whole of
+        # `borg create`, so backups landing on one shard run one at a time no
+        # matter what the group permits. Without this the projection multiplied
+        # the window by a concurrency the storage cannot deliver and reported a
+        # day as fitting when it would overrun — a five-fold overstatement on a
+        # single-shard install with the default limit of 5.
+        concurrency = min(concurrency, repo_paths.SHARD_COUNT)
 
         busiest_count, busiest_hours = 0, 0.0
         for count, hours in bucket.values():
