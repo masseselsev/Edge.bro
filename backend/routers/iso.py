@@ -345,6 +345,58 @@ def download_kiosk_packages(os_version: str, target_dir: str):
         logger.warning(f"Failed to download offline packages for {release}: {e}")
 
 
+#: Where the repack builds the mini-repo the kiosk downloads, and the private
+#: HOME borg gets so its cache and security history do not collide with the
+#: orchestrator's own.
+DOWNLOAD_TEMP_PARENT = "/data/borg/tmp"
+DOWNLOAD_TEMP_PREFIX = "download_"
+DOWNLOAD_HOME_PREFIX = "/tmp/borg_home_"
+
+#: A build older than this cannot still be serving anyone. A repack takes
+#: minutes and the kiosk's own read timeout is five, so half a day is far past
+#: any download that is still alive, while still reclaiming the space the same
+#: day rather than at the next restart.
+STALE_DOWNLOAD_AGE_SECONDS = 12 * 3600
+
+
+def sweep_stale_download_temps(max_age_seconds: int = STALE_DOWNLOAD_AGE_SECONDS) -> int:
+    """Delete mini-repo builds that no download can still be reading.
+
+    The normal cleanup is the `finally` in the streaming generator, and it
+    handles the normal endings — including a client that disconnects mid
+    transfer, which closes the generator. What it cannot handle is the process
+    not living to run it: a backend restarted or OOM-killed during a download
+    leaves the whole build behind, and each one is as large as the archive.
+    Nine of them had accumulated on a three-node deployment.
+
+    Age is the only safe discriminator. There is no registry of live downloads,
+    and a build's directory looks identical whether it is being streamed or was
+    abandoned an hour ago.
+
+    Never raises: this is opportunistic housekeeping on the way to doing the
+    thing the caller actually asked for.
+    """
+    import glob
+    import time as _time
+
+    removed = 0
+    cutoff = _time.time() - max_age_seconds
+    patterns = (
+        os.path.join(DOWNLOAD_TEMP_PARENT, f"{DOWNLOAD_TEMP_PREFIX}*"),
+        f"{DOWNLOAD_HOME_PREFIX}*",
+    )
+    for pattern in patterns:
+        for path in glob.glob(pattern):
+            try:
+                if os.path.getmtime(path) > cutoff:
+                    continue
+                shutil.rmtree(path, ignore_errors=True)
+                removed += 1
+            except OSError:
+                continue
+    return removed
+
+
 @router.get("/repos/{hostname}/download")
 def download_repo(
     hostname: str,
@@ -354,6 +406,11 @@ def download_repo(
     db: Session = Depends(get_db),
     auth = Depends(require_kiosk_or_admin)
 ):
+    # Before building another one, reclaim any that were abandoned. Doing it
+    # here as well as at startup catches the case where the process survives
+    # but the download did not.
+    sweep_stale_download_temps()
+
     node = db.query(models.Node).filter(models.Node.hostname == hostname).first()
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")

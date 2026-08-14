@@ -206,3 +206,84 @@ def test_the_settings_spelling_is_translated_for_borg():
 
     assert compression.to_borg_arg("zstd:3") == "zstd,3"
     assert compression.to_borg_arg("lz4") == "lz4"
+
+
+# --- abandoned mini-repo builds ---------------------------------------------
+#
+# The repack writes the whole archive to disk before streaming it, and cleans up
+# in the generator's `finally`. That covers every ending the process lives to
+# see, including a client disconnecting mid-transfer. It does not cover the
+# process not living: a backend restarted or OOM-killed during a download leaves
+# a build as large as the archive behind. Nine had accumulated on a three-node
+# deployment before anyone looked.
+
+
+def _make_build(tmp_path, name, age_seconds):
+    import time as _time
+
+    d = tmp_path / name
+    d.mkdir()
+    (d / "data").write_bytes(b"x" * 1024)
+    stamp = _time.time() - age_seconds
+    os.utime(d, (stamp, stamp))
+    return d
+
+
+def test_an_abandoned_build_is_reclaimed(tmp_path, monkeypatch):
+    from routers import iso
+
+    monkeypatch.setattr(iso, "DOWNLOAD_TEMP_PARENT", str(tmp_path))
+    monkeypatch.setattr(iso, "DOWNLOAD_HOME_PREFIX", str(tmp_path / "borg_home_"))
+    old = _make_build(tmp_path, "download_dead", age_seconds=13 * 3600)
+
+    assert iso.sweep_stale_download_temps() == 1
+    assert not old.exists()
+
+
+def test_a_download_still_in_flight_is_left_alone(tmp_path, monkeypatch):
+    """Age is the only discriminator available, so the threshold has to be well
+    past any live transfer. A sweep that took a running download's directory
+    would fail the restore it is in the middle of serving."""
+    from routers import iso
+
+    monkeypatch.setattr(iso, "DOWNLOAD_TEMP_PARENT", str(tmp_path))
+    monkeypatch.setattr(iso, "DOWNLOAD_HOME_PREFIX", str(tmp_path / "borg_home_"))
+    live = _make_build(tmp_path, "download_live", age_seconds=120)
+
+    assert iso.sweep_stale_download_temps() == 0
+    assert live.exists()
+
+
+def test_only_the_repacks_own_directories_are_touched(tmp_path, monkeypatch):
+    """It sweeps a directory shared with the borg repositories themselves."""
+    from routers import iso
+
+    monkeypatch.setattr(iso, "DOWNLOAD_TEMP_PARENT", str(tmp_path))
+    monkeypatch.setattr(iso, "DOWNLOAD_HOME_PREFIX", str(tmp_path / "borg_home_"))
+    bystander = _make_build(tmp_path, "fleet", age_seconds=400 * 24 * 3600)
+
+    iso.sweep_stale_download_temps()
+    assert bystander.exists(), "the sweep deleted something that was not its own build"
+
+
+def test_the_private_borg_home_goes_with_it(tmp_path, monkeypatch):
+    """Each build gets a HOME for borg's cache; leaving those behind leaks too,
+    and they are keyed by the same uuid."""
+    from routers import iso
+
+    monkeypatch.setattr(iso, "DOWNLOAD_TEMP_PARENT", str(tmp_path / "repos"))
+    (tmp_path / "repos").mkdir()
+    monkeypatch.setattr(iso, "DOWNLOAD_HOME_PREFIX", str(tmp_path / "borg_home_"))
+    home = _make_build(tmp_path, "borg_home_dead", age_seconds=13 * 3600)
+
+    assert iso.sweep_stale_download_temps() == 1
+    assert not home.exists()
+
+
+def test_a_missing_directory_is_not_an_error(tmp_path, monkeypatch):
+    """Housekeeping on the way to the real work must never be what fails it."""
+    from routers import iso
+
+    monkeypatch.setattr(iso, "DOWNLOAD_TEMP_PARENT", str(tmp_path / "does-not-exist"))
+    monkeypatch.setattr(iso, "DOWNLOAD_HOME_PREFIX", str(tmp_path / "nope_"))
+    assert iso.sweep_stale_download_temps() == 0

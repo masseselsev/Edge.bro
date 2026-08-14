@@ -94,6 +94,17 @@ def startup_db_init():
     except Exception as e:
         print(f"Error ensuring repository permissions on startup: {str(e)}")
 
+    # A restart is exactly what orphans a kiosk repository download: its
+    # cleanup lives in the streaming generator, which a killed process never
+    # gets to finish. Each leftover is as large as the archive it holds.
+    try:
+        from routers.iso import sweep_stale_download_temps
+        reclaimed = sweep_stale_download_temps()
+        if reclaimed:
+            print(f"Removed {reclaimed} abandoned repository download(s) on startup.")
+    except Exception as e:
+        print(f"Error sweeping abandoned repository downloads on startup: {str(e)}")
+
     # Clear any stale download lock file on startup. If a download was in progress, auto-resume it.
     try:
         lock_path = paths.DOWNLOAD_LOCK_PATH
