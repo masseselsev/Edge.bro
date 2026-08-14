@@ -484,3 +484,21 @@ def test_an_empty_token_file_authenticates_nothing(db_session, tmp_path, monkeyp
         with pytest.raises(HTTPException) as excinfo:
             auth.get_current_auth(request=_auth_request(candidate), db=db_session)
         assert excinfo.value.status_code == 401
+
+
+def test_a_template_sentinel_left_by_an_upgrade_is_refused(db_session, tmp_path, monkeypatch):
+    """Every version before this one wrote the template sentinel into the token
+    file on each base-image rebuild, so upgraded installs have the literal
+    "TEMPLATE" sitting on disk. Found on a real deployment: removing the
+    hardcoded fallback was not enough, because the file itself was poisoned."""
+    from fastapi import HTTPException
+    import auth
+    import iso_tasks
+
+    monkeypatch.setattr(iso_tasks, "CACHE_DIR", str(tmp_path))
+    (tmp_path / "auth_token.txt").write_text(iso_tasks.TEMPLATE_BUILD)
+
+    for candidate in (iso_tasks.TEMPLATE_BUILD, "template", "TeMpLaTe"):
+        with pytest.raises(HTTPException) as excinfo:
+            auth.get_current_auth(request=_auth_request(candidate), db=db_session)
+        assert excinfo.value.status_code == 401

@@ -128,11 +128,19 @@ def get_current_auth(request: Request = None, db: Session = Depends(get_db)) -> 
         # `?token=` query parameter, and the Kiosk it returns can read and
         # download the contents of any node's archives.
         try:
-            from iso_tasks import CACHE_DIR
+            from iso_tasks import CACHE_DIR, TEMPLATE_BUILD
             token_path = os.path.join(CACHE_DIR, "auth_token.txt")
             if os.path.exists(token_path):
                 with open(token_path, "r") as f:
                     expected_token = f.read().strip()
+                # Upgrades inherit a poisoned file: every version before this
+                # one wrote the template sentinel here on each base-image
+                # rebuild, so the word "TEMPLATE" is sitting in it on existing
+                # installs and would keep working as a password. Refused
+                # outright rather than left to a cleanup step someone has to
+                # remember.
+                if expected_token.upper() == TEMPLATE_BUILD.upper():
+                    expected_token = ""
                 # Compared without regard to case because the operator types it
                 # off a printed label, and in constant time because this is a
                 # bare secret comparison reachable before authentication.
