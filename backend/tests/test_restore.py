@@ -357,7 +357,7 @@ def test_patch_network_configs_preserves_static_and_aliases(
         "iface eno1 inet dhcp\n"
         "auto eno1:1\n"
         "iface eno1:1 inet static\n"
-        "    address 192.168.222.33\n"
+        "    address 192.0.2.33\n"
         "auto enp1s0\n"
         "iface enp1s0 inet static\n"
         "    address 192.168.14.1\n"
@@ -544,7 +544,7 @@ def test_node_checkin_restored_flow(db_session, monkeypatch):
     # 1. Create a node with RESTORED status and a saved license
     node = models.Node(
         hostname="WS-RESTORED-TEST",
-        ip_address="192.168.222.99",
+        ip_address="192.0.2.99",
         ssh_port=22,
         status="RESTORED",
         hasp_runtime_version="10.21",
@@ -588,7 +588,7 @@ def test_checkin_restored_endpoint_flow(db_session, monkeypatch):
     # Create node in READY status
     node = models.Node(
         hostname="WS-CHECKIN-TEST",
-        ip_address="192.168.222.98",
+        ip_address="192.0.2.98",
         status="READY"
     )
     db_session.add(node)
@@ -602,7 +602,7 @@ def test_checkin_restored_endpoint_flow(db_session, monkeypatch):
             self.tasks.append((func, args, kwargs))
             
     bg_tasks = MockBackgroundTasks()
-    req = schemas.NodeCheckinRequest(hostname="WS-CHECKIN-TEST", ip_address="192.168.222.98")
+    req = schemas.NodeCheckinRequest(hostname="WS-CHECKIN-TEST", ip_address="192.0.2.98")
     
     res = checkin_restored_node(req, background_tasks=bg_tasks, request=None, db=db_session)
     assert res["status"] == "success"
@@ -637,7 +637,7 @@ def test_background_license_checks_and_locks(mock_run, mock_redis, db_session, m
     # Create node in RESTORED status
     node_restored = models.Node(
         hostname="TEST-RESTORED-NODE",
-        ip_address="192.168.222.190",
+        ip_address="192.0.2.190",
         status="RESTORED",
         hasp_runtime_version="3.2.0-2"
     )
@@ -662,7 +662,7 @@ def test_background_license_checks_and_locks(mock_run, mock_redis, db_session, m
     # Create node in READY status
     node_ready = models.Node(
         hostname="TEST-READY-NODE",
-        ip_address="192.168.222.191",
+        ip_address="192.0.2.191",
         status="READY",
         hasp_runtime_version="3.2.0-2"
     )

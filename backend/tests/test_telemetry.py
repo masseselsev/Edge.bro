@@ -5,7 +5,7 @@ import pytest
 
 from core import telemetry, thermal
 
-# Two consecutive lines captured from the live test node WS20240170 on
+# Two consecutive lines captured from a live node on
 # 2026-08-12. Kept verbatim so the parser is exercised against what the
 # collector actually emits on real hardware, not only against what the tests
 # think it emits.

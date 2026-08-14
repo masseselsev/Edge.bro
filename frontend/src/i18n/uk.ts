@@ -207,7 +207,7 @@ const uk: Record<string, string> = {
   saveSettings: 'Зберегти налаштування',
   settingsSuccess: 'Налаштування успішно збережено.',
   orchestratorIpLabelSettings: 'IP оркестратора (для підключення вузлів)',
-  orchestratorIpPlaceholderSettings: 'напр. 192.168.222.2 (залиште порожнім для автовизначення)',
+  orchestratorIpPlaceholderSettings: 'напр. 192.168.1.10 (залиште порожнім для автовизначення)',
   systemTimezone: 'Часовий пояс системи',
   groupTimezone: 'Часовий пояс групи',
   useBrowserLocal: 'Час браузера',

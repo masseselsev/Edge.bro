@@ -124,9 +124,9 @@ def get_network_status():
         wired_conn = {
             "device": "eth0",
             "connected": True,
-            "ip": "192.168.188.249",
+            "ip": "192.168.1.50",
             "netmask": "255.255.255.0",
-            "gateway": "192.168.188.1",
+            "gateway": "192.168.1.1",
             "dns_servers": ["8.8.8.8", "8.8.4.4"],
             "mode": "auto",
             "dns_mode": "auto"

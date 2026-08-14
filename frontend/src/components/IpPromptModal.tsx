@@ -51,7 +51,7 @@ export default function IpPromptModal({
               onChange={setOrchestratorIp}
               options={availableIps}
               required
-              placeholder="e.g. 192.168.222.2 (IP accessible to edge nodes)"
+              placeholder="e.g. 192.168.1.10 (IP accessible to edge nodes)"
             />
             <p className="text-[10px] text-zinc-500 mt-1">
               {t('orchestratorIpHint')}

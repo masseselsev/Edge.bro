@@ -207,7 +207,7 @@ const en: Record<string, string> = {
   saveSettings: 'Save Settings',
   settingsSuccess: 'Configuration saved successfully.',
   orchestratorIpLabelSettings: 'Orchestrator IP Address (for nodes connection)',
-  orchestratorIpPlaceholderSettings: 'e.g. 192.168.222.2 (leave blank to auto-detect)',
+  orchestratorIpPlaceholderSettings: 'e.g. 192.168.1.10 (leave blank to auto-detect)',
   systemTimezone: 'System Timezone',
   groupTimezone: 'Group Timezone',
   useBrowserLocal: 'Use Browser Local',

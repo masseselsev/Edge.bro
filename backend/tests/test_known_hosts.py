@@ -35,25 +35,25 @@ requires_ssh_keygen = pytest.mark.skipif(
 # --- host_spec ---------------------------------------------------------------
 
 def test_the_default_port_is_unbracketed():
-    assert known_hosts.host_spec("192.168.222.83", 22) == "192.168.222.83"
+    assert known_hosts.host_spec("192.0.2.83", 22) == "192.0.2.83"
 
 
 def test_a_non_default_port_is_bracketed():
     """OpenSSH stores non-standard-port entries as [host]:port; ssh-keygen -R
     hashes that exact string to find a match, so the format has to be exact."""
-    assert known_hosts.host_spec("192.168.222.83", 2222) == "[192.168.222.83]:2222"
+    assert known_hosts.host_spec("192.0.2.83", 2222) == "[192.0.2.83]:2222"
 
 
 # --- forget: no-op cases, no ssh-keygen needed -------------------------------
 
 def test_a_missing_known_hosts_file_is_a_quiet_no_op(known_hosts_file):
     assert not os.path.exists(known_hosts_file)
-    assert known_hosts.forget("192.168.222.83", 2222, known_hosts_file) is False
+    assert known_hosts.forget("192.0.2.83", 2222, known_hosts_file) is False
 
 
 def test_an_empty_known_hosts_file_is_a_quiet_no_op(known_hosts_file):
     open(known_hosts_file, "w").close()
-    assert known_hosts.forget("192.168.222.83", 2222, known_hosts_file) is False
+    assert known_hosts.forget("192.0.2.83", 2222, known_hosts_file) is False
 
 
 # --- forget: real removal, needs ssh-keygen ----------------------------------
@@ -61,24 +61,24 @@ def test_an_empty_known_hosts_file_is_a_quiet_no_op(known_hosts_file):
 @requires_ssh_keygen
 def test_a_matching_entry_is_removed(known_hosts_file):
     with open(known_hosts_file, "w") as f:
-        f.write(real_entry("[192.168.222.83]:2222"))
-        f.write(real_entry("[192.168.222.84]:2222"))  # a different node
+        f.write(real_entry("[192.0.2.83]:2222"))
+        f.write(real_entry("[192.0.2.84]:2222"))  # a different node
 
-    removed = known_hosts.forget("192.168.222.83", 2222, known_hosts_file)
+    removed = known_hosts.forget("192.0.2.83", 2222, known_hosts_file)
 
     assert removed is True
     remaining = open(known_hosts_file).read()
-    assert "192.168.222.84" not in remaining or True  # hashed; check by size instead
+    assert "192.0.2.84" not in remaining or True  # hashed; check by size instead
     assert os.path.getsize(known_hosts_file) > 0
 
 
 @requires_ssh_keygen
 def test_removing_the_only_entry_leaves_the_file_present_and_smaller(known_hosts_file):
     with open(known_hosts_file, "w") as f:
-        f.write(real_entry("[192.168.222.83]:2222"))
+        f.write(real_entry("[192.0.2.83]:2222"))
     before = os.path.getsize(known_hosts_file)
 
-    assert known_hosts.forget("192.168.222.83", 2222, known_hosts_file) is True
+    assert known_hosts.forget("192.0.2.83", 2222, known_hosts_file) is True
     assert os.path.getsize(known_hosts_file) < before
 
 
@@ -89,7 +89,7 @@ def test_an_absent_host_is_a_quiet_no_op_not_an_error(known_hosts_file):
         f.write(real_entry("[10.0.0.1]:2222"))
     before = os.path.getsize(known_hosts_file)
 
-    removed = known_hosts.forget("192.168.222.83", 2222, known_hosts_file)
+    removed = known_hosts.forget("192.0.2.83", 2222, known_hosts_file)
 
     assert removed is False
     assert os.path.getsize(known_hosts_file) == before
@@ -98,9 +98,9 @@ def test_an_absent_host_is_a_quiet_no_op_not_an_error(known_hosts_file):
 @requires_ssh_keygen
 def test_default_port_entries_are_matched_without_brackets(known_hosts_file):
     with open(known_hosts_file, "w") as f:
-        f.write(real_entry("192.168.222.83"))
+        f.write(real_entry("192.0.2.83"))
 
-    assert known_hosts.forget("192.168.222.83", 22, known_hosts_file) is True
+    assert known_hosts.forget("192.0.2.83", 22, known_hosts_file) is True
 
 
 @requires_ssh_keygen
@@ -108,17 +108,17 @@ def test_calling_forget_twice_is_safe(known_hosts_file):
     """Bootstrap calls this unconditionally on every run, including reruns
     where the entry is already gone."""
     with open(known_hosts_file, "w") as f:
-        f.write(real_entry("[192.168.222.83]:2222"))
+        f.write(real_entry("[192.0.2.83]:2222"))
 
-    assert known_hosts.forget("192.168.222.83", 2222, known_hosts_file) is True
-    assert known_hosts.forget("192.168.222.83", 2222, known_hosts_file) is False
+    assert known_hosts.forget("192.0.2.83", 2222, known_hosts_file) is True
+    assert known_hosts.forget("192.0.2.83", 2222, known_hosts_file) is False
 
 
 # --- forget: failure handling -------------------------------------------------
 
 def test_ssh_keygen_missing_from_path_fails_closed_not_raising(known_hosts_file, monkeypatch):
     with open(known_hosts_file, "w") as f:
-        f.write(real_entry("[192.168.222.83]:2222"))
+        f.write(real_entry("[192.0.2.83]:2222"))
 
     monkeypatch.setattr(known_hosts, "_TIMEOUT_SECONDS", 5)
 
@@ -127,25 +127,25 @@ def test_ssh_keygen_missing_from_path_fails_closed_not_raising(known_hosts_file,
 
     monkeypatch.setattr(known_hosts.subprocess, "run", explode)
 
-    assert known_hosts.forget("192.168.222.83", 2222, known_hosts_file) is False
+    assert known_hosts.forget("192.0.2.83", 2222, known_hosts_file) is False
 
 
 # --- record -------------------------------------------------------------------
 
 def test_record_clears_old_entry_and_appends_scanned_key(known_hosts_file, monkeypatch):
     with open(known_hosts_file, "w") as f:
-        f.write(real_entry("[192.168.222.83]:2222"))
+        f.write(real_entry("[192.0.2.83]:2222"))
 
     orig_run = subprocess.run
 
     def mock_run(cmd, *args, **kwargs):
         if "ssh-keyscan" in cmd:
-            return subprocess.CompletedProcess(cmd, 0, stdout="[192.168.222.83]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINEWKEY\n", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="[192.0.2.83]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINEWKEY\n", stderr="")
         return orig_run(cmd, *args, **kwargs)
 
     monkeypatch.setattr(known_hosts.subprocess, "run", mock_run)
 
-    success = known_hosts.record("192.168.222.83", 2222, known_hosts_file)
+    success = known_hosts.record("192.0.2.83", 2222, known_hosts_file)
     assert success is True
     content = open(known_hosts_file).read()
     assert "AAAAC3NzaC1lZDI1NTE5AAAAINEWKEY" in content

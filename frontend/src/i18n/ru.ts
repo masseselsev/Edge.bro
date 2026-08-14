@@ -207,7 +207,7 @@ const ru: Record<string, string> = {
   saveSettings: 'Сохранить настройки',
   settingsSuccess: 'Настройки успешно сохранены.',
   orchestratorIpLabelSettings: 'IP оркестратора (для подключения узлов)',
-  orchestratorIpPlaceholderSettings: 'напр. 192.168.222.2 (оставьте пустым для автоопределения)',
+  orchestratorIpPlaceholderSettings: 'напр. 192.168.1.10 (оставьте пустым для автоопределения)',
   systemTimezone: 'Часовой пояс системы',
   groupTimezone: 'Часовой пояс группы',
   useBrowserLocal: 'Браузерное время',

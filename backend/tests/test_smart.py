@@ -253,7 +253,7 @@ def test_a_drive_reporting_neither_family_at_all_has_no_integrity_subscore():
 def test_the_real_samsung_870_evo_capture_scores_as_healthy():
     """Golden-file regression test against the fleet's actual hardware.
 
-    Captured 2026-08-11 from a live EMBC-5000 test node (WS20240170) via
+    Captured from a live EMBC-5000 node via
     `smartctl -j -a /dev/sda`. Guards against ever losing coverage on the
     drive the fleet actually ships.
     """

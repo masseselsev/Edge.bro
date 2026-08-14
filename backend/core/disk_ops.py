@@ -565,7 +565,7 @@ def _extract_archive(
     reports less.
     """
     env = os.environ.copy()
-    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
+    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
     env["PYTHONUNBUFFERED"] = "1"
     # The repo is reached by a different path here than when it was written
     # (kiosk vs orchestrator), which borg treats as suspicious by default.

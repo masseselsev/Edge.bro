@@ -97,7 +97,7 @@ services:
         condition: service_healthy
     dns:
       - ${UPSTREAM_DNS:-8.8.8.8}
-      - ${SITE_DNS:-10.102.1.21}
+      - ${SITE_DNS:-${UPSTREAM_DNS:-8.8.8.8}}
 
   worker:
     build:
@@ -153,7 +153,7 @@ services:
         condition: service_healthy
     dns:
       - ${UPSTREAM_DNS:-8.8.8.8}
-      - ${SITE_DNS:-10.102.1.21}
+      - ${SITE_DNS:-${UPSTREAM_DNS:-8.8.8.8}}
 
   worker-periodic:
     build:
@@ -213,7 +213,7 @@ services:
         condition: service_healthy
     dns:
       - ${UPSTREAM_DNS:-8.8.8.8}
-      - ${SITE_DNS:-10.102.1.21}
+      - ${SITE_DNS:-${UPSTREAM_DNS:-8.8.8.8}}
 
   beat:
     build:
@@ -293,7 +293,7 @@ services:
       - apt-cache:/var/cache/apt-cacher-ng
     dns:
       - ${UPSTREAM_DNS:-8.8.8.8}
-      - ${SITE_DNS:-10.102.1.21}
+      - ${SITE_DNS:-${UPSTREAM_DNS:-8.8.8.8}}
 
 # Fixed volume names keep data attached even if the stack directory is renamed.
 # external: false lets Compose create them on first run.

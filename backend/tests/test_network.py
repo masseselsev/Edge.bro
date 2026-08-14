@@ -34,7 +34,7 @@ def test_get_network_status_mock_fallback(mock_check):
     res = get_network_status()
     # It should fall back to mock data
     assert res.wired.connected is True
-    assert res.wired.ip == "192.168.188.249"
+    assert res.wired.ip == "192.168.1.50"
     assert res.wifi.connected is False
 
 

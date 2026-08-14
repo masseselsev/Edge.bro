@@ -354,7 +354,7 @@ def run_offline_restore(task_id: str, req: RestoreRequest):
         archive_exists_locally = False
         if os.path.exists(local_repo):
             env = os.environ.copy()
-            env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
+            env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
             try:
                 # Add lock-wait parameter to prevent indefinite hangs
                 out = subprocess.check_output(
@@ -772,7 +772,7 @@ def get_mock_stats():
     
     if os.path.exists(repo_path):
         env = os.environ.copy()
-        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
+        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
         try:
             out = subprocess.check_output(["borg", "info", "--json", repo_path], env=env, text=True)
             data = json.loads(out)
@@ -848,7 +848,7 @@ def get_kiosk_local_history():
                 pass
 
         env = os.environ.copy()
-        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
+        env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
         try:
             out = subprocess.check_output(["borg", "list", "--json", repo_path], env=env, text=True)
             data = json.loads(out)
@@ -922,7 +922,7 @@ def get_local_history(node_id: int, mode: Optional[str] = None):
             pass
     
     env = os.environ.copy()
-    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "verysecureborgpassphrase")
+    env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
     try:
         out = subprocess.check_output(["borg", "list", "--json", repo_path], env=env, text=True)
         data = json.loads(out)

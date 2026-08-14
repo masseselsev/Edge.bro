@@ -54,7 +54,7 @@ REDIS_URL=redis://redis:6379/0
 BORG_PASSPHRASE=<strong_borg_passphrase>
 
 # ── Network ──
-ORCHESTRATOR_IP=192.168.222.2     # IP of this server, reachable by edge nodes
+ORCHESTRATOR_IP=192.168.1.10      # IP of this server, reachable by edge nodes
                                    # Can be changed later in Settings → UI
 
 # ── Superadmin credentials (first launch only) ──

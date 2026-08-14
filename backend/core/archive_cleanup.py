@@ -6,8 +6,8 @@ partway through leaves the last one in place. Dropping the database row
 without them would leave orphans nothing in the UI refers to any more.
 
 The matching rule is the part worth being careful about, so it is a pure
-function: `WS20240170-20260623124040` must claim its own checkpoints and
-nothing belonging to `WS20240170-20260623124041`.
+function: `host-a-20260623124040` must claim its own checkpoints and
+nothing belonging to `host-a-20260623124041`.
 """
 from __future__ import annotations
 
