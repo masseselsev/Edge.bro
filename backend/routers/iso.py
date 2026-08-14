@@ -15,6 +15,7 @@ from models import TaskLog
 from database import SessionLocal, get_db
 from sqlalchemy.orm import Session
 from auth import require_admin, require_kiosk_or_admin
+from core import repo_paths
 from core.borg_local import borg_kwargs
 import models
 import schemas
@@ -356,8 +357,8 @@ def download_repo(
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
 
-    shared_repo = "/data/borg/fleet"
-    if not os.path.exists(shared_repo) or not os.path.exists(os.path.join(shared_repo, "config")):
+    shared_repo = repo_paths.repo_path_for_node(node)
+    if not repo_paths.is_initialized(shared_repo):
         raise HTTPException(status_code=404, detail="Shared repository not found")
 
     # Get the list of archives for this node from the shared repository

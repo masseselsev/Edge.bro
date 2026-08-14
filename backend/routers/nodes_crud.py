@@ -17,7 +17,7 @@ import models
 import schemas
 from tasks import run_bootstrap_task, purge_node_archives
 from tasks.bootstrap import revoke_node_access_task
-from core import repo_usage, ssh_keys
+from core import repo_paths, repo_usage, ssh_keys
 from core.borg_local import borg_kwargs, grant_workdir
 from auth import require_admin, require_kiosk_or_admin
 from routers.deps import node_or_404
@@ -451,6 +451,14 @@ def add_node(payload: schemas.NodeCreate, request: Request = None, db: Session =
         db.commit()
         db.refresh(node)
 
+        # Needs the id, so it cannot be set before the flush. Persisted once
+        # here and never recalculated: a node's archives live in whichever
+        # repository it was assigned at enrolment, and recomputing later — after
+        # a change to BORG_SHARD_COUNT, say — would point it at a repository
+        # that does not hold them.
+        node.borg_shard_index = repo_paths.shard_index_for_new_node(node.id)
+        db.commit()
+
         # Store credentials in Redis for 24 hours for periodic auto-retry provisioning if offline
         creds = {
             "bootstrap_user": payload.bootstrap_user,
@@ -524,9 +532,9 @@ def delete_node(node_id: int, request: Request = None, db: Session = Depends(get
     """
     node = node_or_404(db, node_id)
     
-    # 1. Clean up node archives in the shared Borg repository
-    repo_path = "/data/borg/fleet"
-    if os.path.exists(repo_path) and os.path.exists(os.path.join(repo_path, "config")):
+    # 1. Clean up node archives in the Borg repository holding them
+    repo_path = repo_paths.repo_path_for_node(node)
+    if repo_paths.is_initialized(repo_path):
         try:
             env = os.environ.copy()
             env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")

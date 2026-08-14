@@ -13,7 +13,6 @@ class Settings(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     borg_ssh_port = Column(Integer, default=12345, nullable=False)
-    borg_repo_path = Column(String, default='/data/borg', nullable=False)
     keep_daily = Column(Integer, default=7, nullable=False)
     keep_weekly = Column(Integer, default=4, nullable=False)
     keep_monthly = Column(Integer, default=6, nullable=False)
@@ -131,6 +130,11 @@ class Node(Base):
     # Scheduler & Automated Backup fields
     # Indexed: the scheduler filters nodes by group on every tick.
     group_id = Column(Integer, ForeignKey('backup_groups.id'), nullable=True, index=True)
+    # Which borg repository holds this node's archives — see core/repo_paths.
+    # Assigned once at enrolment and never recomputed: the archives cannot
+    # follow a node to a different repository. Defaults to 0, the repository
+    # that predates sharding and the only one always present.
+    borg_shard_index = Column(Integer, nullable=False, server_default='0')
     backup_paused = Column(Boolean, default=False, nullable=False)
     backup_today = Column(Boolean, default=False, nullable=False)
     missed_window = Column(Boolean, default=False, nullable=False)

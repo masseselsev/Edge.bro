@@ -20,7 +20,6 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const { t, setLanguage } = useTranslation();
   const [activeSubTab, setActiveSubTab] = useState<'general' | 'admins' | 'audit' | 'kiosk_logs' | 'ssh_keys'>('general');
   const [sshPort, setSshPort] = useState(12345);
-  const [repoPath, setRepoPath] = useState('/data/borg');
   const [policyType, setPolicyType] = useState<'interval' | 'count' | 'timeframe'>('interval');
   const [policyKeepDaily, setPolicyKeepDaily] = useState(7);
   const [policyKeepWeekly, setPolicyKeepWeekly] = useState(4);
@@ -120,8 +119,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
     api.get<any>('/api/settings')
       .then(data => {
         setSshPort(data.borg_ssh_port);
-        setRepoPath(data.borg_repo_path);
-        
+
         const rp = data.retention_policy;
         if (rp) {
           setPolicyType(rp.type || 'interval');
@@ -208,7 +206,6 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
    */
   const buildSettingsPayload = (overrides: Record<string, any> = {}) => ({
     borg_ssh_port: sshPort,
-    borg_repo_path: repoPath,
     keep_daily: policyKeepDaily,
     keep_weekly: policyKeepWeekly,
     keep_monthly: policyKeepMonthly,

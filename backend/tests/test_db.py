@@ -34,7 +34,6 @@ def test_create_settings(db_session):
     """
     settings = models.Settings(
         borg_ssh_port=12345,
-        borg_repo_path="/data/borg",
         keep_daily=7,
         keep_weekly=4,
         keep_monthly=6,

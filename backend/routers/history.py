@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
-from core import archive_cleanup
+from core import archive_cleanup, repo_paths
 from database import get_db, log_user_action
 from auth import require_admin
 from routers.deps import node_or_404
@@ -77,7 +77,7 @@ def purge_failed(
             ),
         )
 
-    removed = _remove_leftovers([r.archive_name for r in records])
+    removed = _remove_leftovers(db, records)
 
     for record in records:
         db.delete(record)
@@ -120,7 +120,7 @@ def delete_history_record(
         )
 
     archive_name = record.archive_name
-    removed = _remove_leftovers([archive_name])
+    removed = _remove_leftovers(db, [record])
 
     db.delete(record)
     db.commit()
@@ -137,33 +137,46 @@ def delete_history_record(
     return schemas.PurgeFailedResponse(deleted=1, checkpoints_removed=removed)
 
 
-def _remove_leftovers(archive_names: list) -> int:
-    """Delete anything these failed runs left in the repository.
+def _remove_leftovers(db, records: list) -> int:
+    """Delete anything these failed runs left in their repositories.
 
     Usually nothing: a backup that fails before writing has no archive at all.
-    The repository is listed once and only actual matches are deleted, so the
-    common case costs a single read and no lock. Any failure here is logged and
-    swallowed — the record still goes, because leaving it in place would mean
-    the operator cannot clear a failure they can see.
+    Each repository is listed once and only actual matches are deleted, so the
+    common case costs one read per repository and no lock. Any failure here is
+    logged and swallowed — the record still goes, because leaving it in place
+    would mean the operator cannot clear a failure they can see.
+
+    Grouped by repository rather than run per record: a bulk purge spanning
+    several nodes can span several shards, and listing one repository tells us
+    nothing about archives in another.
     """
-    try:
-        present = archive_cleanup.list_repo_archives()
-    except Exception:
-        logger.exception("Could not list repository archives before deleting history")
-        return 0
+    by_repo: dict[str, list] = {}
+    for record in records:
+        node = db.query(models.Node).filter(models.Node.id == record.node_id).first()
+        repo = repo_paths.repo_path_for_node(node) if node else repo_paths.shard_path(0)
+        by_repo.setdefault(repo, []).append(record.archive_name)
 
-    if not present:
-        return 0
+    removed = 0
+    for repo, archive_names in by_repo.items():
+        try:
+            present = archive_cleanup.list_repo_archives(repo)
+        except Exception:
+            logger.exception("Could not list archives in %s before deleting history", repo)
+            continue
 
-    doomed = []
-    for name in archive_names:
-        doomed.extend(archive_cleanup.matching_archives(present, name))
+        if not present:
+            continue
 
-    if not doomed:
-        return 0
+        doomed = []
+        for name in archive_names:
+            doomed.extend(archive_cleanup.matching_archives(present, name))
 
-    try:
-        return archive_cleanup.delete_archives(doomed)
-    except Exception:
-        logger.exception("Could not delete leftover archives %s", doomed)
-        return 0
+        if not doomed:
+            continue
+
+        try:
+            removed += archive_cleanup.delete_archives(doomed, repo)
+        except Exception:
+            logger.exception("Could not delete leftover archives %s from %s", doomed, repo)
+
+    return removed

@@ -18,9 +18,9 @@ import subprocess
 import time
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+from core import repo_paths
 
-DEFAULT_REPO_PATH = "/data/borg/fleet"
+logger = logging.getLogger(__name__)
 
 #: Walking a repository of thousands of segment files is not free, and the
 #: number moves slowly. Re-measuring once every few minutes is plenty.
@@ -31,7 +31,9 @@ _size_cache: dict[str, tuple[float, Optional[int]]] = {}
 
 
 def repo_path() -> str:
-    return os.getenv("BORG_REPO_PATH", DEFAULT_REPO_PATH)
+    """Shard 0, for callers measuring a single repository with none specified.
+    Fleet-wide totals sum over core.repo_paths.all_shard_paths() instead."""
+    return repo_paths.shard_path(0)
 
 
 def disk_usage(path: Optional[str] = None) -> dict[str, Optional[int]]:

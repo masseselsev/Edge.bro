@@ -17,11 +17,10 @@ import os
 import subprocess
 from typing import Iterable, Optional
 
+from core import repo_paths
 from core.borg_local import borg_kwargs
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_REPO_PATH = "/data/borg/fleet"
 
 _LIST_TIMEOUT_SECONDS = 60
 _DELETE_TIMEOUT_SECONDS = 120
@@ -44,7 +43,10 @@ def matching_archives(repo_archives: Iterable[str], archive_name: str) -> list[s
 
 
 def repo_path() -> str:
-    return os.getenv("BORG_FLEET_REPO", DEFAULT_REPO_PATH)
+    """Fallback for callers with no node in hand — shard 0, the one repository
+    that always exists. Anything that knows its node should pass that node's
+    path explicitly; see core.repo_paths."""
+    return repo_paths.shard_path(0)
 
 
 def _env() -> dict:

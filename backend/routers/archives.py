@@ -33,7 +33,7 @@ import models
 import schemas
 from auth import require_kiosk_or_admin
 from core.borg_local import borg_kwargs, grant_workdir
-from core.repo_usage import DEFAULT_REPO_PATH
+from core import repo_paths
 from database import get_db
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,8 @@ def _archive_context(db: Session, history_id: int) -> Tuple[models.BackupHistory
     if not history:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Backup history record not found.")
 
-    repo_path = DEFAULT_REPO_PATH
+    node = db.query(models.Node).filter(models.Node.id == history.node_id).first()
+    repo_path = repo_paths.repo_path_for_node(node) if node else repo_paths.shard_path(0)
     if not os.path.exists(repo_path):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Borg repository does not exist.")
 

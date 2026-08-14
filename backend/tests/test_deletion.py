@@ -107,12 +107,21 @@ def test_node_deletion_cleanup(db_session, tmp_path, monkeypatch):
     
     # 3. Call the delete_node FastAPI logic (or view function)
     real_exists = os.path.exists
+    real_isfile = os.path.isfile
+
     def spy_exists(path):
         if path in ("/data/borg/fleet", "/data/borg/fleet/config"):
             return True
         return real_exists(path)
 
+    def spy_isfile(path):
+        # repo_paths.is_initialized looks for the repository's config file.
+        if path == "/data/borg/fleet/config":
+            return True
+        return real_isfile(path)
+
     with patch('subprocess.run') as mock_run, \
+         patch('os.path.isfile', side_effect=spy_isfile), \
          patch('os.path.exists', side_effect=spy_exists):
         delete_node(node_id=node_id, db=db)
         

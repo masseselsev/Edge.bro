@@ -1,5 +1,6 @@
 import os
 from typing import Dict, Any
+from core import repo_paths
 from core.db_session import session_scope
 from models import Settings, TaskLog, Node
 from restore_utils import get_archive_total_files, recreate_postgres_log_dirs
@@ -30,6 +31,7 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
         efi_uuid = node.efi_uuid
         network_iface = node.network_iface
         partitions = node.partition_layout
+        repo_path = repo_paths.repo_path_for_node(node)
 
         total_files = get_archive_total_files(db, archive_name)
 
@@ -53,8 +55,6 @@ def execute_restore(task_obj: Any, node_id: int, archive_name: str, target_dev: 
                 {"name": "log", "mount": "/var/log/edge", "fstype": "ext4", "label": "edgelog", "uuid": "", "size_bytes": 5 * 1024 * 1024 * 1024},
                 {"name": "storage", "mount": "/var/opt/edge", "fstype": "ext4", "label": "edgestor", "uuid": "", "size_bytes": 0} # 0 means remaining
             ]
-
-        repo_path = "/data/borg/fleet"
 
         def logger_callback(msg: str, prog: int = None, status: str = None):
             if prog is not None:

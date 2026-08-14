@@ -14,7 +14,7 @@ from ansible_utils import run_ansible_playbook
 from core.borg_local import borg_kwargs
 from core.db_session import session_scope
 from core import ssh
-from core import backup_stats, transfer_speed
+from core import backup_stats, repo_paths, transfer_speed
 from core.repo_lock import maintenance_in_progress, repository_maintenance
 from core.task_log import log_to_task
 
@@ -74,7 +74,7 @@ def resolve_borg_target(
     orchestrator_behind_nat: bool,
     direct_ip: Optional[str],
     borg_ssh_port: int,
-    repo_path: str = "/data/borg/fleet",
+    repo_path: str,
 ) -> tuple:
     """
     Decides how the node should reach the orchestrator's borg-server.
@@ -455,6 +455,7 @@ class BackupPlan:
     checkpoint_secs: int
     cpu_quota: Optional[int]
     lock_ttl: int
+    repo_path: str
 
 
 def _plan_backup(node_id: int) -> Optional[BackupPlan]:
@@ -517,6 +518,7 @@ def _plan_backup(node_id: int) -> Optional[BackupPlan]:
             # otherwise a node capped slower than its group outlives its own
             # lock and gets killed.
             lock_ttl=backup_lock_ttl_seconds(db, node.id, rate_limit_kib or None),
+            repo_path=repo_paths.repo_path_for_node(node),
         )
 
 
@@ -585,7 +587,7 @@ def _transfer_and_record(
         task_id=task_id,
         node_ip=plan.ip_address,
         node_ssh_port=plan.ssh_port,
-        repo_path="/data/borg/fleet",
+        repo_path=plan.repo_path,
         borg_passphrase=os.getenv("BORG_PASSPHRASE", ""),
         configured_ip=plan.orchestrator_ip,
         borg_ssh_port=plan.borg_ssh_port,
@@ -597,9 +599,10 @@ def _transfer_and_record(
         orchestrator_behind_nat=plan.behind_nat,
         direct_ip=orchestrator_ip,
         borg_ssh_port=plan.borg_ssh_port,
+        repo_path=plan.repo_path,
     )
 
-    fix_repo_permissions("/data/borg/fleet")
+    fix_repo_permissions(plan.repo_path)
 
     init_cmd = ssh.command(
         plan.ip_address, plan.ssh_port,

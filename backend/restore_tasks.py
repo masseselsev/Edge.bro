@@ -4,6 +4,7 @@ import subprocess
 from typing import Dict, Any
 from celery_app import celery_app
 
+from core import repo_paths
 from core.db_session import session_scope
 from models import Node, TaskLog, BackupHistory
 from restore_logic import execute_restore
@@ -30,7 +31,6 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
     from tasks import fix_repo_permissions
 
     task_id = self.request.id
-    repo_path = "/data/borg/fleet"
 
     # Deleting archives one at a time and then compacting is minutes of borg,
     # so the session goes no further than reading the hostname. See
@@ -40,6 +40,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
         if not node:
             return {"status": "FAILED", "error": "Node not found"}
         hostname = node.hostname
+        repo_path = repo_paths.repo_path_for_node(node)
         db.add(TaskLog(id=task_id, task_type="PURGE", status="RUNNING", log_output=""))
 
     log_to_task(task_id, f"Starting archive purge for node {hostname}...")
@@ -49,7 +50,7 @@ def purge_node_archives(self, node_id: int) -> Dict[str, Any]:
 
     try:
         # Check if repo exists and is initialized
-        if not os.path.exists(repo_path) or not os.path.exists(os.path.join(repo_path, "config")):
+        if not repo_paths.is_initialized(repo_path):
             log_to_task(task_id, "No archives to purge (repository does not exist or is not initialized).", status="SUCCESS")
             _forget_node_backups(node_id)
             return {"status": "SUCCESS", "deleted": 0}

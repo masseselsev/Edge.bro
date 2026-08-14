@@ -35,6 +35,7 @@ def test_resolve_borg_target_direct_mode():
         orchestrator_behind_nat=False,
         direct_ip="10.0.0.5",
         borg_ssh_port=12345,
+        repo_path="/data/borg/fleet",
     )
     assert extra_args == []
     assert repo_url == "ssh://borg@10.0.0.5:12345/data/borg/fleet"
@@ -47,6 +48,7 @@ def test_resolve_borg_target_nat_mode():
         orchestrator_behind_nat=True,
         direct_ip=None,  # unused in NAT mode — must not raise or leak into the URL
         borg_ssh_port=12345,
+        repo_path="/data/borg/fleet",
     )
     assert extra_args == ["-R", "12345:borg-server:22"]
     assert repo_url == "ssh://borg@127.0.0.1:12345/data/borg/fleet"

@@ -36,7 +36,6 @@ class CredentialSummary(BaseModel):
 
 class SettingsBase(BaseModel):
     borg_ssh_port: int = Field(default=12345, ge=1, le=65535)
-    borg_repo_path: str = Field(default='/data/borg')
     keep_daily: int = Field(default=7, ge=0)
     keep_weekly: int = Field(default=4, ge=0)
     keep_monthly: int = Field(default=6, ge=0)

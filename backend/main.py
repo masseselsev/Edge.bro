@@ -88,7 +88,9 @@ def startup_db_init():
     # Ensure permissions of the shared borg storage are correct from day one
     try:
         from tasks import fix_repo_permissions
-        fix_repo_permissions("/data/borg/fleet")
+        from core import repo_paths
+        for shard in repo_paths.all_shard_paths():
+            fix_repo_permissions(shard)
     except Exception as e:
         print(f"Error ensuring repository permissions on startup: {str(e)}")
 

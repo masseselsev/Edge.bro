@@ -169,7 +169,6 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     changes = []
     fields = [
         ("borg_ssh_port", "Borg SSH Port"),
-        ("borg_repo_path", "Repository Path"),
         ("keep_daily", "Keep Daily"),
         ("keep_weekly", "Keep Weekly"),
         ("keep_monthly", "Keep Monthly"),
@@ -222,7 +221,6 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     )
 
     settings.borg_ssh_port = payload.borg_ssh_port
-    settings.borg_repo_path = payload.borg_repo_path
     settings.keep_daily = payload.keep_daily
     settings.keep_weekly = payload.keep_weekly
     settings.keep_monthly = payload.keep_monthly
