@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from database import get_db
@@ -128,6 +130,30 @@ def get_settings(db: Session = Depends(get_db), current_user: models.User = Depe
     import os
     settings.borg_host_data_path = os.getenv("BORG_HOST_DATA_PATH", "borg-data")
     return settings
+
+
+@router.get("/settings/credentials", response_model=List[schemas.CredentialSchema])
+def get_bootstrap_credentials(db: Session = Depends(get_db), current_user: models.User = Depends(require_admin)):
+    """The saved bootstrap credentials, passwords included.
+
+    `GET /api/settings` deliberately omits the password — see
+    `SettingsResponse.bootstrap_credentials` — because it is loaded on every
+    page view across the whole app, and a plaintext SSH password has no
+    business riding along with the timezone setting. This endpoint is the one
+    place that still returns it, for the three call sites that need it at the
+    moment they are about to submit a provisioning request: Add Node, Instant
+    Provision, and the credentials-management modal itself.
+
+    Same `require_admin` guard as the endpoint above — no access-level change,
+    just a narrower one. Any admin who can reach this can already provision a
+    node with these credentials, so splitting the response does not hide
+    anything from someone who could get it anyway; it only stops it from
+    appearing in a response nobody asked to see it in.
+    """
+    settings = db.query(models.Settings).first()
+    if not settings or not settings.bootstrap_credentials:
+        return []
+    return settings.bootstrap_credentials
 
 
 @router.post("/settings", response_model=schemas.SettingsResponse)

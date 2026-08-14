@@ -105,6 +105,16 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   ], [t]);
 
   useEffect(() => {
+    // Credentials come from a separate, narrower endpoint: GET /api/settings
+    // no longer carries bootstrap_credentials[].password (see
+    // schemas.SettingsResponse), because it's loaded on every page across the
+    // app and a plaintext SSH password has no business riding along with the
+    // timezone. This is the credentials-management screen, so it fetches the
+    // real values explicitly.
+    api.get<{ id: string; username: string; password: string; comment?: string }[]>('/api/settings/credentials')
+      .then(creds => setBootstrapCredentials(creds || []))
+      .catch(err => console.error(err));
+
     api.get<any>('/api/settings')
       .then(data => {
         setSshPort(data.borg_ssh_port);
@@ -147,9 +157,8 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         if (data.server_name !== undefined) {
           setServerName(data.server_name || 'edge-bro');
         }
-        if (data.bootstrap_credentials !== undefined) {
-          setBootstrapCredentials(data.bootstrap_credentials || []);
-        }
+        // bootstrapCredentials is loaded above from /api/settings/credentials;
+        // this response's copy is password-less and would clobber it.
         if (data.default_credentials_id !== undefined) {
           setDefaultCredentialsId(data.default_credentials_id || '');
         }
@@ -250,9 +259,8 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         setSuccess(true);
         setAvailableIps(data.available_ips || []);
         setLanguage(data.language);
-        if (data.bootstrap_credentials !== undefined) {
-          setBootstrapCredentials(data.bootstrap_credentials || []);
-        }
+        // This save does not touch credentials, and the response's copy is
+        // password-less — nothing to resync bootstrapCredentials from here.
         if (data.default_credentials_id !== undefined) {
           setDefaultCredentialsId(data.default_credentials_id || '');
         }
@@ -858,9 +866,8 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
               });
               if (res.ok) {
                 const data = await res.json();
-                if (data.bootstrap_credentials !== undefined) {
-                  setBootstrapCredentials(data.bootstrap_credentials || []);
-                }
+                // newCreds, set above, is already the accurate post-edit
+                // value with passwords; the response's copy is password-less.
                 if (data.default_credentials_id !== undefined) {
                   setDefaultCredentialsId(data.default_credentials_id || '');
                 }

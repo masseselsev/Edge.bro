@@ -22,6 +22,18 @@ class CredentialSchema(BaseModel):
     password: str
     comment: str = ""
 
+class CredentialSummary(BaseModel):
+    """A bootstrap credential without its password.
+
+    What `GET /api/settings` returns `bootstrap_credentials` as. The password
+    is needed only at the moment a caller submits a provisioning request, not
+    on every settings page load — see `GET /api/settings/credentials`, which
+    returns the full `CredentialSchema` and exists for exactly that moment.
+    """
+    id: str
+    username: str
+    comment: str = ""
+
 class SettingsBase(BaseModel):
     borg_ssh_port: int = Field(default=12345, ge=1, le=65535)
     borg_repo_path: str = Field(default='/data/borg')
@@ -62,6 +74,11 @@ class SettingsResponse(SettingsBase):
     id: int
     available_ips: Optional[List[str]] = None
     borg_host_data_path: Optional[str] = None
+    # Shadows SettingsBase.bootstrap_credentials: this is what makes the field
+    # write-only. Pydantic validates each stored dict against CredentialSummary
+    # and drops the password key, since CredentialSummary never declares it.
+    # The real values are reached at GET /api/settings/credentials instead.
+    bootstrap_credentials: List[CredentialSummary] = Field(default=[])
 
     class Config:
         from_attributes = True

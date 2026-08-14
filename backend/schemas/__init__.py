@@ -17,7 +17,7 @@ and not exported.
 from schemas.base import UTCModel
 
 from schemas.settings import (
-    RetentionPolicySchema, ExclusionSchema, CredentialSchema,
+    RetentionPolicySchema, ExclusionSchema, CredentialSchema, CredentialSummary,
     SettingsBase, SettingsResponse,
 )
 from schemas.groups import (

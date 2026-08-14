@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '../context/TranslationContext';
-import { Trash2, Plus, Key, Edit2 } from 'lucide-react';
+import { Trash2, Plus, Key, Edit2, Eye, EyeOff } from 'lucide-react';
 
 interface Credential {
   id: string;
@@ -24,6 +24,10 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
   const [commentInput, setCommentInput] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  // Masked by default: these are real plaintext passwords, fetched on demand
+  // rather than sitting in a page-load response, and this list is exactly the
+  // kind of thing visible in a screen-share or a screenshot.
+  const [revealedIds, setRevealedIds] = useState<Record<string, boolean>>({});
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,7 +121,9 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
                           <span className="text-[10px] text-zinc-500 italic font-medium">({cred.comment})</span>
                         )}
                       </div>
-                      <span className="text-xs text-zinc-400 font-mono">{cred.password}</span>
+                      <span className="text-xs text-zinc-400 font-mono select-all">
+                        {revealedIds[cred.id] ? cred.password : '••••••••'}
+                      </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -126,6 +132,14 @@ export function CredentialsModal({ onClose, credentials, defaultId, onChange }: 
                         {t('defaultCredentialsLabel')}
                       </span>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => setRevealedIds(prev => ({ ...prev, [cred.id]: !prev[cred.id] }))}
+                      className="p-1 hover:bg-zinc-800 text-zinc-450 hover:text-zinc-200 rounded-md transition-colors cursor-pointer"
+                      title={revealedIds[cred.id] ? (t('hidePassword') || 'Hide password') : (t('showPassword') || 'Show password')}
+                    >
+                      {revealedIds[cred.id] ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleEditClick(cred)}

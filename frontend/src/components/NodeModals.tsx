@@ -4,6 +4,30 @@ import { useTranslation } from '../context/TranslationContext';
 import { api } from '../api';
 import type { Node } from '../types';
 
+interface BootstrapCredential {
+  id: string;
+  username: string;
+  password: string;
+  comment?: string;
+}
+
+/**
+ * The saved bootstrap credentials, plus which one is the default.
+ *
+ * Two requests, not one: `default_credentials_id` comes off the general
+ * settings load, which no longer carries passwords (see
+ * `schemas.SettingsResponse`); the credentials themselves — with their
+ * passwords — come from `GET /api/settings/credentials`, fetched only when a
+ * form that is about to submit a provisioning request actually needs them.
+ */
+async function loadBootstrapCredentials(): Promise<{ credentials: BootstrapCredential[]; defaultId: string | null }> {
+  const [settings, credentials] = await Promise.all([
+    api.get<any>('/api/settings'),
+    api.get<BootstrapCredential[]>('/api/settings/credentials'),
+  ]);
+  return { credentials: credentials || [], defaultId: settings.default_credentials_id || null };
+}
+
 interface AddNodeModalProps {
   onClose: () => void;
   onSubmit: (payload: any) => Promise<void>;
@@ -25,13 +49,11 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
   const [selectedCredId, setSelectedCredId] = useState('manual');
 
   React.useEffect(() => {
-    api.get<any>('/api/settings')
-      .then(data => {
-        const creds = data.bootstrap_credentials || [];
+    loadBootstrapCredentials()
+      .then(({ credentials: creds, defaultId }) => {
         setCredentials(creds);
-        const defaultId = data.default_credentials_id;
         if (defaultId) {
-          const defaultCred = creds.find((c: any) => c.id === defaultId);
+          const defaultCred = creds.find(c => c.id === defaultId);
           if (defaultCred) {
             setSelectedCredId(defaultId);
             setUsername(defaultCred.username);
@@ -143,7 +165,7 @@ export function AddNodeModal({ onClose, onSubmit, submitting, error }: AddNodeMo
               >
                 {credentials.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.comment ? c.comment : `${c.username}:${c.password}`}
+                    {c.comment ? c.comment : `${c.username} (••••••)`}
                   </option>
                 ))}
                 <option value="manual">{t('manualInputSelect')}</option>
@@ -227,13 +249,11 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
   const [selectedCredId, setSelectedCredId] = useState('manual');
 
   React.useEffect(() => {
-    api.get<any>('/api/settings')
-      .then(data => {
-        const creds = data.bootstrap_credentials || [];
+    loadBootstrapCredentials()
+      .then(({ credentials: creds, defaultId }) => {
         setCredentials(creds);
-        const defaultId = data.default_credentials_id;
         if (defaultId) {
-          const defaultCred = creds.find((c: any) => c.id === defaultId);
+          const defaultCred = creds.find(c => c.id === defaultId);
           if (defaultCred) {
             setSelectedCredId(defaultId);
             setUsername(defaultCred.username);
@@ -304,7 +324,7 @@ export function ProvisionNodeModal({ node, onClose, onSubmit, submitting, error 
               >
                 {credentials.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.comment ? c.comment : `${c.username}:${c.password}`}
+                    {c.comment ? c.comment : `${c.username} (••••••)`}
                   </option>
                 ))}
                 <option value="manual">{t('manualInputSelect')}</option>

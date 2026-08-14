@@ -195,10 +195,17 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
   const handleInstantProvision = useCallback(async (node: Node) => {
     try {
-      const sRes = await fetch('/api/settings');
+      // default_credentials_id comes off the general settings load, which no
+      // longer carries passwords; the credential itself — with its password —
+      // is fetched separately, only now that a provisioning request is
+      // actually about to be submitted. See GET /api/settings/credentials.
+      const [sRes, credsRes] = await Promise.all([
+        fetch('/api/settings'),
+        fetch('/api/settings/credentials'),
+      ]);
       if (!sRes.ok) throw new Error('Failed to fetch settings');
       const data = await sRes.json();
-      const creds = data.bootstrap_credentials || [];
+      const creds = credsRes.ok ? await credsRes.json() : [];
       const defaultId = data.default_credentials_id;
       let defaultCred = defaultId ? creds.find((c: any) => c.id === defaultId) : null;
       if (!defaultCred && creds.length > 0) {
