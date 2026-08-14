@@ -774,12 +774,19 @@ def _transfer_and_record(
 
     original_size = 0
     deduplicated_size = 0
+    compressed_size = None
     borg_duration = None
     try:
         data = json.loads(stdout)
         archive_stats = data.get("archive", {}).get("stats", {})
         original_size = archive_stats.get("original_size", 0)
         deduplicated_size = archive_stats.get("deduplicated_size", 0)
+        # Every chunk this archive references, compressed — what a restore or a
+        # kiosk sync actually transfers, as opposed to `deduplicated_size`,
+        # which is only what this run added to the repository. None rather than
+        # 0 when borg does not say, so the UI can tell "not recorded" from
+        # "empty archive" and fall back to its estimate.
+        compressed_size = archive_stats.get("compressed_size")
         borg_duration = data.get("archive", {}).get("duration")
     except Exception:
         log_to_task(task_id, "Failed to parse JSON directly; estimating size metrics.")
@@ -819,6 +826,7 @@ def _transfer_and_record(
             archive_name=archive_name,
             original_size=original_size,
             deduplicated_size=deduplicated_size,
+            compressed_size=compressed_size,
             status="SUCCESS",
             log_output=stdout + "\n" + stderr,
             comment=comment,

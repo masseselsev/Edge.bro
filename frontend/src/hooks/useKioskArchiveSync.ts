@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { BackupHistory, Node } from '../types';
+import { downloadSizeBytes } from '../components/formatBytes';
 
 /**
  * Copying archives from the orchestrator onto the kiosk's own USB storage.
@@ -135,14 +136,21 @@ export function useKioskArchiveSync({ isKiosk, nodes, onStorageChanged }: Option
    *
    * Not the sum of their sizes. Borg deduplicates, so pulling five daily
    * snapshots of one machine transfers the first in full and only the changed
-   * chunks after it. The estimate is therefore the newest archive's compressed
-   * size plus the deduplicated size of each older one.
+   * chunks after it. The estimate is therefore the newest archive's full
+   * transfer size plus the deduplicated size of each older one.
    *
-   * The newest is floored at 40% of its original size because
-   * `deduplicated_size` for an archive in an established repository counts only
-   * what was *new* that day — often almost nothing — while a kiosk with an
-   * empty local repository has to fetch the whole thing. Without the floor the
-   * UI promises a 200MB download and delivers 40GB.
+   * The newest one has to be its *whole* size, not its contribution: a kiosk
+   * with an empty local repository fetches every chunk the archive references,
+   * while `deduplicated_size` in an established repository counts only what was
+   * new that day — often almost nothing. Reading it as the download promises a
+   * 200MB transfer and delivers 40GB. `downloadSizeBytes` takes the figure borg
+   * recorded, and falls back to the old 40%-of-original floor only for rows
+   * predating it.
+   *
+   * The older archives keep `deduplicated_size`. What they really add is the
+   * chunks they hold that the newest does not, which borg does not report for
+   * a pair of archives; their contribution at write time is the closest thing
+   * available and is the right order of magnitude.
    */
   const estimateSelection = useCallback((history: BackupHistory[]): SelectionMetrics => {
     const selected = history.filter(h => isSelected(h.node_id, h.archive_name));
@@ -153,8 +161,7 @@ export function useKioskArchiveSync({ isKiosk, nodes, onStorageChanged }: Option
     );
     const totalOriginal = selected.reduce((acc, h) => acc + h.original_size, 0);
 
-    const base = newestFirst[0];
-    const baseCompressed = Math.max(base.deduplicated_size, Math.round(base.original_size * 0.4));
+    const baseCompressed = downloadSizeBytes(newestFirst[0]);
     const additionalDelta = newestFirst.slice(1).reduce((acc, h) => acc + h.deduplicated_size, 0);
 
     return { totalOriginal, totalEstimatedDownload: baseCompressed + additionalDelta };

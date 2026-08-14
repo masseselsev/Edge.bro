@@ -74,6 +74,14 @@ export interface BackupHistory {
   timestamp: string;
   original_size: number;
   deduplicated_size: number;
+  /**
+   * What restoring or syncing this archive actually transfers: every chunk it
+   * references, compressed. Not `deduplicated_size`, which is only this run's
+   * contribution to the repository — a re-backup of an unchanged node adds a
+   * few hundred KB and is still gigabytes to restore. null on rows written
+   * before the column existed; see `downloadSizeBytes`.
+   */
+  compressed_size: number | null;
   status: string;
   /** Omitted by the list endpoints, which defer the column. */
   log_output?: string | null;

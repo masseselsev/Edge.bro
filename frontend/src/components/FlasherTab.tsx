@@ -35,7 +35,7 @@ interface Snapshot {
 import { formatDate } from './dateUtils';
 import { SearchableSelect } from './SearchableSelect';
 import type { Option } from './SearchableSelect';
-import { formatBytes } from './formatBytes';
+import { formatBytes, downloadSizeBytes } from './formatBytes';
 
 interface FlasherTabProps {
   onViewLogs: (taskId: string, title: string) => void;
@@ -265,8 +265,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   const snapshotOptions = snapshots.map(s => {
     let sizeDetails = "";
     if (restoreMode === 'online') {
-      const estDownload = Math.max(s.deduplicated_size, Math.round(s.original_size * 0.4));
-      sizeDetails = `${formatBytes(estDownload)} ${t('estDownload') || 'to download'}`;
+      sizeDetails = `${formatBytes(downloadSizeBytes(s))} ${t('estDownload') || 'to download'}`;
     } else {
       sizeDetails = `${formatBytes(s.original_size)} ${t('sizeOnDisk') || 'on disk'} / ${formatBytes(s.deduplicated_size)} ${t('archiveSize') || 'archive'}`;
     }

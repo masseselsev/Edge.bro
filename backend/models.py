@@ -213,6 +213,17 @@ class BackupHistory(Base):
     timestamp = Column(DateTime, default=func.now(), nullable=False, index=True)
     original_size = Column(BigInteger, nullable=False) # Original uncompressed size
     deduplicated_size = Column(BigInteger, nullable=False) # Deduplicated storage size
+    # What restoring or syncing this archive actually transfers: the compressed
+    # size of every chunk it references, whether or not another archive already
+    # brought them into the repository.
+    #
+    # Distinct from `deduplicated_size`, which is this archive's *contribution*
+    # to the repository and says nothing about its contents — a second backup of
+    # an unchanged node contributes a few hundred KB while still being a couple
+    # of GB to restore. Borg reports it in the same JSON the other two come from
+    # and it used to be discarded, so the UI estimated the download from
+    # `original_size * 0.4`. Null on rows written before this column existed.
+    compressed_size = Column(BigInteger, nullable=True)
     status = Column(String, nullable=False) # SUCCESS, FAILED
     log_output = Column(Text, nullable=True)
     comment = Column(Text, nullable=True)

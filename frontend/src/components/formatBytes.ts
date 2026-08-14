@@ -41,3 +41,36 @@ export function formatBytesPerSecond(bytesPerSecond: number | null | undefined):
   if (bytesPerSecond === null || bytesPerSecond === undefined) return '—';
   return scale(bytesPerSecond, RATE_UNITS, 1);
 }
+
+/**
+ * How many bytes restoring or syncing one archive will actually move.
+ *
+ * `compressed_size` is the answer whenever it is recorded: every chunk the
+ * archive references, compressed, which is exactly what a restore streams and
+ * what the kiosk's mini-repo ends up holding.
+ *
+ * `deduplicated_size` is NOT that number and must never be used for it. It is
+ * the archive's contribution to the repository, so a second backup of an
+ * unchanged node reads as a few hundred KB while still being gigabytes to
+ * restore — the UI showed 743 KB against a 1.27 GB download for exactly this
+ * reason.
+ *
+ * Rows written before `compressed_size` existed fall back to the old estimate:
+ * whichever is larger of the archive's contribution and 40% of its uncompressed
+ * size. That floor is a guess at a typical compression ratio, and it is the
+ * only thing recoverable from what those rows stored — the borg output the real
+ * figure came from is not kept.
+ */
+export function downloadSizeBytes(archive: {
+  compressed_size?: number | null;
+  deduplicated_size: number;
+  original_size: number;
+}): number {
+  if (archive.compressed_size != null) return archive.compressed_size;
+  return Math.max(archive.deduplicated_size, Math.round(archive.original_size * 0.4));
+}
+
+/** True when the figure above is the recorded one rather than the estimate. */
+export function isExactDownloadSize(archive: { compressed_size?: number | null }): boolean {
+  return archive.compressed_size != null;
+}

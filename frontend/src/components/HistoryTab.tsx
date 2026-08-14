@@ -6,7 +6,7 @@ import ArchiveStatsPanel from './ArchiveStatsPanel';
 
 import { formatDate } from './dateUtils';
 import NodeDetailsModal from './NodeDetailsModal';
-import { formatBytes } from './formatBytes';
+import { formatBytes, downloadSizeBytes, isExactDownloadSize } from './formatBytes';
 import type { BackupHistory, Node } from '../types';
 import { useKioskArchiveSync } from '../hooks/useKioskArchiveSync';
 import KioskStoragePanel from './KioskStoragePanel';
@@ -397,7 +397,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                 {renderSortIndicator('deduplicated_size')}
               </button>
             </th>
-            <th className="px-6 py-3 text-zinc-500 font-semibold">{t('estDownloadSizeColumn') || 'Est. Download Size'}</th>
+            <th className="px-6 py-3 text-zinc-500 font-semibold">{t('estDownloadSizeColumn') || 'Download Size'}</th>
             <th className="px-6 py-3 text-zinc-500 font-semibold">{t('transferSpeedColumn')}</th>
             <th className="px-6 py-3">
               <button
@@ -464,7 +464,10 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                 <td className="px-6 py-3.5 text-zinc-300">{formatBytes(h.original_size)}</td>
                 <td className="px-6 py-3.5 text-zinc-300">{formatBytes(h.deduplicated_size)}</td>
                 <td className="px-6 py-3.5 text-zinc-300">
-                  {formatBytes(Math.max(h.deduplicated_size, Math.round(h.original_size * 0.4)))}
+                  {/* Old rows have no recorded figure and fall back to an
+                      estimate; say so rather than presenting a guess as
+                      measured. */}
+                  {isExactDownloadSize(h) ? '' : '≈ '}{formatBytes(downloadSizeBytes(h))}
                 </td>
                 <td className="px-6 py-3.5 text-zinc-300 whitespace-nowrap">
                   {h.avg_speed_mbps == null ? (
@@ -856,7 +859,7 @@ export default function HistoryTab({ onViewLogs, timezone, isKiosk = false }: Hi
                       <span className="font-semibold text-indigo-400 mr-2">
                         {nodes.find(n => n.id === sync.selectedNodeId)?.hostname || 'Unknown'}
                       </span>
-                      | {t('estDownloadSizeColumn') || 'Est. Download Size'}:{' '}
+                      | {t('estDownloadSizeColumn') || 'Download Size'}:{' '}
                       <span className="font-bold text-emerald-400">
                         {formatBytes(selectionMetrics.totalEstimatedDownload)}
                       </span>{' '}

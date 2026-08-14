@@ -146,7 +146,7 @@ const en: Record<string, string> = {
   timestampColumn: 'Timestamp',
   originalSizeColumn: 'Original Size',
   dedupSizeColumn: 'Borg Deduplicated Size',
-  estDownloadSizeColumn: 'Est. Download Size',
+  estDownloadSizeColumn: 'Download Size',
   sizeOnDisk: 'on disk',
   archiveSize: 'archive',
   estDownload: 'to download',

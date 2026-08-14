@@ -146,7 +146,7 @@ const ru: Record<string, string> = {
   timestampColumn: 'Время создания',
   originalSizeColumn: 'Исходный размер',
   dedupSizeColumn: 'Размер в Borg (Дедуп)',
-  estDownloadSizeColumn: 'Размер при скачивании (оценка)',
+  estDownloadSizeColumn: 'Размер при скачивании',
   sizeOnDisk: 'на диске',
   archiveSize: 'архив',
   estDownload: 'для скачивания',

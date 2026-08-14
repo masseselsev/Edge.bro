@@ -146,7 +146,7 @@ const uk: Record<string, string> = {
   timestampColumn: 'Час створення',
   originalSizeColumn: 'Вихідний розмір',
   dedupSizeColumn: 'Розмір у Borg (Дедуп)',
-  estDownloadSizeColumn: 'Розмір при скачуванні (оцінка)',
+  estDownloadSizeColumn: 'Розмір при скачуванні',
   sizeOnDisk: 'на диску',
   archiveSize: 'архів',
   estDownload: 'для завантаження',

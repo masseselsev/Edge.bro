@@ -11,6 +11,9 @@ class BackupHistoryResponse(BaseModel):
     timestamp: datetime
     original_size: int
     deduplicated_size: int
+    # What restoring or syncing this archive transfers. None on rows written
+    # before the column existed — the UI falls back to an estimate for those.
+    compressed_size: Optional[int] = None
     status: str
     log_output: Optional[str] = None
     comment: Optional[str] = None
