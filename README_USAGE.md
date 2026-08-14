@@ -66,6 +66,17 @@ JWT_SECRET_KEY=<random_secret>     # Used to sign session tokens
 # SSH_KEEPALIVE_INTERVAL=30        # Seconds between keepalive packets
 # SSH_KEEPALIVE_COUNT=3            # Missed responses before disconnect
 
+# ── Repository sharding (optional, defaults shown) ──
+BORG_SHARD_COUNT=5                 # Independent Borg repositories. Borg locks a
+                                   # repository for the whole of `borg create`,
+                                   # so one repository = one node writing at a
+                                   # time. Set before enrolling nodes; changing
+                                   # it later is NOT supported.
+# BORG_LOCK_WAIT_SECONDS=600       # How long a borg command waits for the
+                                   # repository lock instead of failing
+# BORG_WRITER_TTL=14400            # How long a running backup stays registered
+                                   # as a writer without a heartbeat
+
 # ── Storage paths ──
 BORG_HOST_DATA_PATH=borg-data     # Docker volume by default
                                    # Set an absolute path for external storage:
@@ -241,14 +252,25 @@ Pruning runs automatically at 03:00 daily via Celery Beat, followed by `borg com
 
 ### 4.3 How deduplication saves space
 
-All nodes share a single Borg repository. Identical files across different nodes are stored only once.
+Nodes are spread over `BORG_SHARD_COUNT` Borg repositories (default 5), and
+nodes sharing one store identical files only once.
 
 | Scenario | Space used |
 |----------|-----------|
-| 1st node (6 GB base OS) | ~2.2–2.7 GB (55–65% compression) |
+| 1st node in a shard (6 GB base OS) | ~2.2–2.7 GB (55–65% compression) |
 | Each additional cloned node | +100–200 MB (97% dedup) |
 | Nodes with minor differences | +20–30% of unique data |
 | Incremental backup runs | ~100–200 MB per run |
+
+Deduplication does not cross a shard boundary, so the base image is stored once
+per shard. That is the price of parallelism: Borg holds a repository's lock for
+the entire duration of `borg create`, so with a single repository only one node
+in the whole fleet can be writing at any moment. Five shards buy five
+simultaneous writers for a few extra GB.
+
+A node's shard is `node.id % BORG_SHARD_COUNT`, fixed when it is enrolled.
+**Set `BORG_SHARD_COUNT` before adding nodes.** Changing it afterwards points
+existing nodes at a repository that does not hold their archives.
 
 ### 4.4 Default backup exclusions
 

@@ -56,7 +56,7 @@ Seven containers in `docker-compose.yml`:
 | **backend** | FastAPI on Uvicorn. REST API, IP parser (CIDR / ranges / lists), job tracking. Resolves host physical and VPN IPs by reading `/host/proc/1/net/` (skips docker bridges). |
 | **worker** | Celery worker in privileged host-device mode. Runs Ansible playbooks and disk partitioning commands. Needs `/dev` access for bare-metal flashing. |
 | **beat** | Celery Beat scheduler. Fires daily `borg prune` at 03:00, enforces retention policies. |
-| **borg-server** | Isolated SSH server on port 12345. Central Borg repository. Node keys land in `authorized_keys` under `borg serve --restrict-to-path` forced commands. |
+| **borg-server** | Isolated SSH server on port 12345. Holds the Borg repositories — `BORG_SHARD_COUNT` of them, so more than one node can be writing at a time. Node keys land in `authorized_keys` under a `borg serve` forced command naming every shard with `--restrict-to-path`. |
 | **db** | PostgreSQL 15. Stores inventory, backup history, groups, settings, user accounts. |
 | **redis** | Redis 7. Task broker + result backend for Celery. |
 
@@ -82,10 +82,15 @@ Seven containers in `docker-compose.yml`:
   - CPU quota (0–400% per core, via `systemd-run --scope`)
   - Compression algorithm (`lz4`, `zstd:1`–`zstd:9`)
   - Checkpoint interval — auto-calculated from upload speed, or manual override
-- **Cross-device deduplication**: all nodes share one Borg repo. Identical OS files stored once.
-  - 1st node: 55–65% compression savings (~6 GB → ~2.5 GB)
+- **Sharded repositories**: the fleet is spread over `BORG_SHARD_COUNT` independent Borg repositories (default 5). Borg holds a repository's lock for the *whole* of `borg create`, not a brief critical section, so a single repository means exactly one node in the fleet can be writing at any moment — regardless of what a group's concurrency limit says. Each shard is another genuinely parallel writer.
+  - A node's shard is `node.id % BORG_SHARD_COUNT`, fixed at enrolment. Groups are freely reassignable and so cannot decide where a node's *data* lives; a node's identity is stable for its whole life.
+  - Shard 0 **is** the pre-existing `/data/borg/fleet`, unrenamed and unmoved, so every existing node keeps backing up and restoring exactly where it already did.
+  - Changing `BORG_SHARD_COUNT` on a running fleet is not supported — archives do not follow a node to another repository.
+- **Cross-device deduplication**: nodes sharing a shard store identical OS files once.
+  - 1st node in a shard: 55–65% compression savings (~6 GB → ~2.5 GB)
   - Each cloned node adds only ~100–200 MB
   - Incremental runs: ~100–200 MB of unique data
+  - Deduplication is now *within* a shard, so the fleet stores its base image once per shard rather than once overall. On a uniform fleet the per-node incremental dominates and the total grows by only a few percent — the parallelism is worth far more than the few extra GB.
 - **Smart queue scheduler**:
   - Dynamic concurrency scaling when window time runs short
   - Bandwidth-aware concurrency caps (can scale below 2 MiB/s per stream if needed)
@@ -115,7 +120,7 @@ Seven containers in `docker-compose.yml`:
 
 ### Archive Statistics & Fleet Insights
 - Header cards: repository size measured on disk, cumulative source data, cross-node saving, and the fleet-wide backup success rate.
-- **Cross-node saving** is computed from each node's *base* backup only. Counting every archive would score a node re-backing up unchanged data as deduplication, which measures how rarely the node changes rather than how well the shared repository packs the fleet. The base backup is identified by largest deduplicated contribution rather than by age, so it survives retention pruning the original archive.
+- **Cross-node saving** is measured within each shard and summed, since nodes in different repositories cannot deduplicate against one another. It is computed from each node's *base* backup only. Counting every archive would score a node re-backing up unchanged data as deduplication, which measures how rarely the node changes rather than how well the shared repository packs the fleet. The base backup is identified by largest deduplicated contribution rather than by age, so it survives retention pruning the original archive.
 - **Fleet Insights** (collapsed by default, loaded on demand) over a 7 / 30 / 90 day or custom window:
   - *Reliability* — success rate, overdue nodes, consecutive failure streaks, most common failure causes. Staleness is judged against the node's own group interval, so a monthly node is not flagged three weeks after its last run.
   - *Throughput* — median and 10th/90th percentile, slowest nodes, and whether a node's configured rate limit is actually what holds it back.
@@ -181,6 +186,12 @@ Seven containers in `docker-compose.yml`:
 | 50 devices | ~60 GB | ~40 GB |
 | 300 devices | ~300 GB | ~150–200 GB |
 | 1000 devices | ~1 TB | ~500–600 GB |
+
+Figures are fleet-wide totals across all shards. Deduplication happens within a
+shard, so the base image is stored once per shard instead of once overall — on
+the uniform-fleet column that is a few extra GB against a total dominated by
+per-node incremental data, and it buys `BORG_SHARD_COUNT` nodes backing up at
+once instead of one.
 
 ### Edge Node (Target Device)
 - **Supported OS**: Debian 10 or newer.
