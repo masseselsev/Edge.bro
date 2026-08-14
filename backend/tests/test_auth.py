@@ -410,3 +410,77 @@ def test_admin_plus_crud(client, db_session):
     assert resp.json()["is_admin_plus"] is False
 
 
+
+
+# --- the offline restore token ---
+#
+# This route returns a Kiosk principal, which `require_kiosk_or_admin` accepts
+# on the archive endpoints — listing, reading and downloading the contents of
+# any node's backup. It is also reachable from a `?token=` query parameter. It
+# used to fall back to a hardcoded literal when no ISO had been issued, which
+# made that literal a fleet-wide password for exactly those endpoints.
+
+def _auth_request(token):
+    from unittest.mock import MagicMock
+    request = MagicMock()
+    request.headers = {"Authorization": f"Bearer {token}"}
+    return request
+
+
+def test_no_issued_iso_means_no_offline_token_is_accepted(db_session, tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    import auth
+    import iso_tasks
+
+    monkeypatch.setattr(iso_tasks, "CACHE_DIR", str(tmp_path))
+
+    for candidate in ("offline-token-1234", "TEMPLATE", "template", ""):
+        with pytest.raises(HTTPException) as excinfo:
+            auth.get_current_auth(request=_auth_request(candidate), db=db_session)
+        assert excinfo.value.status_code == 401
+
+
+def test_the_issued_token_authenticates_an_offline_client(db_session, tmp_path, monkeypatch):
+    import auth
+    import iso_tasks
+
+    monkeypatch.setattr(iso_tasks, "CACHE_DIR", str(tmp_path))
+    (tmp_path / "auth_token.txt").write_text("AB12CD34\n")
+
+    principal = auth.get_current_auth(request=_auth_request("AB12CD34"), db=db_session)
+    assert isinstance(principal, models.Kiosk)
+    assert principal.status == "APPROVED"
+    # Not persisted: it has no primary key, so nothing can resolve it to a row.
+    assert principal.id is None
+
+    # Typed off a printed label, so case must not matter.
+    assert auth.get_current_auth(request=_auth_request("ab12cd34"), db=db_session) is not None
+
+
+def test_a_different_token_is_still_refused_when_a_file_exists(db_session, tmp_path, monkeypatch):
+    from fastapi import HTTPException
+    import auth
+    import iso_tasks
+
+    monkeypatch.setattr(iso_tasks, "CACHE_DIR", str(tmp_path))
+    (tmp_path / "auth_token.txt").write_text("AB12CD34")
+
+    with pytest.raises(HTTPException) as excinfo:
+        auth.get_current_auth(request=_auth_request("offline-token-1234"), db=db_session)
+    assert excinfo.value.status_code == 401
+
+
+def test_an_empty_token_file_authenticates_nothing(db_session, tmp_path, monkeypatch):
+    """A truncated or half-written file must not turn the empty string into a
+    credential."""
+    from fastapi import HTTPException
+    import auth
+    import iso_tasks
+
+    monkeypatch.setattr(iso_tasks, "CACHE_DIR", str(tmp_path))
+    (tmp_path / "auth_token.txt").write_text("   \n")
+
+    for candidate in ("", "   "):
+        with pytest.raises(HTTPException) as excinfo:
+            auth.get_current_auth(request=_auth_request(candidate), db=db_session)
+        assert excinfo.value.status_code == 401

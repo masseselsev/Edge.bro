@@ -15,6 +15,7 @@ Kiosk 7 both exist. Any route that resolves a row by `auth.id` must therefore
 say which kind it wants; `require_kiosk_or_admin` deliberately does not.
 """
 import os
+import secrets
 from datetime import datetime, timedelta
 from typing import Union
 
@@ -67,10 +68,12 @@ def get_current_auth(request: Request = None, db: Session = Depends(get_db)) -> 
       to decode is how we discover we are looking at one. A genuinely
       corrupt admin JWT takes the same branch and falls through to the 401 at
       the bottom.
-    * **The offline restore token is a fallback constant.** A technician's
-      stick that was built before the orchestrator wrote its token file
-      authenticates against the literal "offline-token-1234". It is compared
-      case-insensitively because the operator types it by hand off a label.
+    * **The offline restore token comes from a file, or not at all.** A
+      technician's stick authenticates against the token the orchestrator
+      wrote when it built that client ISO. It is compared case-insensitively
+      because the operator types it by hand off a label, and in constant time
+      because the comparison is reachable before authentication. If no ISO has
+      been issued there is no file and nothing authenticates by this route.
     * **The Kiosk it returns in that case is not persisted.** It exists only
       for the duration of the request and has no primary key, so anything
       reading `auth.id` gets None rather than someone else's row.
@@ -117,17 +120,26 @@ def get_current_auth(request: Request = None, db: Session = Depends(get_db)) -> 
         if kiosk:
             return kiosk
         
-        # Check if it matches the offline restore token
+        # Check if it matches the offline restore token.
+        #
+        # No file means no offline client has been issued, so nothing
+        # authenticates here. This used to fall back to a hardcoded literal,
+        # which made that literal a fleet-wide password: it is accepted from a
+        # `?token=` query parameter, and the Kiosk it returns can read and
+        # download the contents of any node's archives.
         try:
             from iso_tasks import CACHE_DIR
             token_path = os.path.join(CACHE_DIR, "auth_token.txt")
             if os.path.exists(token_path):
                 with open(token_path, "r") as f:
                     expected_token = f.read().strip()
-            else:
-                expected_token = "offline-token-1234"
-            if token.strip().upper() == expected_token.strip().upper():
-                return models.Kiosk(name="Offline Restore Client", status="APPROVED", auth_token=token)
+                # Compared without regard to case because the operator types it
+                # off a printed label, and in constant time because this is a
+                # bare secret comparison reachable before authentication.
+                if expected_token and secrets.compare_digest(
+                    token.strip().upper(), expected_token.upper()
+                ):
+                    return models.Kiosk(name="Offline Restore Client", status="APPROVED", auth_token=token)
         except Exception:
             pass
         

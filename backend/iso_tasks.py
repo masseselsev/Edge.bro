@@ -4,6 +4,7 @@ import subprocess
 import json
 import logging
 import hashlib
+import secrets
 from celery_app import celery_app
 from core import ssh_keys
 from core.db_session import session_scope
@@ -20,6 +21,11 @@ DEFAULT_MIRROR_URLS = [
 ]
 BASE_ISO_URL = DEFAULT_MIRROR_URLS[0]
 CACHE_DIR = paths.ISO_CACHE_DIR
+
+#: Sentinel passed instead of a real token when the base image is rebuilt for
+#: its own sake — a settings change, a stale hash on startup — rather than
+#: issued to anyone. See generate_client_iso_task.
+TEMPLATE_BUILD = "TEMPLATE"
 BASE_ISO_PATH = paths.BASE_ISO_PATH
 BASE_ISO_PATH_TMP = paths.BASE_ISO_TMP_PATH
 
@@ -314,17 +320,28 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             lang = settings.language if settings else "en"
             server_ips = list(settings.server_ips) if (settings and settings.server_ips) else []
 
+        # A template build is a base image nobody was handed, so it must not
+        # leave a usable credential behind. It bakes a random token that
+        # matches nothing and does not touch auth_token.txt — a stick made
+        # from it has to enrol like any other kiosk.
+        is_template = auth_token == TEMPLATE_BUILD
+        baked_token = secrets.token_hex(16) if is_template else auth_token
+
         iso_build.write_kiosk_config(opt_offline, {
             "orchestrator_ip": target_ip,
             "available_server_ips": server_ips,
-            "auth_token": auth_token,
+            "auth_token": baked_token,
             "language": lang,
             "kiosk_id": generate_kiosk_id(),
         })
 
-        # Read back by routers/iso.py to validate download requests.
-        with open(os.path.join(CACHE_DIR, "auth_token.txt"), "w") as f:
-            f.write(auth_token.strip())
+        # The token auth.py accepts from an offline restore client. Only a
+        # real, issued ISO writes it; template rebuilds used to overwrite it
+        # with their own placeholder, which both invalidated the operator's
+        # actual stick and left that placeholder working as a password.
+        if not is_template:
+            with open(os.path.join(CACHE_DIR, "auth_token.txt"), "w") as f:
+                f.write(auth_token.strip())
 
         _authorize_orchestrator_key_for_kiosks()
         iso_build.inject_orchestrator_ssh_key(opt_offline)
@@ -391,7 +408,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             dirty = r.get("base_iso_dirty")
             if dirty:
                 r.delete("base_iso_dirty")
-                generate_client_iso_task.delay("127.0.0.1", "TEMPLATE")
+                generate_client_iso_task.delay("127.0.0.1", TEMPLATE_BUILD)
         except Exception as re:
             logger.error(f"Failed to check/trigger dirty base ISO rebuild: {re}")
         finally:
@@ -556,5 +573,5 @@ def trigger_base_iso_rebuild(db):
             r.set("base_iso_dirty", "1")
             return
             
-    generate_client_iso_task.delay("127.0.0.1", "TEMPLATE")
+    generate_client_iso_task.delay("127.0.0.1", TEMPLATE_BUILD)
 
