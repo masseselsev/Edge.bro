@@ -344,16 +344,16 @@ you raise the setting afterwards. That is fine for a fleet whose groups spread
 the load, which is the normal case. If you are about to enrol hundreds of nodes
 and want them spread, set the count first.
 
-For reference, measured on a 3.4 GB / 59k-file node over a LAN: **~31 s** for an
-incremental run, ~225 s for that node's first backup. Against the default
-02:00–05:00 window that is a few hundred serialised backups a night per shard,
-which a spread schedule will not come close to.
+An incremental run is a small fraction of a first backup — most of its cost is
+walking the filesystem, not moving data — so a shard absorbs a few hundred
+serialised backups inside a typical window. A spread schedule will not come
+close to that. Settings → Scheduler Load reports your own figures.
 
-The one place more shards genuinely pay off is **onboarding**. First backups
-are the expensive ones and they all fall due at once: 2000 nodes × ~225 s is
-about five days serialised on one shard, roughly one on five. That wave runs
-once and can be left outside the normal window, so it is a reason to start with
-more shards, not a reason to keep them forever.
+The one place more shards genuinely pay off is **onboarding**: first backups
+are the expensive ones and they all fall due at once, so the wave finishes in
+roughly a fifth of the time on five shards. It runs once and can be left
+outside the normal window, which makes it a reason to start with more shards
+rather than to keep them.
 
 If in doubt, start low. `BORG_SHARD_COUNT` can be raised later and each shard
 costs one extra copy of the base image.
