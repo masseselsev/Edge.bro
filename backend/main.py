@@ -108,38 +108,13 @@ def startup_db_init():
     # access that currently works. The stranding check therefore comes first
     # and blocks the rewrite, rather than the other way round.
     try:
-        from core import repo_paths
+        from core import shard_access
         from core.db_session import session_scope
         import models as _models
 
         with session_scope() as _db:
-            stranded = repo_paths.stranded_shards(
-                i for (i,) in _db.query(_models.Node.borg_shard_index).distinct()
-            )
-
-        if repo_paths.SHARD_COUNT > repo_paths.CONFIGURED_SHARD_COUNT:
-            print(
-                f"NOTE: BORG_SHARD_COUNT is set to {repo_paths.CONFIGURED_SHARD_COUNT}, but "
-                f"{repo_paths.SHARD_COUNT} repositories already exist and hold archives. "
-                f"Using {repo_paths.SHARD_COUNT}. The count can be raised but never lowered — "
-                f"a node's shard is fixed when it is enrolled and its archives do not follow "
-                f"it. Set BORG_SHARD_COUNT={repo_paths.SHARD_COUNT} to make this explicit."
-            )
-
-        if stranded:
-            # The floor above covers shards that exist on disk. This is the case
-            # it cannot see: a node routed to a shard it has not yet written to,
-            # so there is no directory to infer it from.
-            print(
-                f"CONFIGURATION ERROR: nodes are assigned to shard(s) {stranded}, which is "
-                f"beyond the {repo_paths.SHARD_COUNT} in use. Those nodes cannot back up or "
-                f"restore. Set BORG_SHARD_COUNT to at least {max(stranded) + 1} and restart. "
-                f"SSH grants have been left untouched — rewriting them now would remove "
-                f"access that still works."
-            )
-        else:
-            from scripts.reauthorize_shard_access import main as reauthorize
-            reauthorize()
+            assigned = [i for (i,) in _db.query(_models.Node.borg_shard_index).distinct()]
+        shard_access.reconcile(assigned)
     except Exception as e:
         print(f"Error reconciling shard access on startup: {str(e)}")
 
