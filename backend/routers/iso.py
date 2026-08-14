@@ -15,7 +15,7 @@ from models import TaskLog
 from database import SessionLocal, get_db
 from sqlalchemy.orm import Session
 from auth import require_admin, require_kiosk_or_admin
-from core import repo_paths
+from core import compression, repo_paths
 from core.repo_lock import LOCK_WAIT_SECONDS
 from core.borg_local import borg_kwargs
 import models
@@ -362,6 +362,16 @@ def download_repo(
     if not repo_paths.is_initialized(shared_repo):
         raise HTTPException(status_code=404, detail="Shared repository not found")
 
+    # Resolved before the repack so the mini-repo is written the same way the
+    # archives already are — see core/compression.
+    node_compression = compression.for_node(
+        node,
+        group=db.query(models.BackupGroup).filter(
+            models.BackupGroup.id == node.group_id
+        ).first() if node.group_id else None,
+        settings=db.query(models.Settings).first(),
+    )
+
     # Get the list of archives for this node from the shared repository
     env = os.environ.copy()
     env["BORG_PASSPHRASE"] = os.getenv("BORG_PASSPHRASE", "")
@@ -431,7 +441,14 @@ def download_repo(
                 **export_kwargs
             )
             import_proc = subprocess.Popen(
-                ["borg", "import-tar", f"{temp_repo_dir}::{archive}", "-"],
+                # Same compression the archive was written with. Without it
+                # borg falls back to its default of lz4, so a zstd:3 archive is
+                # decompressed and recompressed worse on the way into the
+                # mini-repo — 1.46 GiB of source became 1.81 GiB of repository,
+                # every byte of which the technician then downloads.
+                ["borg", "import-tar",
+                 "--compression", compression.to_borg_arg(node_compression),
+                 f"{temp_repo_dir}::{archive}", "-"],
                 env=env,
                 stdin=export_proc.stdout,
                 stdout=subprocess.PIPE,

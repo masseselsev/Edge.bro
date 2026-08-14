@@ -150,3 +150,59 @@ def test_the_api_serves_it(db_session, monkeypatch):
     row = _run_backup(db_session, monkeypatch, BORG_STATS)
     payload = schemas.BackupHistoryResponse.model_validate(row).model_dump()
     assert payload["compressed_size"] == BORG_STATS["compressed_size"]
+
+
+# --- the repack the kiosk downloads ----------------------------------------
+#
+# The download figure is only honest if the mini-repo the kiosk receives is
+# written the way the source archive is. `borg import-tar` defaults to lz4, and
+# the repack passed no `--compression` at all, so a zstd:3 archive came out as a
+# noticeably larger lz4 repository — measured on a real archive as 1.46 GiB of
+# source becoming 1.81 GiB of repository, all of it downloaded.
+
+
+def test_the_kiosk_repack_uses_the_compression_the_archive_was_written_with():
+    """Without this the technician downloads the difference between two
+    compression algorithms for no benefit."""
+    import inspect
+
+    from core import compression
+    from routers import iso
+
+    source = inspect.getsource(iso.download_repo)
+    import_call = [line for line in source.splitlines() if "import-tar" in line]
+    assert import_call, "the repack no longer calls borg import-tar"
+
+    assert "--compression" in source, (
+        "borg import-tar was given no --compression, so it falls back to lz4 "
+        "regardless of how the source archive was written"
+    )
+    assert "to_borg_arg" in source, (
+        "the compression must go through core.compression.to_borg_arg — borg "
+        "wants zstd,3 where the settings store zstd:3"
+    )
+
+
+def test_compression_resolution_matches_what_the_backup_uses():
+    """Two callers, one answer. If they disagree the repack recompresses."""
+    from core import compression
+
+    class G:
+        compression = "zstd:9"
+
+    class S:
+        default_compression = "lz4"
+
+    class N:
+        group = None
+
+    assert compression.for_node(N(), group=G(), settings=S()) == "zstd:9"
+    assert compression.for_node(N(), group=None, settings=S()) == "lz4"
+    assert compression.for_node(N(), group=None, settings=None) == compression.DEFAULT_COMPRESSION
+
+
+def test_the_settings_spelling_is_translated_for_borg():
+    from core import compression
+
+    assert compression.to_borg_arg("zstd:3") == "zstd,3"
+    assert compression.to_borg_arg("lz4") == "lz4"
