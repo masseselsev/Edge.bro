@@ -330,3 +330,61 @@ def test_a_node_with_no_shard_recorded_is_not_stranded(monkeypatch):
     """Null means pre-sharding, which is shard 0 — always valid."""
     _with_shard_count(monkeypatch, 1)
     assert repo_paths.stranded_shards([None, 0]) == []
+
+
+# --- the count can only go up ----------------------------------------------
+#
+# Lowering it is the one change that breaks quietly, so the environment
+# variable is not trusted to move in one direction. The repositories that
+# already exist on disk put a floor under it: a `shard-N` directory exists
+# because a node was routed there, and taking that path out of the fleet-wide
+# list stops the prune visiting it and stops the SSH grant naming it.
+
+
+def _borg_root(tmp_path, shard_indexes):
+    root = tmp_path / "borg"
+    (root / "fleet").mkdir(parents=True)
+    (root / "tmp").mkdir()
+    for i in shard_indexes:
+        (root / f"shard-{i}").mkdir()
+    return root
+
+
+def _floor_over(monkeypatch, root):
+    monkeypatch.setattr(repo_paths, "LEGACY_REPO_PATH", str(root / "fleet"))
+    return repo_paths._existing_shard_floor()
+
+
+def test_existing_repositories_set_the_floor(tmp_path, monkeypatch):
+    root = _borg_root(tmp_path, [1, 2, 3, 4])
+    assert _floor_over(monkeypatch, root) == 5
+
+
+def test_a_fleet_only_install_floors_at_one(tmp_path, monkeypatch):
+    root = _borg_root(tmp_path, [])
+    assert _floor_over(monkeypatch, root) == 1
+
+
+def test_the_temp_directory_is_not_mistaken_for_a_shard(tmp_path, monkeypatch):
+    """`/data/borg/tmp` sits beside the repositories and holds kiosk builds."""
+    root = _borg_root(tmp_path, [])
+    (root / "download_abc").mkdir()
+    assert _floor_over(monkeypatch, root) == 1
+
+
+def test_a_gap_in_the_numbering_still_floors_at_the_highest(tmp_path, monkeypatch):
+    """Only the highest matters — the list is range(SHARD_COUNT), so serving
+    shard 4 means serving 0..4 whether or not 2 was ever used."""
+    root = _borg_root(tmp_path, [4])
+    assert _floor_over(monkeypatch, root) == 5
+
+
+def test_no_storage_mounted_is_not_an_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(repo_paths, "LEGACY_REPO_PATH", str(tmp_path / "absent" / "fleet"))
+    assert repo_paths._existing_shard_floor() == 1
+
+
+def test_a_stray_name_is_ignored(tmp_path, monkeypatch):
+    root = _borg_root(tmp_path, [1])
+    (root / "shard-notanumber").mkdir()
+    assert _floor_over(monkeypatch, root) == 2

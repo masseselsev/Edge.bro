@@ -25,11 +25,52 @@ import os
 #: authorized_keys entries already name it.
 LEGACY_REPO_PATH = "/data/borg/fleet"
 
+def _existing_shard_floor() -> int:
+    """One past the highest shard directory that already exists on disk.
+
+    The count is allowed to grow and must never shrink: a node's shard is fixed
+    at enrolment, so dropping a repository out of the fleet-wide list orphans
+    everything in it — the prune stops visiting it and, worse, the SSH forced
+    command stops naming it, so its nodes cannot write to their own archives.
+
+    Rather than trust the environment variable to only ever move one way, the
+    repositories on disk set a floor under it. A `shard-N` directory exists
+    because a node was routed there, which is the fact that matters; the
+    variable can then be lowered by mistake without taking anything away.
+
+    Read from the filesystem rather than the database because every container
+    needs the same answer at import time and only some of them have a session.
+    The database is consulted separately at startup, which catches the one case
+    this cannot see: a node assigned to a shard it has not yet initialised.
+    """
+    try:
+        names = os.listdir(os.path.dirname(LEGACY_REPO_PATH))
+    except OSError:
+        # No storage mounted — a test run, or a container that does not carry
+        # the volume. Nothing to protect.
+        return 1
+
+    highest = 0
+    for name in names:
+        if not name.startswith("shard-"):
+            continue
+        try:
+            highest = max(highest, int(name.split("-", 1)[1]))
+        except ValueError:
+            continue
+    return highest + 1
+
+
 #: One by default: the layout that predates sharding, and the right answer for
 #: any fleet whose backup groups spread the load across weeks and months —
 #: which is what groups are for. Raise it to match the largest
 #: concurrency_limit in use when you actually want parallel writers.
-SHARD_COUNT = int(os.getenv("BORG_SHARD_COUNT", "1"))
+#:
+#: Floored by the repositories that already exist, so lowering the variable
+#: cannot strand them. `CONFIGURED_SHARD_COUNT` keeps what was asked for, so
+#: startup can say plainly that it was overridden and why.
+CONFIGURED_SHARD_COUNT = int(os.getenv("BORG_SHARD_COUNT", "1"))
+SHARD_COUNT = max(CONFIGURED_SHARD_COUNT, _existing_shard_floor())
 
 
 def shard_path(shard_index: int) -> str:

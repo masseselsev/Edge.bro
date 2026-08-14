@@ -94,11 +94,19 @@ def startup_db_init():
     except Exception as e:
         print(f"Error ensuring repository permissions on startup: {str(e)}")
 
-    # BORG_SHARD_COUNT can be raised on a running deployment; lowering it
-    # strands every node already assigned above the new ceiling, and the
-    # symptom is a "restricted path" error that points nowhere near the cause.
-    # Said once, loudly, at the only moment anyone is reading the logs for
-    # configuration problems.
+    # Keep the fleet's SSH grants matching BORG_SHARD_COUNT.
+    #
+    # The forced command in every authorized_keys entry names the repositories
+    # that key may reach, and it is derived from the count, so raising the count
+    # is not complete until the grants are rewritten. That used to be a manual
+    # step an operator had to know about, and forgetting it produced a
+    # "restricted path" failure on the first node routed to a new shard.
+    #
+    # Order matters here and is the whole reason this is not a one-liner. The
+    # rewrite makes the grants say exactly what the current count says, so
+    # running it while the count is too low would *narrow* them and take away
+    # access that currently works. The stranding check therefore comes first
+    # and blocks the rewrite, rather than the other way round.
     try:
         from core import repo_paths
         from core.db_session import session_scope
@@ -108,16 +116,32 @@ def startup_db_init():
             stranded = repo_paths.stranded_shards(
                 i for (i,) in _db.query(_models.Node.borg_shard_index).distinct()
             )
-        if stranded:
+
+        if repo_paths.SHARD_COUNT > repo_paths.CONFIGURED_SHARD_COUNT:
             print(
-                f"CONFIGURATION ERROR: BORG_SHARD_COUNT is {repo_paths.SHARD_COUNT}, but "
-                f"nodes are assigned to shard(s) {stranded}. Those nodes cannot back up "
-                f"or restore: their repository is no longer granted to their SSH key and "
-                f"the nightly prune will skip it. Raise BORG_SHARD_COUNT back to at least "
-                f"{max(stranded) + 1} and re-run scripts.reauthorize_shard_access."
+                f"NOTE: BORG_SHARD_COUNT is set to {repo_paths.CONFIGURED_SHARD_COUNT}, but "
+                f"{repo_paths.SHARD_COUNT} repositories already exist and hold archives. "
+                f"Using {repo_paths.SHARD_COUNT}. The count can be raised but never lowered — "
+                f"a node's shard is fixed when it is enrolled and its archives do not follow "
+                f"it. Set BORG_SHARD_COUNT={repo_paths.SHARD_COUNT} to make this explicit."
             )
+
+        if stranded:
+            # The floor above covers shards that exist on disk. This is the case
+            # it cannot see: a node routed to a shard it has not yet written to,
+            # so there is no directory to infer it from.
+            print(
+                f"CONFIGURATION ERROR: nodes are assigned to shard(s) {stranded}, which is "
+                f"beyond the {repo_paths.SHARD_COUNT} in use. Those nodes cannot back up or "
+                f"restore. Set BORG_SHARD_COUNT to at least {max(stranded) + 1} and restart. "
+                f"SSH grants have been left untouched — rewriting them now would remove "
+                f"access that still works."
+            )
+        else:
+            from scripts.reauthorize_shard_access import main as reauthorize
+            reauthorize()
     except Exception as e:
-        print(f"Error checking shard assignment on startup: {str(e)}")
+        print(f"Error reconciling shard access on startup: {str(e)}")
 
     # A restart is exactly what orphans a kiosk repository download: its
     # cleanup lives in the streaming generator, which a killed process never
