@@ -437,3 +437,92 @@ def test_a_live_lock_still_counts_against_the_group_limit(mock_run_backup_task, 
         check_and_trigger_backups(test_db)
 
     mock_run_backup_task.delay.assert_not_called()
+
+
+# --- the repository count is a ceiling on parallelism -----------------------
+#
+# Borg holds a repository's lock for the whole of `borg create`, so backups
+# landing on one shard run one at a time. Dispatching more than there are
+# shards does not make any of them start sooner — each extra one occupies a
+# Celery worker doing nothing but waiting out `--lock-wait`, and a long enough
+# queue times out and fails a backup that would have succeeded on the next
+# tick.
+#
+# This matters most for the dynamic raise, which lifts concurrency above the
+# group's configured limit when the window is running short. On a single-shard
+# install there is no parallelism for it to buy.
+
+
+def _group_of(test_db, count, concurrency):
+    group = models.BackupGroup(
+        name="NightlyGroup", interval="10min",
+        start_time="00:00", end_time="23:59",
+        concurrency_limit=concurrency, randomize_days=False,
+    )
+    test_db.add(group)
+    test_db.commit()
+    test_db.refresh(group)
+
+    for i in range(count):
+        test_db.add(models.Node(
+            hostname=f"node-{i:02d}", ip_address=f"192.168.1.{i + 10}",
+            group_id=group.id, backup_paused=False, status="READY",
+        ))
+    test_db.commit()
+    return group
+
+
+@patch('core.scheduler.redis_client')
+@patch('core.scheduler.run_backup_task')
+def test_one_repository_admits_one_backup_at_a_time(
+    mock_run_backup_task, mock_redis, test_db, monkeypatch
+):
+    from core import repo_paths
+
+    monkeypatch.setattr(repo_paths, "SHARD_COUNT", 1)
+    mock_redis.get.return_value = None
+    mock_redis.mget.side_effect = lambda keys: [None] * len(keys)
+
+    _group_of(test_db, count=8, concurrency=5)
+    check_and_trigger_backups(test_db, now=datetime(2026, 6, 15, 3, 0))
+
+    assert mock_run_backup_task.delay.call_count == 1, (
+        "dispatched more backups than there are repositories to write them to; "
+        "the extras only queue on the repo lock"
+    )
+
+
+@patch('core.scheduler.redis_client')
+@patch('core.scheduler.run_backup_task')
+def test_more_shards_admit_more_backups(
+    mock_run_backup_task, mock_redis, test_db, monkeypatch
+):
+    from core import repo_paths
+
+    monkeypatch.setattr(repo_paths, "SHARD_COUNT", 5)
+    mock_redis.get.return_value = None
+    mock_redis.mget.side_effect = lambda keys: [None] * len(keys)
+
+    _group_of(test_db, count=8, concurrency=5)
+    check_and_trigger_backups(test_db, now=datetime(2026, 6, 15, 3, 0))
+
+    assert mock_run_backup_task.delay.call_count == 5
+
+
+@patch('core.scheduler.redis_client')
+@patch('core.scheduler.run_backup_task')
+def test_a_group_limit_below_the_shard_count_still_wins(
+    mock_run_backup_task, mock_redis, test_db, monkeypatch
+):
+    """Shards raise the ceiling. They are not permission to exceed what the
+    operator allowed for a group's uplink."""
+    from core import repo_paths
+
+    monkeypatch.setattr(repo_paths, "SHARD_COUNT", 5)
+    mock_redis.get.return_value = None
+    mock_redis.mget.side_effect = lambda keys: [None] * len(keys)
+
+    _group_of(test_db, count=8, concurrency=2)
+    check_and_trigger_backups(test_db, now=datetime(2026, 6, 15, 3, 0))
+
+    assert mock_run_backup_task.delay.call_count == 2

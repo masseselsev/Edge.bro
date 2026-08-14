@@ -219,8 +219,13 @@ def test_quarterly_load_is_spread_across_the_whole_quarter():
 
 @patch('core.scheduler.redis_client')
 @patch('core.scheduler.run_backup_task')
-def test_offline_node_is_skipped(mock_run_backup_task, mock_redis, test_db):
+def test_offline_node_is_skipped(mock_run_backup_task, mock_redis, test_db, monkeypatch):
     mock_redis.get.return_value = None
+
+    # Enough repositories that the shard ceiling is not what limits dispatch —
+    # this test is about which nodes are eligible, not how many run at once.
+    from core import repo_paths
+    monkeypatch.setattr(repo_paths, "SHARD_COUNT", 5)
 
     group = models.BackupGroup(
         name="PingGroup", interval="weekly", start_time="02:00", end_time="05:00",

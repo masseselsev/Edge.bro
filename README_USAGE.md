@@ -252,7 +252,7 @@ Pruning runs automatically at 03:00 daily via Celery Beat, followed by `borg com
 
 ### 4.3 How deduplication saves space
 
-Nodes are spread over `BORG_SHARD_COUNT` Borg repositories (default 5), and
+Nodes are spread over `BORG_SHARD_COUNT` Borg repositories (default 1), and
 nodes sharing one store identical files only once.
 
 | Scenario | Space used |
@@ -307,12 +307,24 @@ one repository run strictly one at a time: borg holds its lock for the whole of
 writer, not five.
 
 > **Rule of thumb: set `BORG_SHARD_COUNT` to the largest `concurrency_limit`
-> any of your groups uses.** The default of 5 matches the default group limit.
-> Groups capped at 2 need only 2 shards.
+> you actually want to achieve.** The default is 1, the pre-sharding layout.
+> Groups capped at 2 need 2 shards, and no more.
 
 The Scheduler Load calendar accounts for this — a group's usable concurrency is
 reported as the smaller of its limit and the shard count, so a plan that would
 overrun a serialised window is shown as not fitting rather than looking fine.
+
+The scheduler enforces this too, not just the calendar: it will not dispatch
+more concurrent backups than there are shards, since the extras cannot start
+and would occupy a worker waiting out `--lock-wait`.
+
+**One thing to decide before a bulk enrolment.** A node's shard is assigned
+when it is enrolled and never changes. Raising `BORG_SHARD_COUNT` later routes
+*new* nodes to the new repositories, but every node already enrolled stays
+where it is — a fleet onboarded at 1 remains entirely on shard 0, however high
+you raise the setting afterwards. That is fine for a fleet whose groups spread
+the load, which is the normal case. If you are about to enrol hundreds of nodes
+and want them spread, set the count first.
 
 For reference, measured on a 3.4 GB / 59k-file node over a LAN: **~31 s** for an
 incremental run, ~225 s for that node's first backup. Against the default

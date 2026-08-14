@@ -25,7 +25,11 @@ import os
 #: authorized_keys entries already name it.
 LEGACY_REPO_PATH = "/data/borg/fleet"
 
-SHARD_COUNT = int(os.getenv("BORG_SHARD_COUNT", "5"))
+#: One by default: the layout that predates sharding, and the right answer for
+#: any fleet whose backup groups spread the load across weeks and months —
+#: which is what groups are for. Raise it to match the largest
+#: concurrency_limit in use when you actually want parallel writers.
+SHARD_COUNT = int(os.getenv("BORG_SHARD_COUNT", "1"))
 
 
 def shard_path(shard_index: int) -> str:

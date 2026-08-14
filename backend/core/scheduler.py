@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 redis_client = redis.Redis.from_url(REDIS_URL)
 
+from core import repo_paths
 from core.schedule_estimate import backup_lock_ttl_seconds, estimate_group_backup_minutes
 from core.schedule_slots import (  # noqa: F401  (re-exported for existing importers)
     deterministic_hash,
@@ -324,6 +325,24 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
                 f"to stay within the configured {group.upload_rate_limit} KiB/s upload limit."
             )
             effective_concurrency = bandwidth_cap
+
+        # So is the number of repositories, for the same reason and more
+        # absolutely. Borg holds a repository's lock for the whole of
+        # `borg create`, so backups landing on one shard run one at a time no
+        # matter how many are dispatched. Anything past this does not run
+        # sooner — it occupies a Celery worker doing nothing but waiting out
+        # `--lock-wait`, and if the queue ahead of it is long enough it times
+        # out and fails a backup that would have succeeded next tick.
+        #
+        # This is why the dynamic raise above cannot help a single-shard
+        # install: there is no parallelism to buy.
+        if effective_concurrency > repo_paths.SHARD_COUNT:
+            logger.info(
+                f"Group {group.name}: capping concurrency {effective_concurrency} -> "
+                f"{repo_paths.SHARD_COUNT} — one writer per repository, and the fleet "
+                f"has {repo_paths.SHARD_COUNT}."
+            )
+            effective_concurrency = repo_paths.SHARD_COUNT
 
         # Sort queue sequentially by stagger offset (earlier staggered nodes first)
         pending_nodes_stagger.sort(key=lambda x: x[1])

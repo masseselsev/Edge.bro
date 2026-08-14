@@ -55,7 +55,7 @@ services:
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
       # Must be identical in every service: backend derives the SSH
       # forced command from it while the workers route nodes by it.
-      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-5}
+      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-1}
       BORG_LOCK_WAIT_SECONDS: ${BORG_LOCK_WAIT_SECONDS:-600}
       BORG_MAINTENANCE_TTL: ${BORG_MAINTENANCE_TTL:-900}
       BORG_WRITER_TTL: ${BORG_WRITER_TTL:-14400}
@@ -124,7 +124,7 @@ services:
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
       # Must be identical in every service: backend derives the SSH
       # forced command from it while the workers route nodes by it.
-      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-5}
+      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-1}
       BORG_LOCK_WAIT_SECONDS: ${BORG_LOCK_WAIT_SECONDS:-600}
       BORG_MAINTENANCE_TTL: ${BORG_MAINTENANCE_TTL:-900}
       BORG_WRITER_TTL: ${BORG_WRITER_TTL:-14400}
@@ -177,7 +177,7 @@ services:
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
       # Must be identical in every service: backend derives the SSH
       # forced command from it while the workers route nodes by it.
-      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-5}
+      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-1}
       BORG_LOCK_WAIT_SECONDS: ${BORG_LOCK_WAIT_SECONDS:-600}
       BORG_MAINTENANCE_TTL: ${BORG_MAINTENANCE_TTL:-900}
       BORG_WRITER_TTL: ${BORG_WRITER_TTL:-14400}
@@ -227,7 +227,7 @@ services:
       BORG_PASSPHRASE: ${BORG_PASSPHRASE}
       # Must be identical in every service: backend derives the SSH
       # forced command from it while the workers route nodes by it.
-      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-5}
+      BORG_SHARD_COUNT: ${BORG_SHARD_COUNT:-1}
       BORG_LOCK_WAIT_SECONDS: ${BORG_LOCK_WAIT_SECONDS:-600}
       BORG_MAINTENANCE_TTL: ${BORG_MAINTENANCE_TTL:-900}
       BORG_WRITER_TTL: ${BORG_WRITER_TTL:-14400}

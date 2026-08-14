@@ -105,10 +105,18 @@ def test_the_forced_command_restricts_to_every_shard():
     assert "no-pty" in ssh_keys.BORG_SERVE_OPTIONS
 
 
-def test_reauthorizing_rewrites_an_existing_grant_rather_than_duplicating_it(tmp_path):
+def test_reauthorizing_rewrites_an_existing_grant_rather_than_duplicating_it(
+    tmp_path, monkeypatch
+):
     """What the shard-access migration script relies on: an entry whose options
     changed is rewritten in place. A duplicate would leave the old, narrower
-    restriction in the file, still matching first."""
+    restriction in the file, still matching first.
+
+    Pinned to more than one shard on purpose. At the default of 1 the new grant
+    is byte-identical to the pre-sharding one, so `authorize` correctly reports
+    SKIPPED and this test would be asserting nothing about rewriting.
+    """
+    monkeypatch.setattr(repo_paths, "SHARD_COUNT", 3)
     key = (
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGvSn4KpVvV3z0dQ0Kx7Zn8sVJ3xQ1lWc2mB4tYuIoPq"
     )
@@ -117,16 +125,18 @@ def test_reauthorizing_rewrites_an_existing_grant_rather_than_duplicating_it(tmp
         'command="borg serve --restrict-to-path /data/borg/fleet",'
         "no-port-forwarding,no-X11-forwarding,no-pty"
     )
+    new_options = ssh_keys._borg_serve_options()
+    assert new_options != old_options, "the grant has to differ for this to test anything"
 
     ssh_keys.authorize(path, key, options=old_options, tag=ssh_keys.node_tag(7))
     action = ssh_keys.authorize(
-        path, key, options=ssh_keys.BORG_SERVE_OPTIONS, tag=ssh_keys.node_tag(7)
+        path, key, options=new_options, tag=ssh_keys.node_tag(7)
     )
 
     assert action is ssh_keys.Action.REWRITTEN
     entries = ssh_keys.list_entries(path)
     assert len(entries) == 1
-    assert entries[0].options == ssh_keys.BORG_SERVE_OPTIONS
+    assert entries[0].options == new_options
     assert entries[0].tag == ssh_keys.node_tag(7)
 
 
