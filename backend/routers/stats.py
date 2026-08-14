@@ -108,7 +108,7 @@ def get_global_stats(db: Session = Depends(get_db)):
         base_nodes=base_nodes,
         saved_space_bytes=max(0, base_original - base_dedup),
         deduplication_ratio=backup_stats.deduplication_ratio(base_original, base_dedup),
-        repo_size_bytes=repo_usage.repo_size_bytes(),
+        repo_size_bytes=repo_usage.fleet_repo_size_bytes(),
         **disk,
     )
 
@@ -467,7 +467,7 @@ def _capacity(nodes, lifetime, in_window, days) -> schemas.CapacitySection:
     free = disk["disk_free_bytes"]
 
     return schemas.CapacitySection(
-        repo_size_bytes=repo_usage.repo_size_bytes(),
+        repo_size_bytes=repo_usage.fleet_repo_size_bytes(),
         daily_inflow_bytes=_round(inflow),
         days_until_full=_round(backup_stats.days_until_full(free, inflow), 1),
         projected_full_date=backup_stats.projected_full_date(datetime.utcnow(), free, inflow),

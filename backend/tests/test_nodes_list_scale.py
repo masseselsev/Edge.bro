@@ -64,13 +64,20 @@ def test_limit_is_bounded(client):
 
 
 def test_repo_size_is_read_from_the_cache_not_walked(client):
-    """The handler must go through core.repo_usage, which memoises `du`."""
-    with patch("routers.nodes_crud.repo_usage.repo_size_bytes", return_value=123) as m:
+    """The handler must go through core.repo_usage, which memoises `du`.
+
+    One measurement per shard, not per node: the figure is fleet-wide and the
+    repositories it sums over are a fixed handful, so the cost is flat in fleet
+    size — which is the property this guards.
+    """
+    from core import repo_paths
+
+    with patch("core.repo_usage.repo_size_bytes", return_value=123) as m:
         res = client.get("/api/nodes?limit=50")
     assert res.status_code == 200
-    assert m.call_count == 1, (
-        f"repo size resolved {m.call_count} times for one request; it is a "
-        "single fleet-wide figure and must be fetched once, from the cache"
+    assert m.call_count == repo_paths.SHARD_COUNT, (
+        f"repo size resolved {m.call_count} times for one request; expected one "
+        f"cached read per shard ({repo_paths.SHARD_COUNT}), independent of fleet size"
     )
 
 

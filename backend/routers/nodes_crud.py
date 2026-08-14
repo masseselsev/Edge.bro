@@ -309,7 +309,7 @@ def get_nodes(
     # list into seconds of stat() calls — and, being a sync handler, it did
     # that inside Starlette's bounded threadpool, stalling unrelated requests
     # once enough of them piled up.
-    shared_repo_size = repo_usage.repo_size_bytes() or 0
+    shared_repo_size = repo_usage.fleet_repo_size_bytes() or 0
 
     # Two MGETs for the whole page instead of one or two GETs per node.
     running_raw = _mget([f"backup_running:{n.id}" for n in nodes])

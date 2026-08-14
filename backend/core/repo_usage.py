@@ -75,6 +75,26 @@ def repo_size_bytes(path: Optional[str] = None, use_cache: bool = True) -> Optio
     return size
 
 
+def fleet_repo_size_bytes(use_cache: bool = True) -> Optional[int]:
+    """Bytes every shard occupies together.
+
+    Shards that do not exist yet contribute nothing rather than making the
+    whole total unknown — an uncreated shard genuinely holds zero bytes. None
+    only if no shard could be measured at all.
+
+    Note there is no matching sum for `disk_usage`: every shard lives on the
+    same volume, so summing free space would report it several times over.
+    """
+    total = 0
+    measured = False
+    for path in repo_paths.all_shard_paths():
+        size = repo_size_bytes(path, use_cache=use_cache)
+        if size is not None:
+            total += size
+            measured = True
+    return total if measured else None
+
+
 def _measure(target: str) -> Optional[int]:
     if not os.path.isdir(target):
         return None
