@@ -122,6 +122,27 @@ def test_build_borg_create_cmd_with_extra_ssh_args_inserts_before_destination():
     assert dest_idx == key_idx + 3
 
 
+def test_build_borg_create_cmd_waits_for_the_repository_lock():
+    """Borg's own default is a one-second wait, which fails the backup instead
+    of queueing it. Two nodes sharing a repository must queue, not race."""
+    from backup_tasks import build_borg_create_cmd, LOCK_WAIT_SECONDS
+
+    cmd = build_borg_create_cmd(
+        node_ip="192.168.1.5",
+        node_ssh_port=22,
+        borg_repo_url="ssh://borg@192.168.1.1:12345/data/borg/fleet",
+        archive_name="test-archive",
+        exclude_str="",
+        compression="lz4",
+        rate_limit_kib=0,
+        checkpoint_secs=1800,
+        cpu_quota=None,
+        borg_passphrase="secret",
+    )
+    assert f"--lock-wait {LOCK_WAIT_SECONDS}" in cmd[-1]
+    assert LOCK_WAIT_SECONDS > 1
+
+
 # --- cleanup_locks_and_resolve_ip: NAT mode must skip the reachability probe ---
 
 @patch("tasks.log_to_task")

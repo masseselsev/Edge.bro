@@ -21,6 +21,15 @@ from core.task_log import log_to_task
 # Re-use logging configuration from tasks
 logger = logging.getLogger(__name__)
 
+#: Borg holds the repository lock for the whole of `borg create`, not a brief
+#: critical section, so two backups landing on one repository contend for the
+#: entire duration of the first. Borg's own default wait is one second, which
+#: turns that contention into an outright failure for the loser. Wait instead:
+#: a backup that queues behind another finishes late, a backup that errors out
+#: has to be retried from scratch. Bounded so a wedged lock cannot hold a
+#: Celery worker forever.
+LOCK_WAIT_SECONDS = int(os.getenv("BORG_LOCK_WAIT_SECONDS", "600"))
+
 
 def compute_checkpoint_interval(rate_kib: Optional[int]) -> int:
     """
@@ -121,6 +130,7 @@ def build_borg_create_cmd(
 
     borg_create = (
         f"borg create --json --stats --log-json --progress "
+        f"--lock-wait {LOCK_WAIT_SECONDS} "
         f"--compression {borg_compression} "
         f"--checkpoint-interval {checkpoint_secs} "
         f"{rate_limit_str}"
@@ -597,7 +607,8 @@ def _transfer_and_record(
         f"BORG_RSH='{ssh.borg_rsh(compression=True)}' "
         f"BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' "
         f"BORG_RELOCATED_REPO_ACCESS_IS_OK=yes "
-        f"borg init --encryption=repokey {borg_repo_url}",
+        f"borg init --lock-wait {LOCK_WAIT_SECONDS} "
+        f"--encryption=repokey {borg_repo_url}",
         connect_timeout=None,
         keepalive=True,
         extra_args=extra_ssh_args,
