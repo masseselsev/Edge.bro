@@ -102,3 +102,54 @@ def test_only_the_monitoring_probe_discards_the_host_key():
     """Backup and bootstrap record host keys on purpose — see core.known_hosts."""
     assert "UserKnownHostsFile=/dev/null" not in ssh.command("h", 22, "x")
     assert "UserKnownHostsFile=/dev/null" in ssh.command("h", 22, "x", discard_host_key=True)
+
+
+# --- BORG_RSH: the string the node uses to reach the orchestrator ---
+#
+# Untested until a real backup failed on the lab. `borg init` succeeded and
+# every `borg create` did not, because only the create path asks for no
+# compression and only that branch was malformed.
+
+def _option_pairs(rsh: str):
+    """Every `-o` paired with the token that follows it."""
+    tokens = rsh.split()
+    return [(tokens[i], tokens[i + 1]) for i, t in enumerate(tokens)
+            if t == "-o" and i + 1 < len(tokens)]
+
+
+def test_every_ssh_option_is_given_a_value_not_another_flag():
+    """The regression that broke every backup: the compression option was
+    spliced between the first `-o` and the value it belonged to, so ssh saw
+    `-o -o Compression=no` and the remote answered "no argument after
+    keyword -o"."""
+    for compression in (True, False):
+        rsh = ssh.borg_rsh(compression=compression)
+        pairs = _option_pairs(rsh)
+        assert pairs, f"no options at all in BORG_RSH: {rsh}"
+        for keyword, value in pairs:
+            assert not value.startswith("-"), (
+                f"`{keyword} {value}` with compression={compression}: the option "
+                f"was handed a flag instead of a value — {rsh}"
+            )
+            assert "=" in value, (
+                f"`{value}` is not a key=value option with compression="
+                f"{compression} — {rsh}"
+            )
+
+
+def test_the_transfer_disables_compression_and_init_keeps_it():
+    """Borg has already compressed every chunk, so asking ssh to compress them
+    again costs CPU on a small box to make the stream slightly larger. What
+    `borg init` writes is a tiny config file, so it is left alone."""
+    assert "Compression=no" in ssh.borg_rsh()
+    assert "Compression=no" not in ssh.borg_rsh(compression=True)
+
+
+def test_borg_rsh_never_prompts_and_keeps_the_link_alive():
+    """A prompt is a hung backup: there is no terminal to answer it."""
+    for compression in (True, False):
+        rsh = ssh.borg_rsh(compression=compression)
+        assert rsh.split()[0] == "ssh"
+        assert "BatchMode=yes" in rsh
+        assert "StrictHostKeyChecking=no" in rsh
+        assert "ServerAliveInterval=" in rsh

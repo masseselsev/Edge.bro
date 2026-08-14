@@ -120,5 +120,11 @@ def borg_rsh(*, compression: bool = False) -> str:
         "-o", f"ServerAliveCountMax={keepalive_count()}",
     ]
     if not compression:
-        parts[4:4] = ["-o", "Compression=no"]
+        # Appended, not spliced. This was `parts[4:4] = [...]`, which inserts
+        # between the first `-o` and the value it belongs to, producing
+        # `-o -o Compression=no StrictHostKeyChecking=no` — ssh then reports
+        # "no argument after keyword -o" and the remote closes the connection.
+        # Every backup failed; `borg init` did not, because it is the one
+        # caller that asks for compression and so skipped this branch.
+        parts += ["-o", "Compression=no"]
     return " ".join(parts)
