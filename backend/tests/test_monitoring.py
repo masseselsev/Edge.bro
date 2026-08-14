@@ -398,6 +398,68 @@ def test_retention_prunes_rejected_fits_but_keeps_the_trend(db, monkeypatch):
     assert survivors[0].theta_c_per_w == 1.52
 
 
+def test_retention_keeps_ok_fits_forever_by_default(db, monkeypatch):
+    """thermal_fit_retention_days unset is the default install state, and it
+    must mean "keep forever" — not "same window as everything else"."""
+    node = make_node(db)
+    ancient = datetime.utcnow() - timedelta(days=3000)
+
+    db.add(models.ThermalFit(
+        node_id=node.id, window_start=ancient, window_end=ancient + timedelta(hours=4),
+        rejection="OK", n_samples=240, excitation=0.31, theta_c_per_w=1.4,
+    ))
+    db.add(models.Settings(telemetry_retention_days=90, thermal_fit_retention_days=None))
+    db.commit()
+
+    result = monitoring.monitoring_retention_task()
+
+    assert result["ok_fits_removed"] == 0
+    assert db.query(models.ThermalFit).filter_by(rejection="OK").count() == 1
+
+
+def test_retention_prunes_ok_fits_when_the_operator_opts_in(db, monkeypatch):
+    node = make_node(db)
+    old = datetime.utcnow() - timedelta(days=400)
+    recent = datetime.utcnow() - timedelta(days=10)
+
+    db.add(models.ThermalFit(
+        node_id=node.id, window_start=old, window_end=old + timedelta(hours=4),
+        rejection="OK", n_samples=240, excitation=0.31, theta_c_per_w=1.4,
+    ))
+    db.add(models.ThermalFit(
+        node_id=node.id, window_start=recent, window_end=recent + timedelta(hours=4),
+        rejection="OK", n_samples=240, excitation=0.31, theta_c_per_w=1.6,
+    ))
+    db.add(models.Settings(telemetry_retention_days=90, thermal_fit_retention_days=365))
+    db.commit()
+
+    result = monitoring.monitoring_retention_task()
+
+    assert result["ok_fits_removed"] == 1
+    survivors = db.query(models.ThermalFit).filter_by(rejection="OK").all()
+    assert len(survivors) == 1
+    assert survivors[0].theta_c_per_w == 1.6
+
+
+def test_ok_fit_retention_window_is_independent_of_the_general_one(db, monkeypatch):
+    """A short telemetry_retention_days must not drag OK fits down with it —
+    the two windows are deliberately separate settings."""
+    node = make_node(db)
+    old = datetime.utcnow() - timedelta(days=200)
+
+    db.add(models.ThermalFit(
+        node_id=node.id, window_start=old, window_end=old + timedelta(hours=4),
+        rejection="OK", n_samples=240, excitation=0.31, theta_c_per_w=1.4,
+    ))
+    # telemetry_retention_days=90 alone would have caught this row under the
+    # old single-window behaviour; thermal_fit_retention_days is unset here.
+    db.add(models.Settings(telemetry_retention_days=90))
+    db.commit()
+
+    assert monitoring.monitoring_retention_task()["ok_fits_removed"] == 0
+    assert db.query(models.ThermalFit).filter_by(rejection="OK").count() == 1
+
+
 def test_retention_leaves_recent_rejections_alone(db, monkeypatch):
     """Recent rejections are how an operator diagnoses why a node has no theta."""
     node = make_node(db)

@@ -54,6 +54,10 @@ class SettingsBase(BaseModel):
     bootstrap_credentials: List[CredentialSchema] = Field(default=[])
     default_credentials_id: Optional[str] = Field(default='')
     server_net_capacity_mbps: int = Field(default=1000, ge=1)
+    # None = keep successful thermal fits forever (the default, and the
+    # recommendation — see monitoring_retention_task). Set only if an operator
+    # wants a hard ceiling on the table's growth.
+    thermal_fit_retention_days: Optional[int] = Field(default=None, ge=1)
 
 
     @field_validator('server_name')

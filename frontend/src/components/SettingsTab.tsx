@@ -42,6 +42,8 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [hostDataPath, setHostDataPath] = useState<string | null>(null);
   const [maxKioskIsos, setMaxKioskIsos] = useState(5);
   const [serverNetCapacityMbps, setServerNetCapacityMbps] = useState<number | ''>(1000);
+  // '' means unset — kept forever. See models.Settings.thermal_fit_retention_days.
+  const [thermalFitRetentionDays, setThermalFitRetentionDays] = useState<number | ''>('');
 
   const [serverName, setServerName] = useState('orchestrator');
   const [bootstrapCredentials, setBootstrapCredentials] = useState<{ id: string, username: string, password: string, comment?: string }[]>([]);
@@ -153,6 +155,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         if (data.server_net_capacity_mbps !== undefined) {
           setServerNetCapacityMbps(data.server_net_capacity_mbps);
         }
+        setThermalFitRetentionDays(data.thermal_fit_retention_days ?? '');
 
         if (data.server_name !== undefined) {
           setServerName(data.server_name || 'edge-bro');
@@ -222,6 +225,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
     max_kiosk_isos: maxKioskIsos,
     server_name: serverName,
     server_net_capacity_mbps: serverNetCapacityMbps === '' ? 1000 : Number(serverNetCapacityMbps),
+    thermal_fit_retention_days: thermalFitRetentionDays === '' ? null : Number(thermalFitRetentionDays),
 
     bootstrap_credentials: bootstrapCredentials,
     default_credentials_id: defaultCredentialsId,
@@ -524,6 +528,27 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                       onChange={(e) => {
                         const val = e.target.value;
                         setServerNetCapacityMbps(val === '' ? '' : parseInt(val, 10) || 0);
+                      }}
+                      className="w-full h-10 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between min-h-[20px] mb-1.5">
+                      <InfoLabel
+                        label={t('thermalFitRetentionLabel') || 'Thermal History Retention (days)'}
+                        hint={t('thermalFitRetentionHelp') || 'Leave empty to keep thermal degradation history forever — recommended. The data is small and is the multi-year trend the thermal monitoring feature exists to produce; set a value only to enforce a hard ceiling.'}
+                        className="block text-xs font-semibold text-zinc-400"
+                      />
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      placeholder={t('unlimitedPlaceholder') || 'Unlimited'}
+                      value={thermalFitRetentionDays}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setThermalFitRetentionDays(val === '' ? '' : parseInt(val, 10) || 1);
                       }}
                       className="w-full h-10 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
                     />

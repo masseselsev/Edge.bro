@@ -66,6 +66,12 @@ class Settings(Base):
     # How long raw-ish telemetry rollups are kept. Thermal fits and SMART
     # snapshots are small and kept indefinitely; rollups are the bulky part.
     telemetry_retention_days = Column(Integer, default=90, nullable=False)
+    # NULL (the default) keeps successful thermal fits forever — see
+    # tasks.monitoring.monitoring_retention_task for why: at ~440k rows/year
+    # even at a 2000-node fleet they cost tens of MB, and they are the
+    # multi-year degradation trend the feature exists to produce. Set only if
+    # an operator wants a hard ceiling anyway.
+    thermal_fit_retention_days = Column(Integer, nullable=True)
 
 
 

@@ -347,9 +347,14 @@ def monitoring_retention_task() -> Dict[str, Any]:
       entire content is "the load never varied enough" — worth keeping long
       enough to diagnose a node, worthless as history.
 
-    Successful fits are deliberately **not** pruned. They are the long-term
-    degradation trend the whole feature exists to produce, and at roughly a
-    tenth the volume of the rejections they are affordable to keep.
+    Successful fits are deliberately **not** pruned by default. They are the
+    long-term degradation trend the whole feature exists to produce, and at
+    roughly a tenth the volume of the rejections they are affordable to keep —
+    an operator who wants a hard ceiling anyway can set
+    `Settings.thermal_fit_retention_days`, checked separately below on its own
+    window rather than reusing `telemetry_retention_days`, since keeping years
+    of degradation trend while discarding rollups after 90 days is exactly the
+    tradeoff this feature is for.
     """
     try:
         with session_scope() as db:
@@ -375,10 +380,21 @@ def monitoring_retention_task() -> Dict[str, Any]:
                 .delete(synchronize_session=False)
             )
 
+            ok_fits_removed = 0
+            thermal_fit_retention_days = getattr(settings, "thermal_fit_retention_days", None)
+            if thermal_fit_retention_days:
+                ok_cutoff = datetime.utcnow() - timedelta(days=int(thermal_fit_retention_days))
+                ok_fits_removed = (
+                    db.query(ThermalFit)
+                    .filter(ThermalFit.window_start < ok_cutoff, ThermalFit.rejection == "OK")
+                    .delete(synchronize_session=False)
+                )
+
         return {
             "rollups_removed": rollups_removed,
             "raw_reports_cleared": raw_cleared,
             "rejected_fits_removed": rejected_removed,
+            "ok_fits_removed": ok_fits_removed,
         }
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
