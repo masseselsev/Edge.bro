@@ -282,17 +282,35 @@ sharding — and add capacity when it grows:
 BORG_SHARD_COUNT=2
 
 docker compose up -d --build
-docker compose exec backend python3 -m scripts.reauthorize_shard_access
 ```
 
-The re-authorize step is required: the SSH forced command names the
-repositories a key may reach, and it is derived from the count.
+That is the whole procedure. The SSH forced command names the repositories a
+key may reach and is derived from the count, so the fleet's grants have to be
+rewritten to match — the orchestrator does that itself on startup. It is
+idempotent and reports what it did in the backend log:
 
-Lowering it strands every node already assigned above the new ceiling — their
-repository drops out of the fleet-wide list, so the nightly prune skips it and
-their key is no longer granted it, and the backup fails with a "restricted
-path" error that points nowhere near the setting responsible. The orchestrator
-checks for this on startup and says so plainly.
+```
+Shards: /data/borg/fleet, /data/borg/shard-1
+2 borg grant(s): 1 to update, 1 already current.
+```
+
+`scripts/reauthorize_shard_access.py` is still there for running by hand, and
+takes `--dry-run` to show what would change without changing it.
+
+**Lowering the count is prevented, not merely reported.** The repositories
+present on disk put a floor under the setting: a `shard-N` directory exists
+because a node was routed there, so the fleet goes on serving it whatever the
+variable says. Startup states that the setting was overridden and what to set
+instead. Were it allowed through, the shard would drop out of the fleet-wide
+list — the nightly prune would skip it and its nodes' keys would stop being
+granted it, failing their backups with a "restricted path" error that points
+nowhere near the setting responsible.
+
+One case the floor cannot see is a node assigned to a shard it has not yet
+written to, since there is no directory to infer it from. Startup checks the
+database for that separately, and when it finds one it **suppresses the grant
+rewrite** — rewriting to a lower count would narrow the grants and take away
+access those nodes still depend on.
 
 #### How many shards do you need
 
