@@ -195,7 +195,9 @@ per-node incremental data, and it buys `BORG_SHARD_COUNT` nodes backing up at
 once instead of one.
 
 ### Edge Node (Target Device)
-- **Supported OS**: Debian 10 or newer.
+- **Supported OS**: Debian 10 or newer, and Ubuntu 18.04 or newer. Releases old
+  enough that their repositories have moved to the distribution archive are
+  handled during bootstrap; a node pointed at a site-local mirror keeps it.
 - **Supported Hardware**: EMBC3000 motherboards or newer.
 - **Specifications**: 64-bit x86 CPU, 2 GB RAM (4 GB recommended), Ethernet or Wi-Fi.
 

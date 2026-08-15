@@ -117,7 +117,7 @@ The configured path is shown in the web UI under **Settings**.
 
 ### 2.3 Configure ISO cache storage
 
-Separately from backups, the orchestrator keeps an ISO cache at `/opt/data/iso_cache` inside the containers. It holds the downloaded Debian base image plus every generated USB-Kiosk client image, so plan for **~20 GB or more**. By default it lives in the `iso-cache` Docker volume under `/var/lib/docker/volumes/`.
+Separately from backups, the orchestrator keeps an ISO cache at `/opt/data/iso_cache` inside the containers. It holds the downloaded Debian base image — the current Debian stable live build, matched to the packages the orchestrator ships into the kiosk — plus every generated USB-Kiosk client image, so plan for **~20 GB or more**. By default it lives in the `iso-cache` Docker volume under `/var/lib/docker/volumes/`.
 
 To move it to a dedicated drive:
 
