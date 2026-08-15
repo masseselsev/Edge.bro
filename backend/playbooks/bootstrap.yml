@@ -133,6 +133,92 @@
         exit 3
       changed_when: false
 
+    # The task above settles *how* to reach a mirror. This one settles whether
+    # the mirror still carries this release at all -- a different failure with
+    # the same symptom.
+    #
+    # Debian moves a release to archive.debian.org when its LTS window closes
+    # and deletes it from deb.debian.org, so a node old enough hits 404 on
+    # every suite no matter how good its connectivity is. Ubuntu does the same
+    # with old-releases.ubuntu.com. Neither the APT proxy nor apt-cacher-ng
+    # helps: a cache cannot serve what upstream no longer has.
+    #
+    # Two rules keep this from making things worse:
+    #
+    #   * It only runs after `apt-get update` has actually failed. A working
+    #     mirror is never touched.
+    #   * It only rewrites the canonical Debian/Ubuntu hostnames. A node
+    #     pointed at a vendor or site-local mirror keeps it, because that name
+    #     matches none of the patterns -- which matters, since a fleet's older
+    #     machines usually do have their sources redirected already.
+    #
+    # If the archive does not help either, the originals go back so that the
+    # failure reported below is the operator's own, not one we introduced.
+    - name: Fall back to the archive mirror when a release has been retired
+      raw: |
+        APT_OPTS="-o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false --allow-releaseinfo-change"
+
+        if apt-get update $APT_OPTS >/tmp/edge-bro-apt.log 2>&1; then
+          echo "APT_OK: configured mirrors answer for this release."
+          exit 0
+        fi
+
+        . /etc/os-release 2>/dev/null || true
+        echo "apt-get update failed; checking whether ${ID:-this OS} ${VERSION_CODENAME:-release} has been archived."
+
+        LISTS="/etc/apt/sources.list"
+        for f in /etc/apt/sources.list.d/*.list; do
+          [ -e "$f" ] && LISTS="$LISTS $f"
+        done
+
+        case "${ID:-}" in
+          debian|ubuntu) ;;
+          *) echo "APT_FALLBACK_SKIPPED: ${ID:-unknown} is not Debian or Ubuntu; mirrors left alone."; exit 0 ;;
+        esac
+
+        # Backed up once only: a second run must not overwrite the operator's
+        # original with our already-rewritten copy.
+        for f in $LISTS; do
+          [ -e "$f.edge-bro-orig" ] || cp -p "$f" "$f.edge-bro-orig"
+        done
+
+        if [ "${ID:-}" = "debian" ]; then
+          for f in $LISTS; do
+            sed -i \
+              -e 's|https\?://deb\.debian\.org/debian-security|http://archive.debian.org/debian-security|g' \
+              -e 's|https\?://security\.debian\.org/debian-security|http://archive.debian.org/debian-security|g' \
+              -e 's|https\?://security\.debian\.org|http://archive.debian.org/debian-security|g' \
+              -e 's|https\?://deb\.debian\.org/debian|http://archive.debian.org/debian|g' \
+              -e 's|https\?://ftp\.[a-z0-9-]*\.\?debian\.org/debian|http://archive.debian.org/debian|g' \
+              "$f"
+          done
+        else
+          for f in $LISTS; do
+            sed -i \
+              -e 's|https\?://[a-z0-9.-]*archive\.ubuntu\.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
+              -e 's|https\?://security\.ubuntu\.com/ubuntu|http://old-releases.ubuntu.com/ubuntu|g' \
+              "$f"
+          done
+        fi
+
+        # An archived Release file is past its Valid-Until by design, and apt
+        # treats that as fatal unless told otherwise.
+        echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99edge-bro-archive
+
+        if apt-get update $APT_OPTS >/tmp/edge-bro-apt2.log 2>&1; then
+          echo "APT_FALLBACK_OK: switched to the archive mirror for ${VERSION_CODENAME:-this release}."
+          exit 0
+        fi
+
+        for f in $LISTS; do
+          [ -e "$f.edge-bro-orig" ] && mv "$f.edge-bro-orig" "$f"
+        done
+        rm -f /etc/apt/apt.conf.d/99edge-bro-archive
+        echo "APT_FALLBACK_FAILED: the archive mirror did not help either; original sources restored."
+        tail -5 /tmp/edge-bro-apt2.log
+        exit 0
+      changed_when: false
+
     - name: Install dependencies
       raw: apt-get update -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false --allow-releaseinfo-change || true; apt-get install -y -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false --allow-unauthenticated borgbackup parted udev dosfstools e2fsprogs util-linux
 
