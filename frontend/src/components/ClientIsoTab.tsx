@@ -294,7 +294,13 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
 
                   {isoSourceType === 'official' && (
                     <div className="flex flex-col gap-2">
-                      <div className="text-[10px] text-zinc-400 font-mono">debian-live-testing-amd64-xfce.iso (4GB)</div>
+                      {/* Derived, not written out: the base image is pinned to
+                          Debian stable, whose filename carries the point
+                          release and changes under us. A literal here said
+                          "testing" long after it stopped being true. */}
+                      <div className="text-[10px] text-zinc-400 font-mono">
+                        {status?.base_iso_official_url?.split('/').pop() || 'debian-live-amd64-xfce.iso'} (~4GB)
+                      </div>
                       {status?.base_iso_official_url && (
                         <div className="text-[9px] text-zinc-500 font-mono break-all leading-relaxed">
                           {t('sourceLabel') || 'Source'}: {status.base_iso_official_url}
