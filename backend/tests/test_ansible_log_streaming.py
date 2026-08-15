@@ -187,10 +187,18 @@ def test_every_progress_key_has_an_english_translation():
         for _, trans_key in table.values()
     } | {f"{kind}_complete" for kind in ansible_utils.PROGRESS_TASKS}
 
-    translations = (
+    en_ts = (
         pathlib.Path(__file__).resolve().parent.parent.parent
         / "frontend" / "src" / "i18n" / "en.ts"
-    ).read_text(encoding="utf-8")
+    )
+    # The backend image is built from `./backend` alone, so a run inside the
+    # container has no frontend tree to compare against. Skipping is honest
+    # there; reading it unconditionally raised FileNotFoundError, which reads
+    # like a broken test rather than an absent input.
+    if not en_ts.exists():
+        pytest.skip("frontend sources not present (running from the backend image?)")
+
+    translations = en_ts.read_text(encoding="utf-8")
     # Two-space indent since the dictionaries became top-level consts.
     defined = set(re.findall(r"^\s{2}(\w+):", translations, re.M))
 

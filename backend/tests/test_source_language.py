@@ -45,6 +45,20 @@ SANCTIONED = {
 # include itself rather than needing an exemption.
 CYRILLIC = re.compile("[\\u0400-\\u04FF]")
 
+#: Skipped where the repository is not checked out whole -- the backend image
+#: is built from `./backend` alone, so a run inside the container sees none of
+#: the trees below and would fail on having nothing to scan rather than on
+#: finding anything wrong.
+#:
+#: Guarding the module and not the individual tests is deliberate:
+#: `test_the_sweep_actually_reads_files` exists to catch a walk that silently
+#: matches nothing, so making *it* tolerate an empty result would remove the
+#: only thing standing between this file and passing vacuously.
+pytestmark = pytest.mark.skipif(
+    not all((REPO_ROOT / root).exists() for root in SEARCH_ROOTS),
+    reason="repository not checked out whole (running from the backend image?)",
+)
+
 
 def _source_files():
     for root in SEARCH_ROOTS:
