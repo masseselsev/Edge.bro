@@ -1,4 +1,8 @@
-FROM debian:bookworm-slim
+# Trixie, matching the other images. Bookworm's regular support ended
+# 2026-07-11; only LTS remains, and there is nothing here that needs the older
+# release. apt-cacher-ng caches whatever suites the nodes ask for, so the
+# proxy's own base has no bearing on what it serves.
+FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y \
     apt-cacher-ng \
     && rm -rf /var/lib/apt/lists/*
