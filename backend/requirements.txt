@@ -1,18 +1,44 @@
-fastapi>=0.110.0
-python-multipart>=0.0.9
-uvicorn[standard]>=0.28.0
-sqlalchemy>=2.0.28
-psycopg2-binary>=2.9.10
-alembic>=1.13.1
-celery>=5.3.6
-redis>=5.0.3
-ansible-runner>=2.3.4
-ansible-core>=2.15.4
-pydantic>=2.9.2
-pydantic-settings>=2.5.0
-pytest>=8.1.1
-pyserial>=3.5
-pyjwt>=2.8.0
-passlib[bcrypt]>=1.7.4
-httpx>=0.28.1
-requests>=2.31.0
+# Direct dependencies, pinned exactly.
+#
+# These were floors (`>=`) with no lockfile, which meant every `docker compose
+# build` resolved whatever was newest that day. The local virtualenv the test
+# suite runs in and the container serving the fleet had drifted several major
+# versions apart -- Starlette 0.36 against 1.6, redis-py 5.0 against 8.1 --
+# so a green test run said nothing about what was actually deployed. It also
+# let bcrypt cross a major boundary unannounced and change how it handles
+# over-long passwords.
+#
+# Transitive dependencies are pinned separately in requirements.lock, which is
+# what the image installs. Change a version here, then regenerate the lock:
+#
+#     pip install -r requirements.txt && pip freeze > requirements.lock
+#
+# Run that on Python 3.13 -- the version in docker/backend/Dockerfile -- since
+# a freeze taken on a different interpreter records different markers.
+
+fastapi==0.141.1
+python-multipart==0.0.32
+uvicorn[standard]==0.52.3
+sqlalchemy==2.0.52
+psycopg2-binary==2.9.12
+alembic==1.19.1
+celery==5.6.3
+redis==8.1.0
+ansible-runner==2.4.3
+ansible-core==2.21.3
+pydantic==2.13.4
+pydantic-settings==2.15.0
+pytest==9.1.1
+pyserial==3.5
+pyjwt==2.13.0
+
+# Was `passlib[bcrypt]`. passlib itself is imported nowhere -- auth.py calls
+# bcrypt directly -- and its last release was October 2020. It is also already
+# broken against bcrypt 5: constructing a CryptContext raises ValueError from
+# its own backend probe. It survived only because it was pulling in bcrypt as
+# an extra, so removing it without this line would have broken `import bcrypt`
+# in auth.py and taken the login endpoint with it.
+bcrypt==5.0.0
+
+httpx==0.28.1
+requests==2.34.2

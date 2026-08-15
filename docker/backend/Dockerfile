@@ -8,6 +8,11 @@ RUN apt-get update && apt-get install -y \
     && apt-get download openssh-server openssh-client openssh-sftp-server runit-helper libwtmpdb0 wireguard-tools openresolv borgbackup \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# The lock, not requirements.txt: the latter carries floors and reasoning for
+# humans, while this installs an exact, fully transitive set so that two builds
+# of the same commit are the same image. Without it, every rebuild resolved
+# whatever was newest that day and the deployed versions drifted away from the
+# ones the test suite had ever run against.
+COPY requirements.txt requirements.lock ./
+RUN pip install --no-cache-dir -r requirements.lock
 COPY . .

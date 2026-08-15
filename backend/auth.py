@@ -32,14 +32,39 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-key-change-me-in-prod
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
 
+#: bcrypt hashes at most 72 bytes of input and ignores the rest. Up to bcrypt
+#: 4.x the library truncated silently; 5.0 raises ValueError instead and tells
+#: the caller to truncate deliberately. Raising is the better default — silent
+#: truncation means two different long passwords can share a hash — but it has
+#: to be handled somewhere, and the only honest place is here, where both
+#: hashing and verification can agree on the same rule.
+#:
+#: Truncating rather than rejecting keeps existing long passwords working. They
+#: were already only 72 bytes of security; rejecting them now would lock out
+#: whoever set one, with no way to reach the password-change form.
+BCRYPT_MAX_BYTES = 72
+
+
+def _bcrypt_input(password: str) -> bytes:
+    """UTF-8 bytes of a password, clipped to what bcrypt actually reads.
+
+    Clipped on a character boundary: cutting mid-sequence would produce invalid
+    UTF-8, and — worse — a password whose truncation point shifts with its own
+    encoding would not hash to the same value twice.
+    """
+    encoded = password.encode('utf-8')
+    if len(encoded) <= BCRYPT_MAX_BYTES:
+        return encoded
+    return encoded[:BCRYPT_MAX_BYTES].decode('utf-8', 'ignore').encode('utf-8')
+
+
 def get_password_hash(password: str) -> str:
-    pwd_bytes = password.encode('utf-8')
     salt = bcrypt.gensalt()
-    return bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+    return bcrypt.hashpw(_bcrypt_input(password), salt).decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
-        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+        return bcrypt.checkpw(_bcrypt_input(plain_password), hashed_password.encode('utf-8'))
     except Exception:
         return False
 
