@@ -43,6 +43,37 @@ INTENTIONALLY_PUBLIC = {
 }
 
 
+def _api_routes():
+    """Every endpoint in the app, with its fully resolved dependency tree.
+
+    `app.routes` used to be the flat list, so this was a one-line loop. Newer
+    FastAPI keeps each `include_router` call as a single `_IncludedRouter`
+    entry and resolves the endpoints underneath it on demand, which made the
+    old loop find zero endpoints -- and, because "no endpoints" trivially
+    satisfies "no endpoint lacks auth", turned this whole file green while
+    checking nothing. `test_the_route_scan_actually_finds_routes` exists so
+    that failure mode is loud rather than silent next time.
+
+    `effective_candidates()` and not `original_router.routes`: the guard on
+    the network endpoints is applied at the mount in main.py, not in the
+    router, so the raw router's copy of a route does not carry it. Reading
+    those would report every network endpoint as unauthenticated.
+
+    Recursive because a router included into a router nests the wrappers, and
+    the network endpoints -- the ones whose guard is hardest to verify by
+    reading -- are two levels down.
+    """
+    def walk(routes):
+        for route in routes:
+            included = getattr(route, "effective_candidates", None)
+            if included is not None:
+                yield from walk(included())
+            elif hasattr(route, "dependant"):
+                yield route
+
+    yield from walk(app.routes)
+
+
 def _auth_guards(route):
     """Every auth dependency reachable from this route, at any depth."""
     found, stack = set(), [route.dependant]
@@ -57,14 +88,36 @@ def _auth_guards(route):
 
 def _unauthenticated_routes():
     out = set()
-    for route in app.routes:
-        if not hasattr(route, "dependant"):
-            continue
+    for route in _api_routes():
         if _auth_guards(route):
             continue
         for method in route.methods - {"HEAD", "OPTIONS"}:
             out.add((method, route.path))
     return out
+
+
+def test_the_route_scan_actually_finds_routes():
+    """A guard on the guard.
+
+    Every other assertion here is of the form "nothing in this set is bad", so
+    an empty set passes them all. That is not hypothetical: a FastAPI upgrade
+    changed how `app.routes` is structured and silently emptied the scan, and
+    the only test that noticed was the one checking the allowlist was not
+    stale -- which reads as a bookkeeping failure, not as authorization going
+    unchecked.
+    """
+    routes = list(_api_routes())
+    assert len(routes) > 50, (
+        f"the route scan found only {len(routes)} endpoints, so the checks in "
+        "this file are passing vacuously -- FastAPI's route structure has "
+        "probably changed again, see _api_routes()"
+    )
+
+    paths = {r.path for r in routes}
+    # One guarded and one deliberately public, so neither a scan that drops
+    # protected routes nor one that drops open routes can satisfy this.
+    assert "/api/nodes" in paths
+    assert "/api/auth/login" in paths
 
 
 def test_no_unexpected_unauthenticated_endpoints():
@@ -95,12 +148,17 @@ def test_preference_routes_require_a_user_not_just_any_principal(path):
     depend on require_user (or require_admin), never bare get_current_auth,
     or a kiosk token can act on an unrelated user's account.
     """
-    for route in app.routes:
-        if getattr(route, "path", None) == path:
-            guards = _auth_guards(route)
-            assert "require_user" in guards or "require_admin" in guards, (
-                f"{path} guards={sorted(guards)} — needs require_user"
-            )
+    matched = [r for r in _api_routes() if r.path == path]
+    # Asserted rather than assumed: this used to be a bare loop that checked
+    # nothing at all when the path was absent, which is precisely what
+    # happened when the route scan broke.
+    assert matched, f"{path} not found — was it renamed or unmounted?"
+
+    for route in matched:
+        guards = _auth_guards(route)
+        assert "require_user" in guards or "require_admin" in guards, (
+            f"{path} guards={sorted(guards)} — needs require_user"
+        )
 
 
 def test_network_routes_are_admin_only_on_the_orchestrator():
@@ -109,8 +167,7 @@ def test_network_routes_are_admin_only_on_the_orchestrator():
     That makes the orchestrator's guard a property of the mount in main.py,
     which is exactly the kind of thing that gets dropped in a refactor.
     """
-    network = [r for r in app.routes
-               if hasattr(r, "dependant") and r.path.startswith("/api/network/")]
+    network = [r for r in _api_routes() if r.path.startswith("/api/network/")]
     assert network, "no /api/network/* routes found — did the mount move?"
     for route in network:
         assert "require_admin" in _auth_guards(route), (
