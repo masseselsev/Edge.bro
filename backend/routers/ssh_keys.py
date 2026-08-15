@@ -10,6 +10,7 @@ import schemas
 from core import ssh_audit, ssh_keys
 from database import get_db, log_user_action
 from auth import require_admin
+from core.clock import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ def purge_finding(
         )
 
     action = ssh_keys.revoke(ssh_keys.ORCHESTRATOR_AUTHORIZED_KEYS, finding.fingerprint)
-    now = datetime.utcnow()
+    now = utcnow()
     finding.pruned_at = now
     finding.resolved_at = now
     db.commit()

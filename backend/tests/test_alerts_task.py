@@ -10,6 +10,7 @@ import models
 import tasks
 from database import Base
 from tasks.alerts import evaluate_alerts_task, LOCK_KEY
+from core.clock import utcnow
 
 TEST_DATABASE_URL = "sqlite:///./test_alerts_task_db.db"
 
@@ -52,7 +53,7 @@ def make_node(db):
 def test_new_bad_smart_snapshot_produces_one_open_alert(db_session):
     node = make_node(db_session)
     snapshot = models.SmartSnapshot(
-        node_id=node.id, captured_at=datetime.utcnow(), device="/dev/sda",
+        node_id=node.id, captured_at=utcnow(), device="/dev/sda",
         protocol="SATA", model="Test", health_passed=False, temperature_c=40,
         power_on_hours=1, written_bytes=1, percent_used=1.0, score=10,
         grade="REPLACE", subscores=[], overrides=[], advisories=[],
@@ -74,7 +75,7 @@ def test_new_bad_smart_snapshot_produces_one_open_alert(db_session):
 def test_second_sweep_with_no_changes_opens_nothing_new(db_session):
     node = make_node(db_session)
     snapshot = models.SmartSnapshot(
-        node_id=node.id, captured_at=datetime.utcnow(), device="/dev/sda",
+        node_id=node.id, captured_at=utcnow(), device="/dev/sda",
         protocol="SATA", model="Test", health_passed=False, temperature_c=40,
         power_on_hours=1, written_bytes=1, percent_used=1.0, score=10,
         grade="REPLACE", subscores=[], overrides=[], advisories=[],
@@ -93,7 +94,7 @@ def test_second_sweep_with_no_changes_opens_nothing_new(db_session):
 def test_a_broken_source_does_not_stop_the_sweep(db_session):
     node = make_node(db_session)
     snapshot = models.SmartSnapshot(
-        node_id=node.id, captured_at=datetime.utcnow(), device="/dev/sda",
+        node_id=node.id, captured_at=utcnow(), device="/dev/sda",
         protocol="SATA", model="Test", health_passed=False, temperature_c=40,
         power_on_hours=1, written_bytes=1, percent_used=1.0, score=10,
         grade="REPLACE", subscores=[], overrides=[], advisories=[],
@@ -132,7 +133,7 @@ def test_a_broken_source_does_not_resolve_its_existing_open_alerts(db_session):
     existing = models.Alert(
         module="thermal", node_id=node.id, dedup_key=f"thermal:{node.id}",
         severity="WATCH", status="OPEN", title="Thermal interface watch: node-1",
-        first_seen=datetime.utcnow(), last_seen=datetime.utcnow(),
+        first_seen=utcnow(), last_seen=utcnow(),
     )
     db_session.add(existing)
     db_session.commit()
@@ -173,7 +174,7 @@ def test_full_pipeline_notifies_once_through_the_delivery_boundary(db_session):
     )
     db_session.add(subscriber)
     snapshot = models.SmartSnapshot(
-        node_id=node.id, captured_at=datetime.utcnow(), device="/dev/sda",
+        node_id=node.id, captured_at=utcnow(), device="/dev/sda",
         protocol="SATA", model="Test", health_passed=False, temperature_c=40,
         power_on_hours=1, written_bytes=1, percent_used=1.0, score=10,
         grade="REPLACE", subscores=[], overrides=[], advisories=[],

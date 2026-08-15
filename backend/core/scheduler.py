@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 import models
 from backup_tasks import run_backup_task
+from core.clock import utcnow
 import zoneinfo
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,7 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
     It queues backups sequentially to distribute load and optimize bandwidth.
     """
     if now is None:
-        now = datetime.utcnow()  # Naive UTC datetime to match db timestamps
+        now = utcnow()  # Naive UTC datetime to match db timestamps
 
     # 1. Fetch all nodes that are assigned to a group, not paused, and fully ready
     nodes = db.query(models.Node).filter(

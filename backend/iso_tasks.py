@@ -4,23 +4,88 @@ import subprocess
 import json
 import logging
 import hashlib
+import re
 import secrets
 from celery_app import celery_app
 from core import ssh_keys
 from core.db_session import session_scope
-from typing import Dict, Any
+from typing import Any, Dict, List
 
 import paths
 from core import iso_build, task_log
 from core.task_log import log_to_task
+from core.clock import utcnow
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MIRROR_URLS = [
-    "https://cdimage.debian.org/cdimage/weekly-live-builds/amd64/iso-hybrid/debian-live-testing-amd64-xfce.iso"
-]
+#: Directory holding the current Debian **stable** live images.
+#:
+#: This used to point at the weekly `testing` build. Tracking testing gave the
+#: kiosk the newest kernel, which is a real advantage for a rescue stick that
+#: has to boot on hardware nobody chose in advance -- but it also decoupled the
+#: kiosk from the packages we ship to it. The backend image downloads .debs
+#: from its own suite and bakes them into the payload, so once testing moved to
+#: a newer Python than stable, `borgbackup` refused to install on the kiosk:
+#: it declares `python3 (<< 3.14)` and testing had 3.14. The offline SSH unit
+#: installs those packages with `dpkg -i ... && systemctl start ssh`, so the
+#: failure took ssh down with it.
+#:
+#: Pinning both sides to stable makes them the same distribution by
+#: construction rather than by coincidence.
+STABLE_LIVE_DIR = "https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid"
+
+#: `current-live` follows stable, but the filename carries the point release
+#: (13.6.0 -> 13.7.0 ...), so it cannot simply be hardcoded. It is resolved
+#: from the directory's SHA512SUMS at download time; this is the value used
+#: when that lookup cannot be made -- offline installs, and the module-level
+#: constant the API reports before any download has run.
+FALLBACK_LIVE_ISO = "debian-live-13.6.0-amd64-xfce.iso"
+
+DEFAULT_MIRROR_URLS = [f"{STABLE_LIVE_DIR}/{FALLBACK_LIVE_ISO}"]
 BASE_ISO_URL = DEFAULT_MIRROR_URLS[0]
 CACHE_DIR = paths.ISO_CACHE_DIR
+
+#: Matches only the image itself. SHA512SUMS also lists `.iso.contents`,
+#: `.iso.log` and `.iso.packages` for the same build, and a looser pattern
+#: happily downloads a text file as the base image.
+_LIVE_ISO_RE = re.compile(r"^(debian-live-[\d.]+-amd64-xfce\.iso)$")
+
+
+def stable_live_iso_urls() -> List[str]:
+    """Base-image URLs to try, current point release first.
+
+    Reads the filename out of SHA512SUMS rather than scraping the directory
+    index: it is the authoritative list of what is actually published there,
+    it is small, and the download path fetches it anyway to verify the image.
+
+    Never raises. A resolution failure falls back to the pinned filename,
+    which is the previous behaviour and still points at stable -- the caller
+    then reports the download failure, which is the honest error.
+    """
+    try:
+        sums = subprocess.check_output(
+            ["curl", "-4", "--connect-timeout", "10", "--retry", "1", "-sfL",
+             f"{STABLE_LIVE_DIR}/SHA512SUMS"],
+            timeout=60,
+        ).decode("utf-8", errors="ignore")
+    except Exception as e:
+        logger.warning(f"Could not read SHA512SUMS for the stable live image: {e}")
+        return list(DEFAULT_MIRROR_URLS)
+
+    names = []
+    for line in sums.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and _LIVE_ISO_RE.match(parts[1]):
+            names.append(parts[1])
+
+    if not names:
+        logger.warning("SHA512SUMS listed no amd64 xfce live image; using the pinned filename.")
+        return list(DEFAULT_MIRROR_URLS)
+
+    # Newest first, so a directory mid-rotation between point releases picks
+    # the one whose checksums were just published.
+    names.sort(reverse=True)
+    return [f"{STABLE_LIVE_DIR}/{n}" for n in names]
 
 #: Sentinel passed instead of a real token when the base image is rebuilt for
 #: its own sake — a settings change, a stale hash on startup — rather than
@@ -47,7 +112,7 @@ def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
             else:
                 os.remove(BASE_ISO_PATH)
         
-        urls_to_try = [url] if url else DEFAULT_MIRROR_URLS
+        urls_to_try = [url] if url else stable_live_iso_urls()
         download_url = None
         content_length = None
 
@@ -82,7 +147,10 @@ def download_base_iso_task(self, url: str = None) -> Dict[str, Any]:
             except Exception as size_err:
                 logger.warning(f"Could not write base.iso.size file: {size_err}")
 
-        is_official = download_url in DEFAULT_MIRROR_URLS
+        # Checked by location, not by list membership: the filename now varies
+        # with the point release, so an equality test against the pinned
+        # constant would skip checksum verification on every current image.
+        is_official = download_url.startswith(STABLE_LIVE_DIR)
         logger.info(f"Downloading Base ISO from {download_url}...")
 
         # Check if another curl process is already downloading to the tmp path
@@ -261,7 +329,8 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
             log_to_task(task_id, "[PROGRESS] 5:Downloading Base ISO...")
             # Use the mirror sequence checking logic to select the working URL
             download_url = None
-            for attempt_url in DEFAULT_MIRROR_URLS:
+            candidates = stable_live_iso_urls()
+            for attempt_url in candidates:
                 logger.info(f"Checking mirror for client ISO generation: {attempt_url}")
                 try:
                     subprocess.check_call([
@@ -271,9 +340,9 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
                     break
                 except Exception as e:
                     logger.warning(f"Mirror check failed for {attempt_url}: {e}")
-            
+
             if not download_url:
-                download_url = DEFAULT_MIRROR_URLS[0]
+                download_url = candidates[0]
                 logger.warning(f"All mirror checks failed. Falling back to primary URL: {download_url}")
 
             task_log.run_command_with_logging(task_id, [
@@ -535,7 +604,7 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
         with session_scope() as db:
             kiosk = db.query(Kiosk).filter(Kiosk.id == kiosk_id).first()
             if kiosk:
-                kiosk.iso_built_at = datetime.utcnow()
+                kiosk.iso_built_at = utcnow()
                 kiosk.rebuild_required = False
 
         log_to_task(task_id, "[PROGRESS] 100:Kiosk custom ISO generated successfully!", status="SUCCESS")
@@ -562,7 +631,7 @@ def trigger_base_iso_rebuild(db):
     ).first()
     
     if active_task:
-        age = datetime.utcnow() - active_task.created_at
+        age = utcnow() - active_task.created_at
         if age.total_seconds() > 45 * 60:
             active_task.status = "FAILED"
             active_task.log_output += "\n[SYSTEM] Task assumed dead after 45 minutes timeout."

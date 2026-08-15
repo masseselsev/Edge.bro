@@ -21,6 +21,7 @@ from core import smart, telemetry, thermal
 from core.db_session import session_scope
 from models import Node, Settings, SmartSnapshot, TelemetryRollup, ThermalFit
 import tasks
+from core.clock import utcnow
 
 #: Length of one fitting window. Long enough to see a 35-minute heatsink
 #: settle several times over, short enough that ambient does not wander far
@@ -241,7 +242,7 @@ def harvest_node(node_id: int, task_id: Optional[str] = None) -> Dict[str, Any]:
         # Everything the node had to say is now in memory; one session records
         # all of it. Fitting and scoring happen inside because they are pure
         # computation over `readings` — no I/O, no waiting.
-        now = datetime.utcnow()
+        now = utcnow()
         with session_scope() as db:
             node = db.query(Node).filter(Node.id == node_id).first()
             if not node:
@@ -307,7 +308,7 @@ def monitoring_sweep_task() -> Dict[str, Any]:
     """
     with session_scope() as db:
         settings = db.query(Settings).first()
-        now = datetime.utcnow()
+        now = utcnow()
         due = [
             node.id for node in db.query(Node).all()
             if monitoring_due(node, settings, now)
@@ -360,7 +361,7 @@ def monitoring_retention_task() -> Dict[str, Any]:
         with session_scope() as db:
             settings = db.query(Settings).first()
             days = int(getattr(settings, "telemetry_retention_days", None) or 90)
-            cutoff = datetime.utcnow() - timedelta(days=days)
+            cutoff = utcnow() - timedelta(days=days)
 
             rollups_removed = (
                 db.query(TelemetryRollup)
@@ -383,7 +384,7 @@ def monitoring_retention_task() -> Dict[str, Any]:
             ok_fits_removed = 0
             thermal_fit_retention_days = getattr(settings, "thermal_fit_retention_days", None)
             if thermal_fit_retention_days:
-                ok_cutoff = datetime.utcnow() - timedelta(days=int(thermal_fit_retention_days))
+                ok_cutoff = utcnow() - timedelta(days=int(thermal_fit_retention_days))
                 ok_fits_removed = (
                     db.query(ThermalFit)
                     .filter(ThermalFit.window_start < ok_cutoff, ThermalFit.rejection == "OK")

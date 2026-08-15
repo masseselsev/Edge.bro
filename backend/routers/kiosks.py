@@ -11,6 +11,7 @@ import models
 import schemas
 from core import ssh_keys
 from auth import require_admin
+from core.clock import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +209,7 @@ def handshake(req: schemas.HandshakeRequest, request: Request = None, db: Sessio
         token = generate_kiosk_token()
         
     kiosk.status = "APPROVED"
-    kiosk.approved_at = datetime.utcnow()
+    kiosk.approved_at = utcnow()
     kiosk.ssh_pub_key = req.ssh_pub_key
     kiosk.auth_token = token
     db.commit()
@@ -337,7 +338,7 @@ def toggle_kiosk_active(id: int, request: Request = None, db: Session = Depends(
                 logger.error(f"Failed to revoke kiosk SSH key during disable: {e}")
     elif kiosk.status in ["DISABLED", "PENDING"]:
         kiosk.status = "APPROVED"
-        kiosk.approved_at = datetime.utcnow()
+        kiosk.approved_at = utcnow()
         if kiosk.ssh_pub_key:
             try:
                 authorize_ssh_key(kiosk.ssh_pub_key, kiosk_id=kiosk.kiosk_id)

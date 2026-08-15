@@ -23,6 +23,7 @@ import schemas
 from core import backup_stats, repo_usage, transfer_speed
 from database import get_db
 from auth import require_admin
+from core.clock import utcnow
 
 router = APIRouter(prefix="/api/stats", dependencies=[Depends(require_admin)])
 
@@ -119,7 +120,7 @@ def get_insights(
     db: Session = Depends(get_db),
 ):
     """Reliability, throughput, window pressure and capacity over a window."""
-    now = datetime.utcnow()
+    now = utcnow()
     since = now - timedelta(days=days)
 
     nodes = db.query(models.Node).all()
@@ -470,7 +471,7 @@ def _capacity(nodes, lifetime, in_window, days) -> schemas.CapacitySection:
         repo_size_bytes=repo_usage.fleet_repo_size_bytes(),
         daily_inflow_bytes=_round(inflow),
         days_until_full=_round(backup_stats.days_until_full(free, inflow), 1),
-        projected_full_date=backup_stats.projected_full_date(datetime.utcnow(), free, inflow),
+        projected_full_date=backup_stats.projected_full_date(utcnow(), free, inflow),
         top_consumers=consumers[:_TOP_N],
         **disk,
     )

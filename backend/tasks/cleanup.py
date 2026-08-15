@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from models import TaskLog
 from celery_app import celery_app
 import tasks
+from core.clock import utcnow
 
 @celery_app.task(name="tasks.docker_system_cleanup_task")
 def docker_system_cleanup_task() -> Dict[str, Any]:
@@ -48,7 +49,7 @@ def db_task_log_prune_task() -> Dict[str, Any]:
     """
     db: Session = tasks.SessionLocal()
     try:
-        limit_date = datetime.utcnow() - timedelta(days=30)
+        limit_date = utcnow() - timedelta(days=30)
         deleted = db.query(TaskLog).filter(
             TaskLog.status.in_(["SUCCESS", "FAILED"]),
             TaskLog.created_at < limit_date
@@ -137,7 +138,7 @@ def prune_log_tables_task() -> Dict[str, Any]:
             (SystemLog, _SYSTEM_LOG_RETENTION_DAYS, "system_logs"),
             (AuditLog, _AUDIT_LOG_RETENTION_DAYS, "audit_logs"),
         ):
-            cutoff = datetime.utcnow() - timedelta(days=days)
+            cutoff = utcnow() - timedelta(days=days)
             deleted[label] = (
                 db.query(model)
                 .filter(model.created_at < cutoff)

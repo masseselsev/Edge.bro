@@ -16,6 +16,7 @@ import models
 import tasks
 from database import Base, DBLoggingHandler, setup_db_logging
 from tasks.cleanup import prune_log_tables_task
+from core.clock import utcnow
 
 
 @pytest.fixture
@@ -52,7 +53,7 @@ def test_error_logs_are_still_captured():
 def test_prune_removes_old_rows_and_keeps_recent_ones(session_factory, monkeypatch):
     monkeypatch.setattr(tasks, "SessionLocal", session_factory)
     db = session_factory()
-    now = datetime.utcnow()
+    now = utcnow()
 
     db.add(models.SystemLog(level="INFO", message="old", created_at=now - timedelta(days=90)))
     db.add(models.SystemLog(level="INFO", message="new", created_at=now - timedelta(days=1)))

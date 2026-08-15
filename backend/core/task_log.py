@@ -17,6 +17,7 @@ from typing import Callable, List, Optional, Union
 
 from core.db_session import session_scope
 from models import TaskLog
+from core.clock import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ def log_to_task(task_id: str, message: str, status: Optional[str] = None) -> Non
             task = db.query(TaskLog).filter(TaskLog.id == task_id).first()
             if not task:
                 return
-            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            timestamp = utcnow().strftime("%Y-%m-%d %H:%M:%S")
             task.log_output = (task.log_output or "") + f"[{timestamp}] {message}\n"
             if status:
                 task.status = status

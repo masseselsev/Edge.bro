@@ -11,6 +11,7 @@ from core import archive_cleanup
 from database import Base, get_db
 from main import app
 from routers import history as history_router
+from core.clock import utcnow
 
 TEST_DATABASE_URL = "sqlite:///./test_history_deletion_db.db"
 
@@ -71,7 +72,7 @@ def make_history(db, node, name, status="FAILED", days_ago=1):
     row = models.BackupHistory(
         node_id=node.id,
         archive_name=name,
-        timestamp=datetime.utcnow() - timedelta(days=days_ago),
+        timestamp=utcnow() - timedelta(days=days_ago),
         original_size=0,
         deduplicated_size=0,
         status=status,
@@ -179,7 +180,7 @@ def test_purge_can_be_limited_by_date(client, db_session):
     make_history(db_session, node, "ancient", days_ago=40)
     make_history(db_session, node, "recent", days_ago=2)
 
-    cutoff = (datetime.utcnow() - timedelta(days=30)).isoformat()
+    cutoff = (utcnow() - timedelta(days=30)).isoformat()
     res = client.post("/api/nodes/history/purge-failed", json={"before": cutoff})
 
     assert res.json()["deleted"] == 1

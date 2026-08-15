@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 import tasks
 from celery_app import celery_app
 from models import Node
+from core.clock import utcnow
 
 #: How many `ping` processes may exist at once.
 #:
@@ -90,7 +91,7 @@ def ping_all_nodes_task() -> Dict[str, Any]:
             return {"status": "SUCCESS", "checked": 0, "changed": 0}
 
         results = asyncio.run(ping_all_async([r[1] for r in rows]))
-        now = datetime.utcnow()
+        now = utcnow()
 
         changed_online: List[int] = []
         changed_offline: List[int] = []

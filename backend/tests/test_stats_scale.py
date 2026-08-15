@@ -16,6 +16,7 @@ from sqlalchemy.pool import StaticPool
 import models
 from database import Base, get_db
 from main import app
+from core.clock import utcnow
 
 
 @pytest.fixture(scope="module")
@@ -47,7 +48,7 @@ def client(db_session):
         username="admin", is_superadmin=True
     )
 
-    now = datetime.utcnow()
+    now = utcnow()
     for n in range(20):
         node = models.Node(hostname=f"s{n}", ip_address=f"10.60.0.{n}", status="READY")
         db_session.add(node)

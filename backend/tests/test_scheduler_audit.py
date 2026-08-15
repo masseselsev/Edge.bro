@@ -76,8 +76,7 @@ def test_bandwidth_cap_must_not_be_overridden_by_dynamic_concurrency(mock_run_ba
     # Monday 2026-06-15, 04:00 UTC — inside the window, 60 min left.
     # pending=20 -> required_concurrency = ceil(20*30/60) = 10
     now = datetime(2026, 6, 15, 4, 0)
-    with patch('core.scheduler.datetime') as mock_datetime:
-        mock_datetime.utcnow.return_value = now
+    with patch('core.scheduler.utcnow', return_value=now):
         check_and_trigger_backups(test_db)
 
     triggered = mock_run_backup_task.delay.call_count
@@ -144,8 +143,7 @@ def test_missed_window_uses_each_groups_own_local_time(mock_run_backup_task, moc
 
     # Monday 01:00 UTC — before GroupUTC's window opens.
     now = datetime(2026, 6, 15, 1, 0)
-    with patch('core.scheduler.datetime') as mock_datetime:
-        mock_datetime.utcnow.return_value = now
+    with patch('core.scheduler.utcnow', return_value=now):
         check_and_trigger_backups(test_db)
 
     test_db.refresh(node_utc)
@@ -252,8 +250,7 @@ def test_offline_node_is_skipped(mock_run_backup_task, mock_redis, test_db, monk
     for n in (offline, online, never_pinged):
         test_db.refresh(n)
 
-    with patch('core.scheduler.datetime') as mock_datetime:
-        mock_datetime.utcnow.return_value = datetime(2026, 6, 15, 3, 0)
+    with patch('core.scheduler.utcnow', return_value=datetime(2026, 6, 15, 3, 0)):
         check_and_trigger_backups(test_db)
 
     triggered_ids = {c.args[0] for c in mock_run_backup_task.delay.call_args_list}

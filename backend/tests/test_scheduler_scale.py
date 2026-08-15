@@ -89,8 +89,7 @@ def _run(db, engine, now, redis_mock):
     redis_mock.get.return_value = None
     redis_mock.mget.side_effect = lambda keys: [None] * len(keys)
     with Counter(engine) as counter:
-        with patch("core.scheduler.datetime") as dt:
-            dt.utcnow.return_value = now
+        with patch("core.scheduler.utcnow", return_value=now):
             check_and_trigger_backups(db)
     return counter.selects
 
@@ -138,8 +137,7 @@ def test_tick_reads_locks_in_one_round_trip(_task, redis_mock, env):
     redis_mock.get.return_value = None
     redis_mock.mget.side_effect = lambda keys: [None] * len(keys)
 
-    with patch("core.scheduler.datetime") as dt:
-        dt.utcnow.return_value = now
+    with patch("core.scheduler.utcnow", return_value=now):
         check_and_trigger_backups(db)
 
     assert redis_mock.get.call_count == 0, (

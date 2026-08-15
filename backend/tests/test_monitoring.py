@@ -11,6 +11,7 @@ from core import harvest as harvest_io
 from core import thermal
 from database import Base
 from tasks import monitoring
+from core.clock import utcnow
 
 TEST_DATABASE_URL = "sqlite:///./test_monitoring_db.db"
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -124,11 +125,11 @@ def test_the_fallback_applies_when_there_are_no_settings_at_all():
 
 def test_a_never_harvested_node_is_due():
     node = models.Node(hostname="n", ip_address="10.0.0.1", last_harvest_at=None)
-    assert monitoring.monitoring_due(node, None, datetime.utcnow()) is True
+    assert monitoring.monitoring_due(node, None, utcnow()) is True
 
 
 def test_a_node_harvested_within_its_interval_is_not_due():
-    now = datetime.utcnow()
+    now = utcnow()
     settings = models.Settings(monitoring_interval_days=30)
     node = models.Node(hostname="n", ip_address="10.0.0.1",
                        last_harvest_at=now - timedelta(days=5))
@@ -137,7 +138,7 @@ def test_a_node_harvested_within_its_interval_is_not_due():
 
 
 def test_a_node_past_its_interval_is_due():
-    now = datetime.utcnow()
+    now = utcnow()
     settings = models.Settings(monitoring_interval_days=30)
     node = models.Node(hostname="n", ip_address="10.0.0.1",
                        last_harvest_at=now - timedelta(days=31))
@@ -146,7 +147,7 @@ def test_a_node_past_its_interval_is_due():
 
 
 def test_a_per_node_interval_overrides_the_global_one():
-    now = datetime.utcnow()
+    now = utcnow()
     settings = models.Settings(monitoring_interval_days=30)
     node = models.Node(hostname="n", ip_address="10.0.0.1",
                        monitoring_interval_days=7,
@@ -156,7 +157,7 @@ def test_a_per_node_interval_overrides_the_global_one():
 
 
 def test_monitoring_can_be_switched_off_for_one_node():
-    now = datetime.utcnow()
+    now = utcnow()
     settings = models.Settings(monitoring_enabled=True, monitoring_interval_days=1)
     node = models.Node(hostname="n", ip_address="10.0.0.1",
                        monitoring_enabled=False, last_harvest_at=None)
@@ -168,7 +169,7 @@ def test_monitoring_can_be_switched_off_fleet_wide():
     settings = models.Settings(monitoring_enabled=False)
     node = models.Node(hostname="n", ip_address="10.0.0.1", last_harvest_at=None)
 
-    assert monitoring.monitoring_due(node, settings, datetime.utcnow()) is False
+    assert monitoring.monitoring_due(node, settings, utcnow()) is False
 
 
 # --- harvesting end to end ---------------------------------------------------
@@ -349,7 +350,7 @@ def test_re_harvesting_overlapping_data_updates_rather_than_duplicates(db, monke
 
 def test_retention_drops_old_rollups_but_keeps_smart_scalars(db, monkeypatch):
     node = make_node(db)
-    old = datetime.utcnow() - timedelta(days=200)
+    old = utcnow() - timedelta(days=200)
 
     db.add(models.TelemetryRollup(node_id=node.id, bucket_start=old, sample_count=15))
     db.add(models.SmartSnapshot(
@@ -375,7 +376,7 @@ def test_retention_prunes_rejected_fits_but_keeps_the_trend(db, monkeypatch):
     nodes saying only "the load never varied enough". The successful fits are
     the degradation trend and must survive."""
     node = make_node(db)
-    old = datetime.utcnow() - timedelta(days=200)
+    old = utcnow() - timedelta(days=200)
 
     db.add(models.ThermalFit(
         node_id=node.id, window_start=old, window_end=old + timedelta(hours=4),
@@ -402,7 +403,7 @@ def test_retention_keeps_ok_fits_forever_by_default(db, monkeypatch):
     """thermal_fit_retention_days unset is the default install state, and it
     must mean "keep forever" — not "same window as everything else"."""
     node = make_node(db)
-    ancient = datetime.utcnow() - timedelta(days=3000)
+    ancient = utcnow() - timedelta(days=3000)
 
     db.add(models.ThermalFit(
         node_id=node.id, window_start=ancient, window_end=ancient + timedelta(hours=4),
@@ -419,8 +420,8 @@ def test_retention_keeps_ok_fits_forever_by_default(db, monkeypatch):
 
 def test_retention_prunes_ok_fits_when_the_operator_opts_in(db, monkeypatch):
     node = make_node(db)
-    old = datetime.utcnow() - timedelta(days=400)
-    recent = datetime.utcnow() - timedelta(days=10)
+    old = utcnow() - timedelta(days=400)
+    recent = utcnow() - timedelta(days=10)
 
     db.add(models.ThermalFit(
         node_id=node.id, window_start=old, window_end=old + timedelta(hours=4),
@@ -445,7 +446,7 @@ def test_ok_fit_retention_window_is_independent_of_the_general_one(db, monkeypat
     """A short telemetry_retention_days must not drag OK fits down with it —
     the two windows are deliberately separate settings."""
     node = make_node(db)
-    old = datetime.utcnow() - timedelta(days=200)
+    old = utcnow() - timedelta(days=200)
 
     db.add(models.ThermalFit(
         node_id=node.id, window_start=old, window_end=old + timedelta(hours=4),
@@ -463,7 +464,7 @@ def test_ok_fit_retention_window_is_independent_of_the_general_one(db, monkeypat
 def test_retention_leaves_recent_rejections_alone(db, monkeypatch):
     """Recent rejections are how an operator diagnoses why a node has no theta."""
     node = make_node(db)
-    recent = datetime.utcnow() - timedelta(days=3)
+    recent = utcnow() - timedelta(days=3)
 
     db.add(models.ThermalFit(
         node_id=node.id, window_start=recent, window_end=recent + timedelta(hours=4),
@@ -483,7 +484,7 @@ def test_clearing_a_raw_report_stores_sql_null_not_json_null(db, monkeypatch):
     count, and the full-statistics endpoint would hand back a null report
     instead of saying none is stored."""
     node = make_node(db)
-    old = datetime.utcnow() - timedelta(days=200)
+    old = utcnow() - timedelta(days=200)
     db.add(models.SmartSnapshot(node_id=node.id, captured_at=old, device="/dev/sda",
                                 score=97, raw={"big": "report"}))
     db.add(models.Settings(telemetry_retention_days=90))
@@ -501,7 +502,7 @@ def test_clearing_a_raw_report_stores_sql_null_not_json_null(db, monkeypatch):
 
 def test_retention_leaves_recent_data_alone(db, monkeypatch):
     node = make_node(db)
-    recent = datetime.utcnow() - timedelta(days=3)
+    recent = utcnow() - timedelta(days=3)
 
     db.add(models.TelemetryRollup(node_id=node.id, bucket_start=recent, sample_count=15))
     db.add(models.SmartSnapshot(
@@ -519,7 +520,7 @@ def test_retention_leaves_recent_data_alone(db, monkeypatch):
 # --- the sweep ---------------------------------------------------------------
 
 def test_the_sweep_dispatches_only_overdue_nodes(db, monkeypatch):
-    now = datetime.utcnow()
+    now = utcnow()
     db.add(models.Settings(monitoring_interval_days=30, monitoring_enabled=True))
     make_node(db, "fresh", "10.0.0.1", last_harvest_at=now - timedelta(days=2))
     make_node(db, "overdue", "10.0.0.2", last_harvest_at=now - timedelta(days=40))

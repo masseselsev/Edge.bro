@@ -18,6 +18,7 @@ from database import get_db, log_user_action
 from auth import get_current_auth, require_admin, require_user
 from tasks.monitoring import resolve_setting
 from routers.deps import node_or_404
+from core.clock import utcnow
 
 router = APIRouter(prefix="/api/monitoring", tags=["Monitoring"])
 
@@ -93,7 +94,7 @@ def get_node_health(node_id: int, db: Session = Depends(get_db),
     node = node_or_404(db, node_id)
 
     settings = db.query(models.Settings).first()
-    now = datetime.utcnow()
+    now = utcnow()
 
     return schemas.NodeHealthResponse(
         node_id=node.id,
@@ -117,7 +118,7 @@ def get_smart_history(
     current_user=Depends(require_admin),
 ):
     """Every SMART reading in the window, for the detail graph."""
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = utcnow() - timedelta(days=days)
     query = (
         db.query(models.SmartSnapshot)
         .filter(models.SmartSnapshot.node_id == node_id,
@@ -172,7 +173,7 @@ def get_thermal_history(
     db: Session = Depends(get_db),
     current_user=Depends(require_admin),
 ):
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = utcnow() - timedelta(days=days)
     query = (
         db.query(models.ThermalFit)
         .filter(models.ThermalFit.node_id == node_id,
@@ -190,7 +191,7 @@ def get_telemetry(
     db: Session = Depends(get_db),
     current_user=Depends(require_admin),
 ):
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = utcnow() - timedelta(days=days)
     return (
         db.query(models.TelemetryRollup)
         .filter(models.TelemetryRollup.node_id == node_id,

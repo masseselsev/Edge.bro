@@ -8,6 +8,7 @@ from typing import Optional
 
 import models
 from core import ssh_keys
+from core.clock import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ def upsert_finding(
     reason: str,
 ) -> models.SshKeyFinding:
     """Record what this scan saw, preserving first_seen and the orphan streak."""
-    now = datetime.utcnow()
+    now = utcnow()
     finding = (
         db.query(models.SshKeyFinding)
         .filter(
@@ -142,7 +143,7 @@ def _node_id_for(db, entry: ssh_keys.AuthorizedKey) -> Optional[int]:
 
 def _resolve_absent(db, location: str, host: str, seen: set[str]) -> None:
     """Mark rows for entries no longer present in the file."""
-    now = datetime.utcnow()
+    now = utcnow()
     query = db.query(models.SshKeyFinding).filter(
         models.SshKeyFinding.location == location,
         models.SshKeyFinding.host == host,
@@ -209,7 +210,7 @@ def select_prune_candidates(findings) -> PruneDecision:
     Callers must pass the findings for one file, since the fraction cap is
     computed against the total handed in.
     """
-    now = datetime.utcnow()
+    now = utcnow()
     tagged_total = sum(
         1 for f in findings
         if f.classification in (
@@ -263,7 +264,7 @@ def prune(db, path: str, decision: PruneDecision) -> list:
         )
         return []
 
-    now = datetime.utcnow()
+    now = utcnow()
     pruned = []
     for finding in decision.candidates:
         action = ssh_keys.revoke(path, finding.fingerprint)

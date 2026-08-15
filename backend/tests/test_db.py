@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from database import Base
 import models
+from core.clock import utcnow
 
 # Use a test SQLite database to verify structures
 TEST_DATABASE_URL = "sqlite:///./test_orchestrator.db"
@@ -270,7 +271,7 @@ def test_get_all_history(db_session):
         original_size=100,
         deduplicated_size=50,
         status="SUCCESS",
-        timestamp=datetime.datetime.utcnow() - datetime.timedelta(days=1)
+        timestamp=utcnow() - datetime.timedelta(days=1)
     )
     h2 = models.BackupHistory(
         node_id=node.id,
@@ -278,7 +279,7 @@ def test_get_all_history(db_session):
         original_size=200,
         deduplicated_size=100,
         status="SUCCESS",
-        timestamp=datetime.datetime.utcnow()
+        timestamp=utcnow()
     )
     db_session.add(h1)
     db_session.add(h2)

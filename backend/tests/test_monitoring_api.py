@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 import models
 from database import Base, get_db
 from main import app
+from core.clock import utcnow
 
 TEST_DATABASE_URL = "sqlite:///./test_monitoring_api_db.db"
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -71,7 +72,7 @@ def make_node(db, hostname="node-1", ip="10.0.0.1", cpu="11th Gen Intel(R) Core(
 def add_smart(db, node, days_ago=0, percent_used=1.0, score=99, device="/dev/sda", raw=None):
     snapshot = models.SmartSnapshot(
         node_id=node.id,
-        captured_at=datetime.utcnow() - timedelta(days=days_ago),
+        captured_at=utcnow() - timedelta(days=days_ago),
         device=device, protocol="SATA", model="Samsung SSD 870 EVO 500GB",
         health_passed=True, temperature_c=37, power_on_hours=1810,
         written_bytes=3_900_000_000_000, percent_used=percent_used,
@@ -85,7 +86,7 @@ def add_smart(db, node, days_ago=0, percent_used=1.0, score=99, device="/dev/sda
 
 
 def add_fit(db, node, days_ago, theta=1.5, rejection="OK", normalised=None):
-    start = datetime.utcnow() - timedelta(days=days_ago)
+    start = utcnow() - timedelta(days=days_ago)
     fit = models.ThermalFit(
         node_id=node.id, window_start=start, window_end=start + timedelta(hours=4),
         rejection=rejection, n_samples=240, excitation=0.31,
@@ -296,7 +297,7 @@ def test_telemetry_rollups_come_back_for_the_graph(client, db_session):
     for i in range(4):
         db_session.add(models.TelemetryRollup(
             node_id=node.id,
-            bucket_start=datetime.utcnow() - timedelta(hours=i),
+            bucket_start=utcnow() - timedelta(hours=i),
             sample_count=15, cpu_temp_c_mean=45.0 + i, power_w_mean=7.0,
         ))
     db_session.commit()

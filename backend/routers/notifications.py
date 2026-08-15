@@ -13,6 +13,7 @@ import schemas
 from core.notify import telegram
 from database import get_db, log_user_action
 from auth import require_admin, require_user
+from core.clock import utcnow
 
 router = APIRouter(prefix="/api", tags=["Notifications"])
 
@@ -80,7 +81,7 @@ def acknowledge_alert(
                             detail="Alert is already resolved.")
 
     alert.status = "ACKNOWLEDGED"
-    alert.acknowledged_at = datetime.utcnow()
+    alert.acknowledged_at = utcnow()
     alert.acknowledged_by_id = current_auth.id
     db.commit()
     log_user_action(

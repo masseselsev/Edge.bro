@@ -67,8 +67,7 @@ def test_scheduler_trigger_normal_window(mock_run_backup_task, mock_redis, test_
     target_date = datetime(2026, 6, 15) + timedelta(days=day_index)
     target_time = target_date.replace(hour=scheduled_hour, minute=scheduled_minute)
     
-    with patch('core.scheduler.datetime') as mock_datetime:
-        mock_datetime.utcnow.return_value = target_time
+    with patch('core.scheduler.utcnow', return_value=target_time):
         check_and_trigger_backups(test_db)
         
     mock_run_backup_task.delay.assert_called_once_with(node.id, comment="Automated scheduler execution (Group: NightlyGroup)")
@@ -114,8 +113,7 @@ def test_scheduler_paused_node(mock_run_backup_task, mock_redis, test_db):
     target_date = datetime(2026, 6, 15) + timedelta(days=day_index)
     target_time = target_date.replace(hour=scheduled_hour, minute=scheduled_minute)
     
-    with patch('core.scheduler.datetime') as mock_datetime:
-        mock_datetime.utcnow.return_value = target_time
+    with patch('core.scheduler.utcnow', return_value=target_time):
         check_and_trigger_backups(test_db)
         
     mock_run_backup_task.delay.assert_not_called()
@@ -173,8 +171,7 @@ def test_scheduler_concurrency_limit(mock_run_backup_task, mock_redis, test_db):
     target_date = datetime(2026, 6, 15) + timedelta(days=day_index)
     target_time = target_date.replace(hour=scheduled_hour, minute=scheduled_minute)
     
-    with patch('core.scheduler.datetime') as mock_datetime:
-        mock_datetime.utcnow.return_value = target_time
+    with patch('core.scheduler.utcnow', return_value=target_time):
         check_and_trigger_backups(test_db)
         
     mock_run_backup_task.delay.assert_not_called()
@@ -216,8 +213,7 @@ def test_scheduler_backup_today_outside_schedule_but_in_window(mock_run_backup_t
     target_date = datetime(2026, 6, 15) + timedelta(days=non_scheduled_day)
     target_time = target_date.replace(hour=2, minute=30)
     
-    with patch('core.scheduler.datetime') as mock_datetime:
-        mock_datetime.utcnow.return_value = target_time
+    with patch('core.scheduler.utcnow', return_value=target_time):
         check_and_trigger_backups(test_db)
         
     mock_run_backup_task.delay.assert_called_once()
@@ -255,8 +251,7 @@ def test_scheduler_missed_window_marking(mock_run_backup_task, mock_redis, test_
     
     target_time = datetime(2026, 6, 15, 6, 0)
     
-    with patch('core.scheduler.datetime') as mock_datetime:
-        mock_datetime.utcnow.return_value = target_time
+    with patch('core.scheduler.utcnow', return_value=target_time):
         check_and_trigger_backups(test_db)
         
     test_db.refresh(node)
@@ -379,8 +374,7 @@ def test_a_stale_lock_does_not_count_against_the_group_limit(mock_run_backup_tas
             return True
 
     with patch('celery_app.celery_app.AsyncResult', return_value=_FinishedResult()), \
-         patch('core.scheduler.datetime') as mock_datetime:
-        mock_datetime.utcnow.return_value = target_time
+         patch('core.scheduler.utcnow', return_value=target_time):
         check_and_trigger_backups(test_db)
 
     # The group is no longer frozen. Which node goes first is the scheduler's
@@ -432,8 +426,7 @@ def test_a_live_lock_still_counts_against_the_group_limit(mock_run_backup_task, 
             return False
 
     with patch('celery_app.celery_app.AsyncResult', return_value=_RunningResult()), \
-         patch('core.scheduler.datetime') as mock_datetime:
-        mock_datetime.utcnow.return_value = target_time
+         patch('core.scheduler.utcnow', return_value=target_time):
         check_and_trigger_backups(test_db)
 
     mock_run_backup_task.delay.assert_not_called()

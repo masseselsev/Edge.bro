@@ -11,6 +11,7 @@ from typing import List, Optional, Set
 from sqlalchemy.orm import Session
 
 import models
+from core.clock import utcnow
 
 _SEVERITY_RANK = {"WATCH": 0, "ALERT": 1}
 
@@ -55,7 +56,7 @@ def sync(
       violated it would hit the database's partial unique index on its
       second insert for the same key — a hard failure, not a silent one.
     """
-    now = datetime.utcnow()
+    now = utcnow()
     result = SyncResult()
 
     open_rows = (

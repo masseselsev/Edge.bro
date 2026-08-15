@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 import models
 from database import Base, get_db
 from main import app
+from core.clock import utcnow
 
 TEST_DATABASE_URL = "sqlite:///./test_stats_db.db"
 
@@ -50,7 +51,7 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
-NOW = datetime.utcnow()
+NOW = utcnow()
 
 
 def add_node(db, hostname, ip, group=None, upload_rate_limit=None):

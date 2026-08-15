@@ -10,6 +10,7 @@ from database import Base
 from core.alert_sources import smart as smart_source
 from core.alert_sources import thermal as thermal_source
 from core.alert_sources import SOURCES
+from core.clock import utcnow
 
 TEST_DATABASE_URL = "sqlite:///./test_alert_sources_db.db"
 
@@ -42,7 +43,7 @@ def make_node(db, hostname="node-1", cpu="11th Gen Intel(R) Core(TM) i5-1145G7E 
 
 def add_smart(db, node, grade, device="/dev/sda"):
     snapshot = models.SmartSnapshot(
-        node_id=node.id, captured_at=datetime.utcnow(), device=device,
+        node_id=node.id, captured_at=utcnow(), device=device,
         protocol="SATA", model="Test SSD", health_passed=(grade != "REPLACE"),
         temperature_c=40, power_on_hours=100, written_bytes=1_000_000,
         percent_used=1.0, score=90 if grade == "OK" else 40, grade=grade,
@@ -54,7 +55,7 @@ def add_smart(db, node, grade, device="/dev/sda"):
 
 
 def add_fit(db, node, theta=1.5, rejection="OK", days_ago=1):
-    start = datetime.utcnow() - timedelta(days=days_ago)
+    start = utcnow() - timedelta(days=days_ago)
     fit = models.ThermalFit(
         node_id=node.id, window_start=start, window_end=start + timedelta(hours=4),
         rejection=rejection, n_samples=200, excitation=0.3,

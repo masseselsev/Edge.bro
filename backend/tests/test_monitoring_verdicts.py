@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 import models
 from database import Base
 from core.monitoring_verdicts import thermal_verdict
+from core.clock import utcnow
 
 TEST_DATABASE_URL = "sqlite:///./test_monitoring_verdicts_db.db"
 
@@ -39,7 +40,7 @@ def make_node(db, hostname="node-1", cpu="11th Gen Intel(R) Core(TM) i5-1145G7E 
 
 
 def add_fit(db, node, days_ago, theta=1.5, rejection="OK"):
-    start = datetime.utcnow() - timedelta(days=days_ago)
+    start = utcnow() - timedelta(days=days_ago)
     fit = models.ThermalFit(
         node_id=node.id, window_start=start, window_end=start + timedelta(hours=4),
         rejection=rejection, n_samples=200, excitation=0.3,
@@ -53,7 +54,7 @@ def add_fit(db, node, days_ago, theta=1.5, rejection="OK"):
 
 def test_no_data_yields_insufficient_data(db_session):
     node = make_node(db_session)
-    verdict = thermal_verdict(db_session, node, datetime.utcnow())
+    verdict = thermal_verdict(db_session, node, utcnow())
     assert verdict.status == "INSUFFICIENT_DATA"
     assert verdict.windows_fitted == 0
 
@@ -61,7 +62,7 @@ def test_no_data_yields_insufficient_data(db_session):
 def test_single_node_no_cohort_reports_zero_cohort_size(db_session):
     node = make_node(db_session)
     add_fit(db_session, node, days_ago=1, theta=1.5)
-    verdict = thermal_verdict(db_session, node, datetime.utcnow())
+    verdict = thermal_verdict(db_session, node, utcnow())
     assert verdict.windows_fitted == 1
     assert verdict.cohort_size in (0, 1)
 
@@ -69,7 +70,7 @@ def test_single_node_no_cohort_reports_zero_cohort_size(db_session):
 def test_rejected_windows_are_counted_and_reported(db_session):
     node = make_node(db_session)
     add_fit(db_session, node, days_ago=1, rejection="NO_EXCITATION")
-    verdict = thermal_verdict(db_session, node, datetime.utcnow())
+    verdict = thermal_verdict(db_session, node, utcnow())
     assert verdict.windows_fitted == 0
     assert verdict.windows_rejected == 1
     assert verdict.last_rejection == "NO_EXCITATION"

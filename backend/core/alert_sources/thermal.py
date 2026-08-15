@@ -18,12 +18,13 @@ from sqlalchemy.orm import Session
 import models
 from core.alerts import AlertCandidate
 from core.monitoring_verdicts import build_thermal_context, verdict_from_context
+from core.clock import utcnow
 
 _ALERT_STATUSES = {"WATCH", "ALERT"}
 
 
 def evaluate(db: Session) -> List[AlertCandidate]:
-    now = datetime.utcnow()
+    now = utcnow()
     context = build_thermal_context(db, now)
 
     candidates: List[AlertCandidate] = []

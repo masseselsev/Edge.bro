@@ -21,6 +21,7 @@ import models
 from core import monitoring_verdicts
 from core.alert_sources import thermal as thermal_source
 from database import Base
+from core.clock import utcnow
 
 
 @pytest.fixture
@@ -39,7 +40,7 @@ def db():
 
 def _seed(db, node_count, fits_per_node=8):
     """A fleet of identical hardware, so every node lands in one cohort."""
-    now = datetime.utcnow()
+    now = utcnow()
     for i in range(node_count):
         node = models.Node(
             hostname=f"node-{i:04d}",

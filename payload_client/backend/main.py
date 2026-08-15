@@ -32,6 +32,7 @@ import subprocess
 import json
 import logging
 import threading
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -49,6 +50,20 @@ try:
     from version import VERSION
 except ImportError:
     VERSION = "v1.1.1"
+
+def utcnow_iso() -> str:
+    """A log timestamp in the shape the kiosk UI parses: UTC, suffixed with Z.
+
+    Not `datetime.utcnow()`, which is deprecated and scheduled for removal.
+    Not `datetime.now(timezone.utc).isoformat()` either -- that emits its own
+    `+00:00` offset, and the `Z` this appends would make the result malformed.
+    So the offset is dropped and the `Z` says the same thing.
+
+    The orchestrator has `core.clock.utcnow` for this; the kiosk ships as its
+    own application and cannot import from it.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
+
 
 app = FastAPI(title="Offline Technician Client", version=VERSION)
 
@@ -1038,8 +1053,7 @@ def get_kiosk_debug_logs():
                     created_at = parts[0]
             
             if not created_at:
-                import datetime
-                created_at = datetime.datetime.utcnow().isoformat() + "Z"
+                created_at = utcnow_iso()
                 message = line
             else:
                 if len(parts) >= 3:
@@ -1073,7 +1087,7 @@ def get_kiosk_debug_logs():
             "id": 1,
             "level": "ERROR",
             "message": f"Failed to retrieve local system logs: {str(e)}",
-            "created_at": datetime.datetime.utcnow().isoformat() + "Z"
+            "created_at": utcnow_iso()
         }]
     
     logs.reverse()

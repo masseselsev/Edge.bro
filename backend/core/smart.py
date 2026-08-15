@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Optional, Sequence
+from core.clock import utcnow
 
 #: NVMe reports written volume in "data units" of 1000 × 512 bytes.
 NVME_DATA_UNIT_BYTES = 512_000
@@ -458,7 +459,7 @@ def project_wear(
     median of pairwise slopes, so one resampled or misread point cannot swing
     the answer.
     """
-    now = now or datetime.utcnow()
+    now = now or utcnow()
     clean = sorted(
         (t, float(p)) for t, p in points
         if t is not None and p is not None

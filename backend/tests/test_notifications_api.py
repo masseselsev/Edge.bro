@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 import models
 from database import Base, get_db
 from main import app
+from core.clock import utcnow
 
 TEST_DATABASE_URL = "sqlite:///./test_notifications_api_db.db"
 
@@ -68,7 +69,7 @@ def make_node(db, hostname="node-1"):
 def add_alert(db, node, status="OPEN", severity="WATCH"):
     alert = models.Alert(module="thermal", node_id=node.id, dedup_key=f"thermal:{node.id}",
                          severity=severity, status=status, title="Thermal watch",
-                         first_seen=datetime.utcnow(), last_seen=datetime.utcnow())
+                         first_seen=utcnow(), last_seen=utcnow())
     db.add(alert)
     db.commit()
     db.refresh(alert)

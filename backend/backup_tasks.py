@@ -15,6 +15,7 @@ from core.borg_local import borg_kwargs
 from core.db_session import session_scope
 from core import ssh
 from core import backup_stats, repo_paths, transfer_speed
+from core.clock import utcnow
 from core.repo_lock import (
     LOCK_WAIT_SECONDS,
     maintenance_in_progress,
@@ -608,7 +609,7 @@ def _transfer_and_record(
         orchestrator_behind_nat=plan.behind_nat,
     )
 
-    archive_name = f"{plan.hostname}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    archive_name = f"{plan.hostname}-{utcnow().strftime('%Y%m%d%H%M%S')}"
     extra_ssh_args, borg_repo_url = resolve_borg_target(
         orchestrator_behind_nat=plan.behind_nat,
         direct_ip=orchestrator_ip,
@@ -836,7 +837,7 @@ def _transfer_and_record(
         ))
         node = db.query(Node).filter(Node.id == plan.node_id).first()
         if node:
-            node.last_backup = datetime.utcnow()
+            node.last_backup = utcnow()
 
     log_to_task(task_id, "Backup completed successfully.", status="SUCCESS")
 

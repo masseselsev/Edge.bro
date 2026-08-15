@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 import models
 from database import Base
 from core.alerts import AlertCandidate, sync
+from core.clock import utcnow
 
 TEST_DATABASE_URL = "sqlite:///./test_alerts_db.db"
 
@@ -83,7 +84,7 @@ def test_acknowledged_alert_at_same_severity_does_not_reopen(db_session):
     sync(db_session, [candidate(severity="WATCH")])
     alert = db_session.query(models.Alert).one()
     alert.status = "ACKNOWLEDGED"
-    alert.acknowledged_at = datetime.utcnow()
+    alert.acknowledged_at = utcnow()
     db_session.commit()
 
     result = sync(db_session, [candidate(severity="WATCH")])
@@ -95,7 +96,7 @@ def test_acknowledged_alert_escalating_reopens_and_clears_ack(db_session):
     sync(db_session, [candidate(severity="WATCH")])
     alert = db_session.query(models.Alert).one()
     alert.status = "ACKNOWLEDGED"
-    alert.acknowledged_at = datetime.utcnow()
+    alert.acknowledged_at = utcnow()
     alert.acknowledged_by_id = 7
     db_session.commit()
 

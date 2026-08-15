@@ -20,6 +20,7 @@ from core.repo_lock import LOCK_WAIT_SECONDS
 from core.borg_local import borg_kwargs
 import models
 import schemas
+from core.clock import utcnow
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 redis_client = redis.Redis.from_url(REDIS_URL)
@@ -44,7 +45,7 @@ def check_concurrent_iso_task(db: Session):
     ).first()
     if active_task:
         from datetime import datetime
-        age = datetime.utcnow() - active_task.created_at
+        age = utcnow() - active_task.created_at
         if age.total_seconds() < 45 * 60:
             raise HTTPException(
                 status_code=400,

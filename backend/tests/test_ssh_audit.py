@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from database import Base
 import models
+from core.clock import utcnow
 
 TEST_DATABASE_URL = "sqlite:///./test_ssh_audit.db"
 
@@ -185,7 +186,7 @@ def _orphan(fingerprint, *, scans=2, age_hours=13, classification="OURS_ORPHANED
     return models.SshKeyFinding(
         location="ORCHESTRATOR", host="__orchestrator__",
         fingerprint=fingerprint, classification=classification,
-        orphan_since=datetime.utcnow() - timedelta(hours=age_hours),
+        orphan_since=utcnow() - timedelta(hours=age_hours),
         orphan_scan_count=scans,
     )
 
@@ -290,7 +291,7 @@ def test_total_database_loss_leaves_the_file_untouched(db, tmp_path, monkeypatch
 
     ssh_audit.scan_orchestrator(db)
     for finding in db.query(models.SshKeyFinding):
-        finding.orphan_since = datetime.utcnow() - timedelta(hours=13)
+        finding.orphan_since = utcnow() - timedelta(hours=13)
     db.commit()
     findings = ssh_audit.scan_orchestrator(db)
 
@@ -313,7 +314,7 @@ def test_prune_removes_the_entry_and_records_it(db, tmp_path, monkeypatch):
 
     ssh_audit.scan_orchestrator(db)
     for finding in db.query(models.SshKeyFinding):
-        finding.orphan_since = datetime.utcnow() - timedelta(hours=13)
+        finding.orphan_since = utcnow() - timedelta(hours=13)
     db.commit()
     findings = ssh_audit.scan_orchestrator(db)
 
@@ -335,7 +336,7 @@ def test_prune_writes_a_backup(db, tmp_path, monkeypatch):
 
     ssh_audit.scan_orchestrator(db)
     for finding in db.query(models.SshKeyFinding):
-        finding.orphan_since = datetime.utcnow() - timedelta(hours=13)
+        finding.orphan_since = utcnow() - timedelta(hours=13)
     db.commit()
     findings = ssh_audit.scan_orchestrator(db)
     ssh_audit.prune(db, path, ssh_audit.select_prune_candidates(findings))
@@ -390,7 +391,7 @@ def test_audit_task_records_an_audit_log_row_for_each_prune(db, tmp_path, monkey
 
     ssh_audit_task.run_audit(db, include_nodes=False)
     for finding in db.query(models.SshKeyFinding):
-        finding.orphan_since = datetime.utcnow() - timedelta(hours=13)
+        finding.orphan_since = utcnow() - timedelta(hours=13)
     db.commit()
 
     summary = ssh_audit_task.run_audit(db, include_nodes=False)
@@ -418,7 +419,7 @@ def test_audit_task_logs_an_abort(db, tmp_path, monkeypatch):
 
     ssh_audit_task.run_audit(db, include_nodes=False)
     for finding in db.query(models.SshKeyFinding):
-        finding.orphan_since = datetime.utcnow() - timedelta(hours=13)
+        finding.orphan_since = utcnow() - timedelta(hours=13)
     db.commit()
     summary = ssh_audit_task.run_audit(db, include_nodes=False)
 
