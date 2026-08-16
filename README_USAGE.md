@@ -85,6 +85,11 @@ BORG_HOST_DATA_PATH=borg-data     # Docker volume by default
 ISO_CACHE_HOST_PATH=iso-cache     # Base/client ISO cache, Docker volume by default
                                    # Set an absolute path for external storage:
                                    # ISO_CACHE_HOST_PATH=/mnt/hdd/iso_cache
+
+# ── Docker network (optional, default shown) ──
+# DOCKER_SUBNET=172.29.13.0/24     # Subnet for the stack's own network. Change
+                                   # it only if it clashes with something this
+                                   # host already routes — see 10.4.
 ```
 
 > **About `SUPERADMIN_USERNAME` / `ADMIN_PASSWORD`**: these values seed the first superadmin account on initial startup. Once created, the account lives in the database. Changing `.env` later won't overwrite a password you've already changed via the web UI. To force-reset: clear the `users` table in PostgreSQL and restart.
@@ -402,6 +407,34 @@ walking the filesystem, not moving data — so a shard absorbs a few hundred
 serialised backups inside a typical window. A spread schedule will not come
 close to that. Settings → Scheduler Load reports your own figures.
 
+**Settings → Storage → Repository Capacity answers this from your own data.**
+Rather than working the rule of thumb by hand, it projects the schedule forward
+and reports, per repository:
+
+- the busiest night as a percentage of that repository's execution window,
+- how many nodes one repository serves in a single night, and how many it
+  sustains at the schedule the fleet actually runs,
+- how many further enrolments fit before the busiest one saturates,
+- what the busiest figure would become at a higher count.
+
+Backup durations come from recorded run times, so the projection reflects the
+increments the fleet really does rather than an assumed figure. A node that has
+never run is estimated from the fleet's *first* backups, which are the slow
+ones — the estimate is not quietly optimistic about onboarding.
+
+Two things it will tell you that are easy to get wrong:
+
+- **Raising the count relieves nothing that is already enrolled.** The
+  expansion rows say so explicitly and show the busiest figure unchanged. When
+  the busiest repository is genuinely full, the answer is migrating archives,
+  not a larger number in `.env`.
+- **Repositories give parallel locks, not parallel bandwidth.** Where two
+  backups have actually overlapped, the panel measures what the storage carried
+  and, if that supports fewer writers than there are repositories, names the
+  storage as the limit. Until then it says there is nothing to measure rather
+  than printing a number — which is the expected reading on a small or newly
+  installed fleet.
+
 The one place more shards genuinely pay off is **onboarding**: first backups
 are the expensive ones and they all fall due at once, so the wave finishes in
 roughly a fifth of the time on five shards. It runs once and can be left
@@ -692,6 +725,45 @@ If you already worked around it by hand, note that volumes are now named `edge-b
 ```bash
 docker run --rm -v backup-edge-restore_pg-data:/from -v edge-bro_pg-data:/to alpine cp -a /from/. /to/
 ```
+
+### 10.4 Containers are healthy but nothing answers on its port
+
+Symptom: `docker compose ps` shows every service up and healthy, `docker exec`
+into any container works, the containers reach each other — and yet the
+dashboard on 7777, the API on 8000 and the borg endpoint on 12345 all refuse to
+answer, or accept a connection and immediately drop it. Nodes fail their
+backups; the orchestrator's own logs show nothing wrong, because nothing is.
+
+The cause is a routing clash. The host already routes the range Docker put the
+stack's network on — a VPN, a site-to-site tunnel, another Docker network — and
+the more specific route wins, so traffic the host sends to a container leaves
+through the tunnel instead of the bridge.
+
+Check what the host routes against what the stack uses:
+
+```bash
+ip route
+docker network inspect edge-bro_default -f '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
+```
+
+If they overlap, pick a range nothing else claims and set it in `.env`:
+
+```env
+DOCKER_SUBNET=10.83.44.0/24
+```
+
+The network is created at startup and cannot be re-addressed in place, so the
+stack has to be stopped for the change to apply:
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+Current revisions state the subnet rather than leaving it to Docker's pool, so
+a fresh install lands on `172.29.13.0/24` unless you override it. Deployments
+created before that may still be on whatever was auto-assigned; the same
+`down` / `up` moves them onto the stated range.
 
 ## 11. Fleet Health Monitoring (SMART & Thermal)
 

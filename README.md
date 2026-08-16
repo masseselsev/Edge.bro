@@ -48,17 +48,20 @@ Centralized backup management and bare-metal restore system for fleets of Debian
                             └──────────────────┘
 ```
 
-Seven containers in `docker-compose.yml`:
+Nine long-running containers in `docker-compose.yml`, plus two one-shot jobs that run only when the database engine needs upgrading:
 
 | Service | Role |
 |---------|------|
 | **frontend** | React SPA behind Nginx. Dashboard with customizable dark/light theme supporting Fleet, Flasher, Archive, Schedule, Logs, and Settings tabs. Multi-language (EN/RU/UK). Real-time terminal console overlay. |
 | **backend** | FastAPI on Uvicorn. REST API, IP parser (CIDR / ranges / lists), job tracking. Resolves host physical and VPN IPs by reading `/host/proc/1/net/` (skips docker bridges). |
 | **worker** | Celery worker in privileged host-device mode. Runs Ansible playbooks and disk partitioning commands. Needs `/dev` access for bare-metal flashing. |
+| **worker-periodic** | Second Celery worker, on its own queue. Takes the scheduled and housekeeping work so a long flash or bootstrap cannot delay a scheduler tick. |
 | **beat** | Celery Beat scheduler. Fires daily `borg prune` at 03:00, enforces retention policies. |
 | **borg-server** | Isolated SSH server on port 12345. Holds the Borg repositories — `BORG_SHARD_COUNT` of them, so more than one node can be writing at a time. Node keys land in `authorized_keys` under a `borg serve` forced command naming every shard with `--restrict-to-path`. |
-| **db** | PostgreSQL 15. Stores inventory, backup history, groups, settings, user accounts. |
+| **db** | PostgreSQL 18. Stores inventory, backup history, groups, settings, user accounts. |
 | **redis** | Redis 7. Task broker + result backend for Celery. |
+| **apt-proxy** | APT caching proxy on port 3142. Bootstrapping a fleet fetches the same packages repeatedly; this serves them from disk after the first node. |
+| **db-predump**, **db-upgrade** | One-shot. Take a restorable dump with the old engine's binaries, then upgrade the data directory in place. Both exit immediately when the cluster is already on the target version. |
 
 ---
 
@@ -87,6 +90,7 @@ Seven containers in `docker-compose.yml`:
   - A node's shard is `node.id % BORG_SHARD_COUNT`, fixed at enrolment. Groups are freely reassignable and so cannot decide where a node's *data* lives; a node's identity is stable for its whole life.
   - Shard 0 **is** the pre-existing `/data/borg/fleet`, unrenamed and unmoved, so every existing node keeps backing up and restoring exactly where it already did.
   - **`BORG_SHARD_COUNT` can be raised later, never lowered.** A node's shard is stored, not recomputed, so adding shards leaves every existing node in its own repository and routes only new enrolments to the new ones. Raising it needs no extra step: the SSH grants are derived from the count and the orchestrator rewrites them itself on startup. Lowering it is *prevented* — the repositories on disk floor the setting, so the fleet keeps serving them whatever the variable says, and startup reports the override.
+  - **Repository Capacity** (Settings → Storage) reports whether the current count is right, rather than leaving it to be discovered by an overrunning window. It shows each repository's busiest projected night as a share of its execution window, how many nodes one repository sustains at the fleet's actual schedule, and what raising the count would change — which, for nodes already enrolled, is nothing. Where concurrent backups have run, it also measures what the storage itself has carried and says so when that, not the repository count, is the binding limit.
 - **Cross-device deduplication**: nodes sharing a shard store identical OS files once.
   - 1st node in a shard: 55–65% compression savings (~6 GB → ~2.5 GB)
   - Each cloned node adds only ~100–200 MB
@@ -97,6 +101,7 @@ Seven containers in `docker-compose.yml`:
   - Bandwidth-aware concurrency caps (can scale below 2 MiB/s per stream if needed)
   - FIFO queue with stagger offsets; slots release instantly on completion
   - Running backups protected past window close
+  - Run time is taken from the node's own recorded history where it exists, falling back to the fleet's first-backup time for a node that has never run, then to bytes ÷ rate limit. A node doing thirty-second increments and a node moving its first full image are planned for differently.
 - **Retention**: interval-based, count-based, or timeframe-based. Global or per-group override. Pruning runs daily at 03:00 via Celery Beat, followed by automatic `borg compact`.
 - **Exclusions**: configurable in Settings UI. Defaults:
 
@@ -244,7 +249,7 @@ once instead of one.
 │   │   ├── App.tsx              # Main app shell & navigation
 │   │   └── index.css            # Tailwind + custom animations
 │   └── nginx.conf               # Production static server config
-├── docker-compose.yml           # Full stack definition (7 services)
+├── docker-compose.yml           # Full stack definition
 └── .env.example                 # Environment variable template
 ```
 
