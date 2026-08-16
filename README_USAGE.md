@@ -163,6 +163,45 @@ Database migrations run automatically on startup (the backend container waits fo
 
 **Done.** Open `http://<YOUR_SERVER_IP>:7777` in a browser. Log in with the credentials from `.env`.
 
+### 2.5 PostgreSQL engine upgrades
+
+The same command upgrades the database engine when a release moves to a newer
+major version. Two short-lived services run before the database starts:
+
+| Service | What it does |
+|---|---|
+| `db-predump` | Dumps the whole cluster to the `pg-upgrade-backup` volume, using the **old** version's binaries, and refuses to continue unless the dump is complete |
+| `db-upgrade` | Runs `pg_upgrade` on the data directory, then exits |
+
+Both exit immediately when the data directory is already on the target
+version, so ordinary restarts cost about a second.
+
+**Why the dump matters.** The upgrade uses `pg_upgrade --link`, which hardlinks
+the new cluster to the old files. It is fast and needs almost no extra disk,
+but it consumes the old cluster: once the upgrade succeeds, starting the
+previous image again is not a way back. The dump is.
+
+**If the upgrade fails**, the orchestrator will not start. The dump is intact
+on its own volume, and recovery is to empty the data volume and replay it:
+
+```bash
+docker compose down
+docker volume rm edge-bro_pg-data
+docker compose up -d db
+docker run --rm -i --network container:edge-bro-db-1 \
+  -v edge-bro_pg-upgrade-backup:/b postgres:18-alpine \
+  sh -c 'psql -h localhost -U postgres -f /b/pre-upgrade-pg15.sql'
+docker compose up -d
+```
+
+Keep the `pg-upgrade-backup` volume until you have confirmed the fleet list,
+schedules and history all look right. It is the only copy of the pre-upgrade
+state.
+
+> ⚠️ Backups themselves are **not** in PostgreSQL. Archives live in the Borg
+> repositories on the backup volume, so even a total loss of this database
+> costs the node registry, schedules and history — not a single archive.
+
 ---
 
 ## 3. Adding Nodes (Fleet Provisioning)
