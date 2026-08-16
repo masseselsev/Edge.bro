@@ -11,6 +11,7 @@ from tasks import flash_restore_device
 
 from auth import require_admin
 from routers.deps import node_or_404
+from core.redis_client import make_client as make_redis_client
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_admin)])
 
@@ -203,7 +204,7 @@ def get_hasp_fingerprint(node_id: int, db: Session = Depends(get_db), current_us
     
     import redis
     import os
-    redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+    redis_client = make_redis_client()
     lock_key = f"license_lock:{node_id}"
     redis_client.setex(lock_key, 60, "1")
     
@@ -418,7 +419,7 @@ async def upload_hasp_license(
         
     import redis
     import os
-    redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+    redis_client = make_redis_client()
     lock_key = f"license_lock:{node_id}"
     redis_client.setex(lock_key, 60, "1")
     

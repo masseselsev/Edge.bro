@@ -1,7 +1,6 @@
 import os
 import json
 import time
-import redis
 import uuid
 import shutil
 import subprocess
@@ -21,9 +20,10 @@ from core.borg_local import borg_kwargs
 import models
 import schemas
 from core.clock import utcnow
+from core.redis_client import make_client as make_redis_client
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-redis_client = redis.Redis.from_url(REDIS_URL)
+redis_client = make_redis_client(REDIS_URL)
 
 router = APIRouter()
 

@@ -1,7 +1,6 @@
 import os
 import subprocess
 import ipaddress
-import redis
 import json
 import datetime
 import tempfile
@@ -22,13 +21,14 @@ from core.repo_lock import LOCK_WAIT_SECONDS
 from core.borg_local import borg_kwargs, grant_workdir
 from auth import require_admin, require_kiosk_or_admin
 from routers.deps import node_or_404
+from core.redis_client import make_client as make_redis_client
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/nodes", tags=["Nodes"])
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-redis_client = redis.Redis.from_url(REDIS_URL)
+redis_client = make_redis_client(REDIS_URL)
 
 
 def _mget(keys):

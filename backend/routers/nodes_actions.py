@@ -1,6 +1,5 @@
 import os
 import subprocess
-import redis
 import json
 from dataclasses import dataclass
 from typing import List, Optional
@@ -13,11 +12,12 @@ import schemas
 from tasks import run_bootstrap_task, run_prepare_task, run_backup_task, purge_node_archives
 from auth import require_admin, require_kiosk_or_admin
 from routers.deps import node_or_404
+from core.redis_client import make_client as make_redis_client
 
 router = APIRouter(prefix="/api/nodes", tags=["Nodes"])
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-redis_client = redis.Redis.from_url(REDIS_URL)
+redis_client = make_redis_client(REDIS_URL)
 
 @router.post("/{node_id}/prepare")
 def trigger_prepare(node_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):

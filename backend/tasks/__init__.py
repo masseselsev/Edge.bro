@@ -2,7 +2,6 @@ import os
 import subprocess
 import json
 import logging
-import redis
 from typing import Dict, Any, List, Optional, Union, Callable
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -24,6 +23,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 from celery.signals import after_setup_logger, after_setup_task_logger
+from core.redis_client import make_client as make_redis_client
 
 @after_setup_logger.connect
 def setup_celery_logging(logger, **kwargs):
@@ -41,7 +41,7 @@ def setup_celery_task_logging(logger, **kwargs):
     except Exception as e:
         logger.error(f"Failed to setup DB logging after celery task logger setup: {str(e)}")
 
-redis_client = redis.Redis.from_url(REDIS_URL)
+redis_client = make_redis_client(REDIS_URL)
 
 # Configure Celery Beat for global daily prune, auto retry, and scheduler tick
 celery_app.conf.beat_schedule = {

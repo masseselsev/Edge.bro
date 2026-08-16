@@ -4,7 +4,6 @@ import math
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import logging
-import redis
 import time
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -15,8 +14,10 @@ import zoneinfo
 
 logger = logging.getLogger(__name__)
 
+from core.redis_client import make_client as make_redis_client
+
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-redis_client = redis.Redis.from_url(REDIS_URL)
+redis_client = make_redis_client(REDIS_URL)
 
 from core import repo_paths
 from core.schedule_estimate import backup_lock_ttl_seconds, estimate_group_backup_minutes

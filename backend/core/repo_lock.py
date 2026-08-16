@@ -43,12 +43,12 @@ import uuid
 from contextlib import contextmanager
 from typing import Optional
 
-import redis
+from core.redis_client import make_client as make_redis_client
 
 logger = logging.getLogger(__name__)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-redis_client = redis.Redis.from_url(REDIS_URL)
+redis_client = make_redis_client(REDIS_URL)
 
 #: How long any borg command waits for the repository lock before giving up.
 #:

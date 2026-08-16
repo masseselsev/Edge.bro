@@ -15,6 +15,7 @@ import paths
 from core import iso_build, task_log
 from core.task_log import log_to_task
 from core.clock import utcnow
+from core.redis_client import make_client as make_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -302,7 +303,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
     try:
         REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-        r = redis.Redis.from_url(REDIS_URL)
+        r = make_redis_client(REDIS_URL)
         r.delete("base_iso_dirty")
     except Exception as re:
         logger.error(f"Failed to clear base_iso_dirty in Celery task: {re}")
@@ -473,7 +474,7 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
     finally:
         try:
             REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-            r = redis.Redis.from_url(REDIS_URL)
+            r = make_redis_client(REDIS_URL)
             dirty = r.get("base_iso_dirty")
             if dirty:
                 r.delete("base_iso_dirty")
@@ -638,7 +639,7 @@ def trigger_base_iso_rebuild(db):
             db.commit()
         else:
             REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-            r = redis.Redis.from_url(REDIS_URL)
+            r = make_redis_client(REDIS_URL)
             r.set("base_iso_dirty", "1")
             return
             

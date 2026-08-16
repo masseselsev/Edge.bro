@@ -24,6 +24,7 @@ from core.repo_lock import (
     writer_in_progress,
 )
 from core.task_log import log_to_task
+from core.redis_client import make_client as make_redis_client
 
 # Re-use logging configuration from tasks
 logger = logging.getLogger(__name__)
@@ -409,7 +410,7 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
     import redis
     import time
 
-    redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
+    redis_client = make_redis_client()
 
     plan = _plan_backup(node_id)
     if plan is None:

@@ -27,7 +27,21 @@ _redis_client = None
 if redis:
     try:
         REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-        _redis_client = redis.Redis.from_url(REDIS_URL)
+        # Timeouts spelled out here rather than taken from core.redis_client,
+        # which every other module uses. This file is copied verbatim into the
+        # kiosk payload — see the note below about it carrying no auth — and
+        # the payload ships only the modules listed in
+        # `iso_tasks.INJECTED_CORE_MODULES`. Importing one that is not on that
+        # list produces a kiosk whose network page is silently dead, which is
+        # what `tests/test_iso_payload_injection.py` exists to prevent.
+        #
+        # The values matter for the same reason they do everywhere else:
+        # redis-py's default is no timeout at all, so an unreachable Redis
+        # would hang this endpoint rather than fall through to the in-process
+        # cache below that was written for exactly that case.
+        _redis_client = redis.Redis.from_url(
+            REDIS_URL, socket_connect_timeout=3, socket_timeout=5
+        )
     except Exception:
         pass
 
