@@ -67,11 +67,11 @@ JWT_SECRET_KEY=<random_secret>     # Used to sign session tokens
 # SSH_KEEPALIVE_COUNT=3            # Missed responses before disconnect
 
 # ── Repository sharding (optional, defaults shown) ──
-BORG_SHARD_COUNT=5                 # Independent Borg repositories. Borg locks a
+BORG_SHARD_COUNT=1                 # Independent Borg repositories. Borg locks a
                                    # repository for the whole of `borg create`,
                                    # so one repository = one node writing at a
-                                   # time. Set before enrolling nodes; changing
-                                   # it later is NOT supported.
+                                   # time. Raise it later if you need more
+                                   # parallel writers; it cannot be lowered.
 # BORG_LOCK_WAIT_SECONDS=600       # How long a borg command waits for the
                                    # repository lock instead of failing
 # BORG_WRITER_TTL=14400            # How long a running backup stays registered
