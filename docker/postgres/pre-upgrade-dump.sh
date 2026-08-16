@@ -75,6 +75,28 @@ if [ -f "$MARKER" ]; then
     exit 0
 fi
 
+# Refuse to open a data directory another server still has mounted.
+#
+# `pg_ctl` is not a safeguard here, which was verified rather than assumed:
+# postmaster.pid records a PID from the database container's namespace, which
+# does not exist in this one, so pg_ctl prints "another server might be
+# running" and starts anyway. A second postmaster on a live data directory is
+# a corruption path, and it will happen by default -- compose schedules this
+# service before it recreates the db container, and nothing in a compose file
+# can express "stop that one first".
+#
+# Reached only when an upgrade is actually due; on an ordinary restart the
+# checks above have already exited, so a healthy running database never
+# trips this.
+LIVE_HOST="${PG_LIVE_CHECK_HOST:-db}"
+if pg_isready -q -h "$LIVE_HOST" -U "${POSTGRES_USER:-postgres}" 2>/dev/null; then
+    log "ERROR: PostgreSQL is still serving on host '$LIVE_HOST'."
+    log "An engine upgrade needs the data directory to itself. Stop the stack first:"
+    log "    docker compose down"
+    log "    docker compose up -d --build"
+    exit 1
+fi
+
 log "PostgreSQL $CURRENT_MAJOR -> $TARGET_MAJOR: taking a safety dump first"
 
 # Socket only. No TCP port, so this cannot collide with a db service that is

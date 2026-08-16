@@ -43,6 +43,16 @@ def run(pgdata, search_root, target="18", extra_path=None):
                           capture_output=True, text=True, timeout=60)
 
 
+def stub(directory, name, exit_code=0, output=""):
+    """Put a fake binary on PATH so a decision can be reached without a real
+    PostgreSQL installation."""
+    directory.mkdir(exist_ok=True)
+    path = directory / name
+    path.write_text(f"#!/bin/sh\n{('echo ' + repr(output)) if output else ':'}\nexit {exit_code}\n")
+    path.chmod(0o755)
+    return directory
+
+
 @pytest.fixture
 def volume(tmp_path):
     """A stand-in for the pg-data volume, with PGDATA inside it."""
@@ -110,6 +120,43 @@ def test_binaries_that_cannot_read_the_data_directory_stop_everything(volume, tm
 
     assert result.returncode == 1
     assert "Cannot take a safety dump" in result.stdout
+
+
+def test_a_still_running_database_stops_everything(volume, tmp_path):
+    """Two postmasters on one data directory corrupt it, and `pg_ctl` does not
+    prevent it across containers: postmaster.pid holds a PID from the database
+    container's namespace, so pg_ctl reports "another server might be running"
+    and starts anyway. Verified by doing it -- the second process ran a
+    shutdown checkpoint on a directory the first still had open.
+
+    Compose cannot express "stop that service before starting this one", so
+    this refusal is what stands between an ordinary `up -d --build` and a
+    damaged cluster.
+    """
+    (volume / "data" / "PG_VERSION").write_text("15\n")
+    bin_dir = stub(tmp_path / "bin", "pg_isready", exit_code=0)
+    stub(bin_dir, "postgres", output="postgres (PostgreSQL) 15.18")
+
+    result = run(volume / "data", volume, extra_path=str(bin_dir))
+
+    assert result.returncode == 1
+    assert "still serving" in result.stdout
+    assert "docker compose down" in result.stdout, "the operator needs the fix, not just the fault"
+
+
+def test_an_upgrade_proceeds_once_nothing_is_serving(volume, tmp_path):
+    """The converse: a stale postmaster.pid left by a crash must not become a
+    permanent block, so the check is liveness, not the presence of a file."""
+    (volume / "data" / "PG_VERSION").write_text("15\n")
+    (volume / "data" / "postmaster.pid").write_text("999999\n")
+    bin_dir = stub(tmp_path / "bin", "pg_isready", exit_code=1)
+    stub(bin_dir, "postgres", output="postgres (PostgreSQL) 15.18")
+    stub(bin_dir, "su-exec", exit_code=1)  # stops the run right after the guard
+
+    result = run(volume / "data", volume, extra_path=str(bin_dir))
+
+    assert "still serving" not in result.stdout, "a stale pid file is not a running server"
+    assert "taking a safety dump first" in result.stdout
 
 
 def test_the_target_version_is_configurable(volume):

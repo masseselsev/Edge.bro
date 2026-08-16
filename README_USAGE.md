@@ -176,6 +176,20 @@ major version. Two short-lived services run before the database starts:
 Both exit immediately when the data directory is already on the target
 version, so ordinary restarts cost about a second.
 
+> **Stop the stack first when a release changes the engine version.** An
+> engine upgrade needs the data directory to itself, and Compose has no way to
+> express "stop the database before starting this". Use:
+>
+> ```bash
+> docker compose down
+> docker compose up -d --build
+> ```
+>
+> Forgetting is safe but not silent: the upgrade refuses to start while a
+> server is still reachable, prints these two commands and stops. Nothing is
+> modified. Ordinary releases that do not change the engine are unaffected —
+> `docker compose up -d --build` on its own remains correct.
+
 **Why the dump matters.** The upgrade uses `pg_upgrade --link`, which hardlinks
 the new cluster to the old files. It is fast and needs almost no extra disk,
 but it consumes the old cluster: once the upgrade succeeds, starting the
