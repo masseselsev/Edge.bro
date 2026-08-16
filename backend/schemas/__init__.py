@@ -51,6 +51,8 @@ from schemas.stats import (
     GlobalStatsResponse, NodeReliability, FailureCount, ReliabilitySection,
     NodeSpeed, SpeedSection, NodeDuration, DurationSection, NodeConsumption,
     CapacitySection, StatsInsightsResponse,
+    ShardCapacity, RepositoryPeak, NodeCapacity, StorageCeiling,
+    RepositoryExpansion, RepositoryCapacityResponse,
 )
 from schemas.monitoring import (
     SmartSubScore, SmartHealthResponse, ThermalHealthResponse, NodeHealthResponse,

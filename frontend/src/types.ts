@@ -165,3 +165,78 @@ export interface Exclusion {
   pattern: string;
   comment: string;
 }
+
+/**
+ * `schemas.ShardCapacity` — one borg repository and its busiest night.
+ *
+ * Borg holds a repository's lock for the whole of a backup, so the count of
+ * repositories is the count of writers that can run at once. These figures say
+ * whether the count in force is the right one.
+ */
+export interface ShardCapacity {
+  index: number;
+  path: string;
+  /** False until the first node routed here has run its first backup. */
+  initialized: boolean;
+  nodes: number;
+  busiest_night_hours: number | null;
+  window_hours: number | null;
+  utilization_pct: number | null;
+  busiest_day: string | null;
+  size_bytes: number | null;
+}
+
+/** `schemas.RepositoryPeak` — the worst repository-night in the projection. */
+export interface RepositoryPeak {
+  shard_index: number | null;
+  utilization_pct: number | null;
+  hours: number | null;
+  window_hours: number | null;
+  day: string | null;
+}
+
+/** `schemas.NodeCapacity` — how many nodes one repository carries. */
+export interface NodeCapacity {
+  per_night: number;
+  /** Higher than per_night: groups spread the fleet across weeks and months. */
+  sustained: number;
+  median_node_hours: number | null;
+  runs_per_node: number | null;
+  headroom_nodes: number;
+}
+
+/** `schemas.StorageCeiling` — what the storage underneath has been seen to carry. */
+export interface StorageCeiling {
+  /** False until two backups have genuinely overlapped. */
+  sufficient: boolean;
+  ceiling_mbps: number | null;
+  max_observed_writers: number;
+  saturated: boolean;
+  supported_writers: number | null;
+}
+
+/** `schemas.RepositoryExpansion` — what a given repository count would deliver. */
+export interface RepositoryExpansion {
+  shard_count: number;
+  busiest_utilization_pct: number | null;
+  /** Always false: a node's repository is fixed at enrolment. */
+  relieves_existing: boolean;
+  new_node_headroom: number;
+}
+
+/** `schemas.RepositoryCapacityResponse` — GET /api/stats/repository-capacity. */
+export interface RepositoryCapacity {
+  generated_at: string;
+  shard_count: number;
+  configured_shard_count: number;
+  count_floored: boolean;
+  storage_path: string;
+  is_host_path: boolean;
+  projection_nights: number;
+  shards: ShardCapacity[];
+  peak: RepositoryPeak;
+  capacity: NodeCapacity;
+  ceiling: StorageCeiling;
+  expansion: RepositoryExpansion[];
+  binding_constraint: string;
+}

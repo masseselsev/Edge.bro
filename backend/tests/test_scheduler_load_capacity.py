@@ -41,7 +41,15 @@ def db_session():
             os.remove("./test_scheduler_load_capacity_db.db")
 
 
-def _fleet(db, node_count=40, concurrency=5):
+def _fleet(db, node_count=40, concurrency=5, shard_count=1):
+    """A group whose nodes are spread across `shard_count` repositories.
+
+    The spread has to be explicit. Shards are assigned `node_id % SHARD_COUNT`
+    at enrolment and stored, so raising the count does not retroactively
+    redistribute anyone — a fixture that left every node on repository 0 while
+    claiming five parallel writers would be asserting the very overstatement
+    these tests exist to catch.
+    """
     db.add(models.Settings())
     group = models.BackupGroup(
         name="nightly", interval="weekly", target_week=1,
@@ -56,6 +64,7 @@ def _fleet(db, node_count=40, concurrency=5):
         db.add(models.Node(
             hostname=f"n{i:03d}", ip_address=f"10.0.0.{i + 1}",
             status="READY", group_id=group.id,
+            borg_shard_index=i % shard_count,
         ))
     db.commit()
     return group
@@ -83,11 +92,42 @@ def test_one_repository_means_one_writer_however_many_the_group_permits(
 
 def test_capacity_grows_with_the_shards(db_session, monkeypatch):
     monkeypatch.setattr(repo_paths, "SHARD_COUNT", 5)
-    _fleet(db_session, concurrency=5)
+    _fleet(db_session, concurrency=5, shard_count=5)
 
     fit = _fit(db_session)
     assert fit["concurrency"] == 5
     assert fit["capacity_hours"] == pytest.approx(fit["window_hours"] * 5)
+
+
+def test_five_repositories_buy_nothing_if_the_group_sits_in_one(
+    db_session, monkeypatch
+):
+    """The overstatement a fleet-wide shard count cannot see.
+
+    Repositories are assigned by node id, which is unrelated to group
+    membership, so a whole group landing in one repository is an ordinary
+    outcome rather than a contrived one. Its backups then run strictly one at
+    a time while four repositories stand idle, and a projection that counted
+    repositories fleet-wide would promise five writers.
+    """
+    monkeypatch.setattr(repo_paths, "SHARD_COUNT", 5)
+    _fleet(db_session, concurrency=5, shard_count=1)
+
+    fit = _fit(db_session)
+    assert fit["concurrency"] == 1, (
+        "capacity was counted from repositories the group does not occupy"
+    )
+    assert fit["capacity_hours"] == pytest.approx(fit["window_hours"])
+
+
+def test_concurrency_follows_the_repositories_actually_occupied(
+    db_session, monkeypatch
+):
+    """Two repositories occupied out of five available means two writers."""
+    monkeypatch.setattr(repo_paths, "SHARD_COUNT", 5)
+    _fleet(db_session, concurrency=5, shard_count=2)
+
+    assert _fit(db_session)["concurrency"] == 2
 
 
 def test_the_group_limit_still_wins_when_it_is_the_smaller_one(
@@ -96,7 +136,7 @@ def test_the_group_limit_still_wins_when_it_is_the_smaller_one(
     """Shards raise the ceiling; they are not a reason to exceed what the
     operator allowed for a group's uplink."""
     monkeypatch.setattr(repo_paths, "SHARD_COUNT", 5)
-    _fleet(db_session, concurrency=2)
+    _fleet(db_session, concurrency=2, shard_count=5)
 
     assert _fit(db_session)["concurrency"] == 2
 

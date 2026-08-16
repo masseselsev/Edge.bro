@@ -10,6 +10,7 @@ fetch the right rows, hand them over, and shape the result. The one rule worth
 stating: nothing here invents a number. A section with no data to work from
 reports None and the UI says so.
 """
+import os
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Optional
@@ -20,7 +21,15 @@ from sqlalchemy.orm import Session
 
 import models
 import schemas
-from core import backup_stats, repo_usage, transfer_speed
+from core import (
+    backup_stats,
+    repo_capacity,
+    repo_paths,
+    repo_usage,
+    schedule_projection,
+    transfer_speed,
+)
+from core.schedule_slots import get_tzinfo
 from database import get_db
 from auth import require_admin
 from core.clock import utcnow
@@ -479,3 +488,225 @@ def _capacity(nodes, lifetime, in_window, days) -> schemas.CapacitySection:
 
 def _round(value: Optional[float], digits: int = 2) -> Optional[float]:
     return None if value is None else round(value, digits)
+
+
+#: How far ahead the repository projection looks. Four weeks catches weekly and
+#: monthly recurrences; a single week would miss the monthly groups entirely and
+#: report a quiet repository as having room it does not have.
+_PROJECTION_NIGHTS = 28
+
+#: How far back the throughput sweep reads. Long enough to catch a deployment
+#: that only occasionally runs backups concurrently.
+_CEILING_WINDOW_DAYS = 90
+
+#: Repository counts offered in the expansion forecast, beyond the current one.
+_EXPANSION_STEPS = (1, 2, 4)
+
+
+def _observed_runs(db: Session) -> list:
+    """Completed backups as intervals, for the throughput sweep.
+
+    Reconstructed from what is already recorded: a completion timestamp, a
+    duration and an average throughput. Nothing here needs new instrumentation.
+    """
+    since = utcnow() - timedelta(days=_CEILING_WINDOW_DAYS)
+    rows = (
+        db.query(
+            models.BackupHistory.timestamp,
+            models.BackupHistory.duration_seconds,
+            models.BackupHistory.avg_speed_mbps,
+            models.BackupHistory.node_id,
+        )
+        .filter(
+            models.BackupHistory.status == "SUCCESS",
+            models.BackupHistory.timestamp >= since,
+            models.BackupHistory.duration_seconds.isnot(None),
+            models.BackupHistory.duration_seconds > 0,
+            models.BackupHistory.avg_speed_mbps.isnot(None),
+            models.BackupHistory.avg_speed_mbps > 0,
+        )
+        .all()
+    )
+
+    runs = []
+    for finished, duration, mbps, node_id in rows:
+        if finished is None:
+            continue
+        runs.append(
+            repo_capacity.ObservedRun(
+                start=finished - timedelta(seconds=float(duration)),
+                end=finished,
+                mbps=float(mbps),
+                node_id=node_id,
+            )
+        )
+    return runs
+
+
+@router.get("/repository-capacity", response_model=schemas.RepositoryCapacityResponse)
+def get_repository_capacity(db: Session = Depends(get_db)):
+    """How much of each borg repository's nightly window the schedule consumes.
+
+    `BORG_SHARD_COUNT` decides how many backups can run at once — borg holds a
+    repository's lock for the whole of `borg create` — and until now nothing
+    said whether the chosen value was right. The only feedback was a window
+    that silently overran, months later.
+
+    Three questions, answered from data rather than assumption:
+
+    * **How full is the busiest repository?** Computed from the stored
+      `borg_shard_index`, so which repository each backup lands in is known
+      exactly, not modelled as an even spread it does not have.
+    * **How many nodes does a repository hold?** Per night, and sustained at
+      the current schedule mix.
+    * **Would more repositories help?** Usually not for the fleet already
+      enrolled — a node's repository is fixed at enrolment and raising the
+      count moves nobody. Said plainly, because the opposite assumption leads
+      to a change that delivers nothing.
+
+    The arithmetic is in `core.repo_capacity`, which is pure; this fetches the
+    rows and shapes the result. As elsewhere in this module, a section with no
+    data to work from reports None and the interface says so.
+    """
+    target_tz = get_tzinfo('Browser Local', db)
+    today = datetime.now(target_tz).date()
+    days = [today + timedelta(days=i) for i in range(_PROJECTION_NIGHTS)]
+
+    runs = schedule_projection.project_runs(db, days, target_tz)
+    nights = repo_capacity.shard_nights(runs)
+    worst_by_shard = repo_capacity.busiest_night_per_shard(nights)
+
+    # Every node's repository, including nodes with no scheduled run in the
+    # window -- they still occupy the repository and still have to back up.
+    nodes_per_shard: dict = defaultdict(int)
+    for (shard_index,) in db.query(models.Node.borg_shard_index).all():
+        nodes_per_shard[shard_index or 0] += 1
+
+    shard_count = repo_paths.SHARD_COUNT
+    shards = []
+    for index in range(shard_count):
+        path = repo_paths.shard_path(index)
+        night = worst_by_shard.get(index)
+        initialized = repo_paths.is_initialized(path)
+        shards.append(schemas.ShardCapacity(
+            index=index,
+            path=path,
+            initialized=initialized,
+            nodes=nodes_per_shard.get(index, 0),
+            busiest_night_hours=round(night.hours, 2) if night else 0.0,
+            window_hours=round(night.window_hours, 2) if night else None,
+            utilization_pct=(
+                round(night.utilization_pct, 1)
+                if night and night.utilization_pct is not None else None
+            ),
+            busiest_day=night.day.isoformat() if night else None,
+            size_bytes=repo_usage.repo_size_bytes(path) if initialized else None,
+        ))
+
+    # --- the worst repository-night anywhere ---
+    peak_night = max(
+        worst_by_shard.values(), key=lambda n: n.utilization_pct or 0.0, default=None
+    )
+    peak = schemas.RepositoryPeak(
+        shard_index=peak_night.shard_index if peak_night else None,
+        utilization_pct=(
+            round(peak_night.utilization_pct, 1)
+            if peak_night and peak_night.utilization_pct is not None else None
+        ),
+        hours=round(peak_night.hours, 2) if peak_night else None,
+        window_hours=round(peak_night.window_hours, 2) if peak_night else None,
+        day=peak_night.day.isoformat() if peak_night else None,
+    )
+
+    # --- how many nodes a repository carries ---
+    median_hours = repo_capacity.median_or_none(r.hours for r in runs)
+    per_node_runs = schedule_projection.runs_per_node(runs)
+    # The window a typical repository gets. Taken from the busiest night rather
+    # than averaged, so the capacity figure matches the utilization above.
+    reference_window = (
+        peak_night.window_hours if peak_night and peak_night.window_hours else 0.0
+    )
+
+    shard_hours = {
+        index: (worst_by_shard[index].hours if index in worst_by_shard else 0.0)
+        for index in range(shard_count)
+    }
+    expansion_counts = [shard_count] + [shard_count + step for step in _EXPANSION_STEPS]
+    outlooks = repo_capacity.project_expansion(
+        shard_hours=shard_hours,
+        window_hours=reference_window,
+        node_hours=median_hours or 0.0,
+        current_count=shard_count,
+        candidate_counts=expansion_counts,
+    )
+
+    capacity = schemas.NodeCapacity(
+        per_night=repo_capacity.nodes_per_night(reference_window, median_hours or 0.0),
+        sustained=repo_capacity.sustained_nodes_per_shard(
+            period_nights=_PROJECTION_NIGHTS,
+            window_hours=reference_window,
+            runs_per_node=per_node_runs,
+            node_hours=median_hours or 0.0,
+        ),
+        median_node_hours=round(median_hours, 3) if median_hours else None,
+        runs_per_node=round(per_node_runs, 2) if per_node_runs else None,
+        headroom_nodes=outlooks[0].new_node_headroom if outlooks else 0,
+    )
+
+    # --- what the storage underneath has been seen to carry ---
+    observation = repo_capacity.measure_shared_ceiling(_observed_runs(db))
+    per_node_mbps = repo_capacity.median_or_none(
+        row[0] for row in db.query(models.BackupHistory.avg_speed_mbps).filter(
+            models.BackupHistory.status == "SUCCESS",
+            models.BackupHistory.avg_speed_mbps.isnot(None),
+        ).all()
+    )
+    supported = repo_capacity.writers_supported_by_storage(observation, per_node_mbps)
+
+    ceiling = schemas.StorageCeiling(
+        sufficient=observation.sufficient,
+        ceiling_mbps=(
+            round(observation.ceiling_mbps, 2) if observation.ceiling_mbps else None
+        ),
+        max_observed_writers=observation.max_observed_writers,
+        saturated=observation.saturated,
+        supported_writers=supported,
+    )
+
+    # Naming which of the two binds keeps the advice honest: adding
+    # repositories to a saturated pipe buys nothing, and the report should not
+    # imply otherwise.
+    binding = "repositories"
+    if supported is not None and supported < shard_count:
+        binding = "storage_throughput"
+
+    host_path = os.getenv("BORG_HOST_DATA_PATH", "borg-data")
+
+    return schemas.RepositoryCapacityResponse(
+        generated_at=utcnow(),
+        shard_count=shard_count,
+        configured_shard_count=repo_paths.CONFIGURED_SHARD_COUNT,
+        count_floored=shard_count > repo_paths.CONFIGURED_SHARD_COUNT,
+        storage_path=host_path,
+        # A named Docker volume has no path separator; anything else is a mount
+        # the operator chose, which may well be on the network.
+        is_host_path=host_path.startswith(("/", "./", "../")),
+        projection_nights=_PROJECTION_NIGHTS,
+        shards=shards,
+        peak=peak,
+        capacity=capacity,
+        ceiling=ceiling,
+        expansion=[
+            schemas.RepositoryExpansion(
+                shard_count=o.shard_count,
+                busiest_utilization_pct=(
+                    round(o.busiest_utilization_pct, 1)
+                    if o.busiest_utilization_pct is not None else None
+                ),
+                relieves_existing=o.relieves_existing,
+                new_node_headroom=o.new_node_headroom,
+            )
+            for o in outlooks
+        ],
+        binding_constraint=binding,
+    )

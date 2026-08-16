@@ -2,7 +2,7 @@ import calendar
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 import models
 import schemas
 from database import get_db
@@ -11,15 +11,11 @@ from tasks import run_backup_task
 # Recurrence maths is shared with the scheduler so the projection below cannot
 # drift from what actually runs.
 from core.schedule_slots import (
-    deterministic_hash,
     get_tzinfo,
-    is_scheduled_on,
-    node_slot,
     parse_window,
     week_of_month,
 )
-from core import repo_paths, scheduler
-from core.schedule_estimate import DEFAULT_BACKUP_MINUTES, estimate_node_backup_minutes
+from core import repo_capacity, schedule_projection, scheduler
 
 from auth import require_admin
 
@@ -181,10 +177,13 @@ def get_scheduler_load(db: Session = Depends(get_db)):
     Recurrence is evaluated with core.schedule_slots, the same module the real
     scheduler uses, so this projection cannot drift from what will actually run.
 
-    A group's usable concurrency is capped by `BORG_SHARD_COUNT`. Permitting
-    five parallel backups does not produce five if they all queue for one
-    repository lock, and reporting capacity the storage cannot deliver is how a
-    plan that overruns its window looks fine on the calendar.
+    A group's usable concurrency is capped by the number of repositories its
+    nodes are actually spread across — not by `BORG_SHARD_COUNT`. Shards are
+    assigned `node_id % SHARD_COUNT`, which knows nothing about group
+    membership, so a group of five nodes can land entirely on one repository
+    and serialize behind a single lock while the others sit idle. Reporting
+    capacity the storage cannot deliver is how a plan that overruns its window
+    looks fine on the calendar.
     """
     target_tz = get_tzinfo('Browser Local', db)
     now_target = datetime.now(target_tz)
@@ -196,95 +195,82 @@ def get_scheduler_load(db: Session = Depends(get_db)):
     week_hours = [0.0] * 7
     month_hours = [0.0] * 4
 
-    nodes = db.query(models.Node).filter(
-        models.Node.group_id.isnot(None),
-        models.Node.backup_paused == False
-    ).all()
-
     groups = {g.id: g for g in db.query(models.BackupGroup).all()}
 
     today = now_target.date()
     week_start = today - timedelta(days=today.weekday())        # Monday
     days_in_month = calendar.monthrange(today.year, today.month)[1]
 
-    # gid -> weekday index -> [node_count, hours]
+    week_days = [week_start + timedelta(days=i) for i in range(7)]
+    month_days = [date(today.year, today.month, d) for d in range(1, days_in_month + 1)]
+
+    # One walk for both calendars; the same date appearing in each is projected
+    # once and bucketed twice.
+    runs = schedule_projection.project_runs(
+        db, sorted(set(week_days) | set(month_days)), target_tz
+    )
+
+    week_index = {d: i for i, d in enumerate(week_days)}
+
+    # gid -> day -> runs, so a group's real concurrency can be read off the
+    # repositories its nodes occupy rather than assumed.
     per_group_day: dict = {}
 
-    for node in nodes:
-        group = groups.get(node.group_id)
-        if not group:
-            continue
-
-        group_tz = get_tzinfo(group.timezone, db)
-        window = parse_window(group.start_time, group.end_time)
-        slot = node_slot(group, node.hostname, window)
-        start_h, start_m = divmod(window.start_mins, 60)
-
-        est_minutes = estimate_node_backup_minutes(db, node.id, group.upload_rate_limit)
-        est_h = (est_minutes if est_minutes is not None else DEFAULT_BACKUP_MINUTES) / 60.0
-
-        bucket = per_group_day.setdefault(group.id, {})
-
-        # --- current week (Mon..Sun), evaluated on the group's own calendar ---
-        for i in range(7):
-            d = week_start + timedelta(days=i)
-            window_start_local = datetime(d.year, d.month, d.day, start_h, start_m, tzinfo=group_tz)
-            if not is_scheduled_on(group, node.hostname, window_start_local, window):
-                continue
-
+    for run in runs:
+        if run.day in week_index:
+            i = week_index[run.day]
             week_load[i] += 1
-            week_hours[i] += est_h
-            slot_counts = bucket.setdefault(i, [0, 0.0])
-            slot_counts[0] += 1
-            slot_counts[1] += est_h
+            week_hours[i] += run.hours
 
-            # --- today's hourly distribution, shown in the dashboard timezone ---
-            if d == today:
-                run_local = window_start_local + timedelta(minutes=slot.stagger_offset_mins)
-                run_target = run_local.astimezone(target_tz)
-                day_load[run_target.hour] += 1
-                day_hours[run_target.hour] += est_h
+            if run.day == today:
+                day_load[run.run_at.hour] += 1
+                day_hours[run.run_at.hour] += run.hours
 
-        # --- current month, bucketed into weeks 1-4 ---
-        for day_num in range(1, days_in_month + 1):
-            window_start_local = datetime(today.year, today.month, day_num, start_h, start_m, tzinfo=group_tz)
-            if not is_scheduled_on(group, node.hostname, window_start_local, window):
-                continue
-            w = week_of_month(day_num)
+        if run.day.year == today.year and run.day.month == today.month:
+            w = week_of_month(run.day.day)
             month_load[w - 1] += 1
-            month_hours[w - 1] += est_h
+            month_hours[w - 1] += run.hours
+
+        per_group_day.setdefault(run.group_id, {}).setdefault(run.day, []).append(run)
 
     # --- per-group verdict: does the busiest day fit the window? ---
     group_fit = []
-    for gid, bucket in per_group_day.items():
+    for gid, by_day in per_group_day.items():
         group = groups[gid]
         window = parse_window(group.start_time, group.end_time)
         window_hours = window.duration_minutes / 60.0
 
+        busiest_day_runs: list = []
+        busiest_hours = 0.0
+        for day_runs in by_day.values():
+            hours = sum(r.hours for r in day_runs)
+            if hours > busiest_hours:
+                busiest_hours, busiest_day_runs = hours, day_runs
+
         concurrency = group.concurrency_limit or 5
         if group.upload_rate_limit:
             concurrency = min(concurrency, max(1, group.upload_rate_limit // 2048))
-        # Capped by the number of repositories, because that is the real ceiling
-        # on parallel writers: borg holds a repository's lock for the whole of
-        # `borg create`, so backups landing on one shard run one at a time no
-        # matter what the group permits. Without this the projection multiplied
-        # the window by a concurrency the storage cannot deliver and reported a
-        # day as fitting when it would overrun — a five-fold overstatement on a
-        # single-shard install with the default limit of 5.
-        concurrency = min(concurrency, repo_paths.SHARD_COUNT)
-
-        busiest_count, busiest_hours = 0, 0.0
-        for count, hours in bucket.values():
-            if hours > busiest_hours:
-                busiest_count, busiest_hours = count, hours
+        # Capped by the repositories this group's nodes genuinely occupy on its
+        # busiest night. Borg holds a repository's lock for the whole of
+        # `borg create`, so two of a group's nodes sharing one repository run
+        # strictly one after the other however many repositories exist
+        # elsewhere. Capping by SHARD_COUNT instead assumed a spread that the
+        # id-based assignment does not provide.
+        occupied = repo_capacity.distinct_shards_on(busiest_day_runs)
+        if occupied:
+            concurrency = min(concurrency, occupied)
 
         capacity_hours = window_hours * concurrency
-        has_estimate = bool(group.upload_rate_limit)
+        # A figure is a guess only when nothing measured went into it. A group
+        # without a rate limit whose nodes have run before is no longer one.
+        has_estimate = bool(group.upload_rate_limit) or any(
+            r.measured for r in busiest_day_runs
+        )
 
         group_fit.append({
             "group_id": gid,
             "group_name": group.name,
-            "nodes_per_run": busiest_count,
+            "nodes_per_run": len(busiest_day_runs),
             "est_hours": round(busiest_hours, 2),
             "window_hours": round(window_hours, 2),
             "concurrency": concurrency,

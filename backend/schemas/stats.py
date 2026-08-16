@@ -137,3 +137,93 @@ class StatsInsightsResponse(UTCModel):
     speed: SpeedSection
     duration: DurationSection
     capacity: CapacitySection
+
+
+# --- Repository capacity ----------------------------------------------------
+
+class ShardCapacity(BaseModel):
+    """One borg repository, and how full its busiest night leaves it."""
+    index: int
+    path: str
+    #: False until the first node assigned here has run `borg init`, which
+    #: happens lazily on its first backup. An empty directory is not a fault.
+    initialized: bool
+    nodes: int
+    busiest_night_hours: Optional[float] = None
+    window_hours: Optional[float] = None
+    utilization_pct: Optional[float] = None
+    busiest_day: Optional[str] = None
+    size_bytes: Optional[int] = None
+
+
+class RepositoryPeak(BaseModel):
+    """The single worst repository-night in the projection."""
+    shard_index: Optional[int] = None
+    utilization_pct: Optional[float] = None
+    hours: Optional[float] = None
+    window_hours: Optional[float] = None
+    day: Optional[str] = None
+
+
+class NodeCapacity(BaseModel):
+    """How many nodes one repository can carry."""
+    per_night: int
+    #: Higher than `per_night`, and the more useful of the two: groups spread
+    #: the fleet across weeks and months, so a node scheduled monthly occupies
+    #: a fraction of a nightly slot.
+    sustained: int
+    median_node_hours: Optional[float] = None
+    runs_per_node: Optional[float] = None
+    #: New enrolments that fit before the fullest repository saturates.
+    headroom_nodes: int = 0
+
+
+class StorageCeiling(BaseModel):
+    """What the recorded history says the shared storage path can carry.
+
+    Repositories multiply locks, not bandwidth. Several of them behind one
+    network mount are several writers sharing one pipe, so the count of
+    repositories is an upper bound on useful parallelism rather than a promise
+    of it.
+    """
+    #: False until two backups have genuinely overlapped. Nothing can be
+    #: concluded from a deployment that has only run one at a time, and saying
+    #: so is the correct output rather than a fabricated number.
+    sufficient: bool
+    ceiling_mbps: Optional[float] = None
+    max_observed_writers: int = 0
+    #: Aggregate throughput stopped improving as writers were added.
+    saturated: bool = False
+    supported_writers: Optional[int] = None
+
+
+class RepositoryExpansion(BaseModel):
+    """What a given repository count would deliver."""
+    shard_count: int
+    busiest_utilization_pct: Optional[float] = None
+    #: Always false. A node's repository is fixed at enrolment, so raising the
+    #: count cannot move anyone already placed — it only routes new enrolments.
+    relieves_existing: bool = False
+    new_node_headroom: int = 0
+
+
+class RepositoryCapacityResponse(UTCModel):
+    generated_at: datetime
+    shard_count: int
+    configured_shard_count: int
+    #: True when the count was floored above what the environment asked for by
+    #: repositories that already exist on disk.
+    count_floored: bool
+    storage_path: str
+    #: The backups directory is not a plain Docker volume, so it may be a
+    #: network mount where added repositories share one pipe.
+    is_host_path: bool
+
+    projection_nights: int
+    shards: List[ShardCapacity] = []
+    peak: RepositoryPeak
+    capacity: NodeCapacity
+    ceiling: StorageCeiling
+    expansion: List[RepositoryExpansion] = []
+    #: Which of the two actually limits parallel writers right now.
+    binding_constraint: str

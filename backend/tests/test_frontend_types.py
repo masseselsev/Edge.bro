@@ -33,6 +33,12 @@ MIRRORS = {
     "BackupGroup": "BackupGroupResponse",
     "RetentionPolicy": "RetentionPolicySchema",
     "Exclusion": "ExclusionSchema",
+    "ShardCapacity": "ShardCapacity",
+    "RepositoryPeak": "RepositoryPeak",
+    "NodeCapacity": "NodeCapacity",
+    "StorageCeiling": "StorageCeiling",
+    "RepositoryExpansion": "RepositoryExpansion",
+    "RepositoryCapacity": "RepositoryCapacityResponse",
 }
 
 pytestmark = pytest.mark.skipif(

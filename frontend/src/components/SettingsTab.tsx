@@ -9,6 +9,7 @@ import AuditLogsTab from './AuditLogsTab';
 import SshKeysTab from './SshKeysTab';
 import { CredentialsModal } from './CredentialsModal';
 import { InfoLabel } from './InfoLabel';
+import RepositoryCapacityPanel from './RepositoryCapacityPanel';
 import { api } from '../api';
 
 interface SettingsTabProps {
@@ -552,6 +553,11 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                   </div>
                 </div>
 
+                {/* Directly under Storage Location, because it answers the one
+                    question that panel raises and cannot: whether the backups
+                    the schedule produces actually fit the repositories they
+                    are routed to. */}
+                <RepositoryCapacityPanel />
 
                 <div className="mb-4 space-y-3 border border-zinc-800/80 p-4 rounded-xl bg-zinc-950/40">
                   <div>
