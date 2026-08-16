@@ -59,6 +59,31 @@ def one_initialized_shard(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def maintenance_claim_succeeds(monkeypatch):
+    """The prune gets the repository, so these tests can watch what it does.
+
+    `repository_maintenance` is a Redis claim, and it yields None when the
+    claim cannot be taken — including when Redis cannot be reached at all,
+    which is correct: an unclaimable repository is one to leave alone, and the
+    next nightly run picks it up.
+
+    Correct, and fatal to a test about pruning: every assertion below is on
+    borg invocations that never happen, and the prune reports SKIPPED for a
+    reason unrelated to anything under test. Granting the claim here keeps
+    these tests about retention, batching and the shard loop.
+
+    `tests/test_repo_lock.py` covers the claim itself, contention included.
+    """
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _granted(owner, ttl=None, repo_path=None):
+        yield lambda: None  # the heartbeat callable; nothing to keep alive here
+
+    monkeypatch.setattr("backup_tasks.repository_maintenance", _granted)
+
+
 def archives_for(host, count, start=NOW, step=timedelta(days=1)):
     return [
         Archive(f"{host}-{(start - step * i).strftime('%Y%m%d%H%M%S')}", start - step * i)

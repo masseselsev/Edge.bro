@@ -35,10 +35,46 @@ def db_session(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def clear_lock():
-    tasks.redis_client.delete(LOCK_KEY)
-    yield
-    tasks.redis_client.delete(LOCK_KEY)
+def sweep_lock(monkeypatch):
+    """An in-process stand-in for the sweep's Redis lock.
+
+    The task guards itself with `SET NX EX` so two sweeps cannot overlap, and
+    these tests used to reach a real Redis for it. That made the suite depend
+    on a running server, and on a machine where Redis is reachable-but-silent
+    the whole file blocked rather than failed.
+
+    The lock's semantics are what the tests need, not its implementation, so
+    they get a dictionary that honours `nx`: acquisition succeeds once and the
+    releasing `eval` clears it. `tests/test_alert_lock.py` covers the real
+    Redis contract separately.
+    """
+    store: dict = {}
+
+    fake = MagicMock()
+
+    def _set(key, value, nx=False, ex=None):
+        if nx and key in store:
+            return None
+        store[key] = value
+        return True
+
+    def _setex(key, ttl, value):
+        store[key] = value
+        return True
+
+    fake.set.side_effect = _set
+    # Used by the test that seeds a held lock before invoking the sweep.
+    fake.setex.side_effect = _setex
+    fake.get.side_effect = store.get
+    fake.delete.side_effect = lambda key: store.pop(key, None)
+    # The release is a compare-and-delete Lua script; only its effect matters.
+    fake.eval.side_effect = lambda script, numkeys, key, token: (
+        1 if store.pop(key, None) == token else 0
+    )
+
+    monkeypatch.setattr(tasks, "redis_client", fake)
+    yield fake
+    store.clear()
 
 
 def make_node(db):

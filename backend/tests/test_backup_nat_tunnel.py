@@ -11,6 +11,31 @@ import models
 TEST_DATABASE_URL = "sqlite:///./test_backup_nat_tunnel_db.db"
 
 
+@pytest.fixture(autouse=True)
+def repository_is_free(monkeypatch):
+    """Nobody else is touching the repository, as far as these tests care.
+
+    What is under test here is NAT tunnelling: which host a backup connects
+    through and whether the reachability probe is skipped. The repository lock
+    is scenery — but it is scenery backed by Redis, and `writer_in_progress`
+    deliberately answers **True** when Redis cannot be read, because guessing
+    "nobody" wrongly tears away a live lock and corrupts the repository.
+
+    That is the right production behaviour and the wrong test dependency: with
+    no Redis reachable the lock cleanup silently took the "someone else is
+    writing" branch, and a test asserting on the cleanup's subprocess calls
+    failed for a reason that had nothing to do with NAT. Stated explicitly here
+    so these tests exercise the path they are named after.
+
+    `core/tests` around `repo_lock` cover the Redis-unavailable behaviour
+    itself.
+    """
+    import backup_tasks
+
+    monkeypatch.setattr(backup_tasks, "maintenance_in_progress", lambda *a, **k: False)
+    monkeypatch.setattr(backup_tasks, "writer_in_progress", lambda *a, **k: False)
+
+
 @pytest.fixture
 def db_session():
     engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
