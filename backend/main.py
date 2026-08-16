@@ -166,37 +166,26 @@ def startup_db_init():
     except Exception as e:
         print(f"Error clearing stale running tasks on startup: {str(e)}")
 
-    # Auto-detect payload source file changes and trigger rebuild if needed
+    # Check whether the USB-Kiosk template still matches its sources.
+    #
+    # Startup is the wrong moment for this and cannot be made the right one:
+    # the payload hash covers /opt/frontend_build, which the frontend
+    # container refills on every start, and compose orders the frontend after
+    # this backend reports healthy. So the answer here is always computed
+    # against the previous release's dashboard bundle. It is kept because it
+    # costs nothing and does catch the rest of the payload, and because a
+    # restart is the moment an operator expects something to happen -- but the
+    # authority is tasks.kiosk_template_check_task, which runs every ten
+    # minutes and sees the volume in its settled state.
     try:
-        from payload_hash import compute_payload_hash, read_stored_hash
-        from iso_tasks import CACHE_DIR
-        client_iso_path = os.path.join(CACHE_DIR, "technician_client_v1.iso")
-        if os.path.exists(client_iso_path):
-            current_hash = compute_payload_hash()
-            stored_hash = read_stored_hash()
-            if current_hash != stored_hash:
-                short_old = stored_hash[:8] if stored_hash else "none"
-                short_new = current_hash[:8]
-                print(f"Payload source hash changed ({short_old}... → {short_new}...). Triggering base ISO rebuild...")
-                db_hash = next(get_db())
-                from iso_tasks import trigger_base_iso_rebuild
-                trigger_base_iso_rebuild(db_hash)
-                db_hash.close()
-            else:
-                print(f"Payload source hash unchanged ({current_hash[:8]}...). No rebuild needed.")
-        elif os.path.exists(paths.BASE_ISO_PATH):
-            # The base ISO is cached but the template was never built — e.g. an
-            # install that hit the base-download-never-triggers-a-build gap.
-            # Nothing else will build it, so kick it off now.
-            print("Base ISO cached but USB-Kiosk Client template not yet built — triggering build...")
-            db_hash = next(get_db())
-            from iso_tasks import trigger_base_iso_rebuild
-            trigger_base_iso_rebuild(db_hash)
+        from iso_tasks import rebuild_kiosk_template_if_stale
+        db_hash = next(get_db())
+        try:
+            print(f"USB-Kiosk template check on startup: {rebuild_kiosk_template_if_stale(db_hash)}")
+        finally:
             db_hash.close()
-        else:
-            print("Compiled Offline Client ISO not yet built — skipping startup hash check.")
     except Exception as e:
-        print(f"Error during payload hash check on startup: {str(e)}")
+        print(f"Error during USB-Kiosk template check on startup: {str(e)}")
 
     db = next(get_db())
     upgrade_settings(db)

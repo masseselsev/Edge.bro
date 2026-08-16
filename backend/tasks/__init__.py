@@ -79,6 +79,14 @@ celery_app.conf.beat_schedule = {
         'task': 'tasks.ssh_key_audit_task',
         'schedule': crontab(hour=3, minute=45), # Run at 3:45 AM daily
     },
+    'kiosk-template-check-task': {
+        'task': 'tasks.kiosk_template_check_task',
+        # Ten minutes. The check itself is a directory hash, but what it can
+        # start is a ten-minute ISO build, so there is nothing to gain from
+        # asking more often - and this cannot be left to startup, which reads
+        # the dashboard bundle before the frontend container has replaced it.
+        'schedule': 600.0,
+    },
     'monitoring-sweep-task': {
         'task': 'tasks.monitoring_sweep_task',
         # Hourly, picking up whatever is overdue rather than firing at a
@@ -190,6 +198,7 @@ from tasks.monitoring import (
     monitoring_sweep_task,
 )
 from tasks.alerts import evaluate_alerts_task
+from tasks.kiosk_template import kiosk_template_check_task
 
 # Import other tasks so they register with Celery automatically when this file is loaded
 from backup_tasks import run_prepare_task, run_backup_task, global_daily_prune

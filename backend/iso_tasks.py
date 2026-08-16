@@ -308,6 +308,17 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
     except Exception as re:
         logger.error(f"Failed to clear base_iso_dirty in Celery task: {re}")
 
+    # Read now, not at the end. This is the state of the sources the build is
+    # about to copy in, so it is what the finished ISO actually contains; a
+    # hash taken on the way out would record an edit made *during* the build
+    # as already shipped and suppress the rebuild that edit needs.
+    try:
+        from payload_hash import compute_payload_hash
+        payload_hash_built = compute_payload_hash()
+    except Exception as hash_err:
+        logger.warning(f"Could not read the payload hash before building: {hash_err}")
+        payload_hash_built = None
+
     # A scope rather than a session for the whole task: the build that follows
     # is many minutes of xorriso and cpio, and none of it needs a connection.
     with session_scope() as db:
@@ -442,11 +453,14 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
         log_to_task(task_id, "[PROGRESS] 100:Client ISO generated successfully!", status="SUCCESS")
 
-        # Persist payload hash so future restarts can detect if sources changed
+        # Persist payload hash so the periodic check can tell whether the
+        # sources have moved on since this ISO was built.
         try:
-            from payload_hash import compute_payload_hash, write_stored_hash
-            write_stored_hash(compute_payload_hash())
-            logger.info("Payload source hash updated after successful build.")
+            from payload_hash import write_stored_hash
+            if payload_hash_built:
+                write_stored_hash(payload_hash_built)
+                logger.info("Payload source hash updated after successful build.")
+            _set_failed_build_hash(None)
         except Exception as hash_err:
             logger.warning(f"Failed to write payload hash after build: {hash_err}")
 
@@ -470,6 +484,11 @@ def generate_client_iso_task(self, target_ip: str, auth_token: str) -> Dict[str,
 
     except Exception as e:
         log_to_task(task_id, f"Client ISO generation failed: {str(e)}", status="FAILED")
+        # Remember which sources failed, so the periodic check attempts them
+        # once rather than every ten minutes. Only for the template build: a
+        # per-kiosk build failing says nothing about the template's sources.
+        if auth_token == TEMPLATE_BUILD and payload_hash_built:
+            _set_failed_build_hash(payload_hash_built)
         return {"status": "FAILED", "error": str(e)}
     finally:
         try:
@@ -620,12 +639,99 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
             shutil.rmtree(work_dir, ignore_errors=True)
 
 
+#: Payload hash whose template build failed. Auto-triggering skips this exact
+#: value so a build that cannot succeed is attempted once rather than every
+#: time the check runs — an ISO build is ten minutes of xorriso and several
+#: gigabytes of scratch space. Any further source change produces a different
+#: hash and auto-triggering resumes; a manual rebuild ignores the marker.
+FAILED_BUILD_HASH_KEY = "kiosk_template_failed_hash"
+
+
+def _failed_build_hash():
+    try:
+        value = make_redis_client().get(FAILED_BUILD_HASH_KEY)
+        return value.decode() if isinstance(value, bytes) else value
+    except Exception as exc:
+        logger.warning(f"Could not read the failed-build marker: {exc}")
+        return None
+
+
+def _set_failed_build_hash(payload_hash):
+    try:
+        r = make_redis_client()
+        if payload_hash:
+            r.set(FAILED_BUILD_HASH_KEY, payload_hash)
+        else:
+            r.delete(FAILED_BUILD_HASH_KEY)
+    except Exception as exc:
+        logger.warning(f"Could not update the failed-build marker: {exc}")
+
+
+def rebuild_kiosk_template_if_stale(db) -> str:
+    """Rebuild the USB-Kiosk template when its sources no longer match it.
+
+    Returns a short reason string, for logging by whichever caller ran it.
+
+    This cannot be done once at startup, which is what it used to be. The
+    payload hash covers `/opt/frontend_build`, a volume the frontend container
+    fills from its own image on every start - and compose orders the frontend
+    strictly after the backend reports healthy, which is strictly after the
+    startup hook has run. So the hook always read the *previous* release's
+    bundle, and a release that changed only the dashboard was pronounced
+    unchanged seconds before the new bundle landed in the volume. The status
+    endpoint recomputes the hash live, so from then on the card read OUTDATED
+    with nothing left in the system that would ever act on it: the template
+    stayed one release behind until something unrelated restarted the backend.
+
+    Being periodic also covers the cases a single shot never could - a build
+    that failed, a broker that was down at the wrong moment, an operator
+    replacing the frontend bundle by hand.
+    """
+    from payload_hash import compute_payload_hash, read_stored_hash
+
+    client_iso = os.path.join(CACHE_DIR, "technician_client_v1.iso")
+    have_client = os.path.exists(client_iso)
+    have_base = os.path.exists(BASE_ISO_PATH)
+
+    # A partially downloaded base image is not something to build on, and the
+    # download triggers its own rebuild when it completes.
+    if os.path.exists(BASE_ISO_PATH_TMP):
+        return "base image still downloading"
+
+    if not have_client:
+        if not have_base:
+            return "no base image and no template yet"
+        # Base cached but the template was never built: nothing else will
+        # start it.
+        logger.info("Base image cached but no USB-Kiosk template — building it.")
+        trigger_base_iso_rebuild(db)
+        return "template missing, build triggered"
+
+    current = compute_payload_hash()
+    stored = read_stored_hash()
+    if current == stored:
+        # Sources and template agree; retire any marker from an older failure.
+        if _failed_build_hash():
+            _set_failed_build_hash(None)
+        return f"up to date ({current[:8]})"
+
+    if _failed_build_hash() == current:
+        return f"unchanged since a failed build ({current[:8]}), not retrying"
+
+    logger.info(
+        "USB-Kiosk template sources changed (%s -> %s) — rebuilding.",
+        (stored or "none")[:8], current[:8],
+    )
+    trigger_base_iso_rebuild(db)
+    return f"sources changed ({(stored or 'none')[:8]} -> {current[:8]}), build triggered"
+
+
 def trigger_base_iso_rebuild(db):
     import redis
     import os
     from datetime import datetime
     import models
-    
+
     active_task = db.query(models.TaskLog).filter(
         models.TaskLog.task_type == "ISO_GEN",
         models.TaskLog.status == "RUNNING"
