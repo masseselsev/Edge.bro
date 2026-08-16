@@ -396,3 +396,27 @@ volumes:
     name: edge-bro_apt-cache
     external: false
 
+
+# Docker picks a subnet for this network from its own pool when none is given,
+# walking 172.17.0.0/16, 172.18.0.0/16 and upwards. On a host that already
+# routes one of those — a VPN, a site-to-site tunnel, a second Docker network —
+# the collision is silent and total: the longest matching prefix wins, so
+# traffic the host sends to a container goes out the tunnel instead of the
+# bridge. Containers still talk to each other, which is what makes it
+# confusing, but every published port stops working. That is the API on 8000,
+# the borg endpoint on 12345 that every node pushes backups to, and the apt
+# proxy — the whole deployment, unreachable, with healthy containers.
+#
+# So the subnet is stated rather than left to chance, and a /24 is used because
+# it collides with far less than a /16. It is overridable because no single
+# range is safe everywhere: if this one clashes with your network, set
+# DOCKER_SUBNET in .env to one that does not.
+#
+# Changing it recreates the network, which requires the stack to be stopped:
+#   docker compose down && docker compose up -d
+networks:
+  default:
+    name: edge-bro_default
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET:-172.29.13.0/24}
