@@ -73,6 +73,45 @@ celery_app.conf.update(
     # Redis with dead payloads.
     result_expires=int(os.getenv("CELERY_RESULT_EXPIRES", "3600")),
 
+    # Publishing a task must not be able to block forever.
+    #
+    # Kombu's default is to keep retrying the broker connection with backoff,
+    # effectively without end. That is reasonable for a worker whose only job
+    # is to wait for the broker to come back, and wrong everywhere a *request
+    # handler* or an already-finished task publishes something: the caller has
+    # nothing to wait for and no way out.
+    #
+    # The case that showed it: `run_backup_task` dispatches a post-backup
+    # telemetry harvest after the archive is safely written, wrapped in
+    # try/except and commented "non-fatal because a completed backup must never
+    # be reported as failed over telemetry". With an unreachable broker the
+    # publish never raised — it retried — so a finished backup sat there
+    # holding its worker, its database session and its repository lock, for a
+    # step whose whole point was to be skippable.
+    #
+    # Three retries over a few seconds, then an exception the caller's own
+    # error handling can act on.
+    broker_transport_options={
+        "socket_connect_timeout": float(os.getenv("CELERY_BROKER_CONNECT_TIMEOUT", "3")),
+        "socket_timeout": float(os.getenv("CELERY_BROKER_SOCKET_TIMEOUT", "5")),
+    },
+    broker_connection_retry_on_startup=True,
+    broker_connection_max_retries=int(os.getenv("CELERY_BROKER_MAX_RETRIES", "3")),
+    task_publish_retry_policy={
+        "max_retries": 3,
+        "interval_start": 0,
+        "interval_step": 0.5,
+        "interval_max": 2,
+    },
+    # The result backend is read to answer "did this task finish"; the callers
+    # all treat an error as "cannot tell" and carry on, so it must be able to
+    # return that answer rather than hang.
+    result_backend_transport_options={
+        "socket_connect_timeout": float(os.getenv("CELERY_BROKER_CONNECT_TIMEOUT", "3")),
+        "socket_timeout": float(os.getenv("CELERY_BROKER_SOCKET_TIMEOUT", "5")),
+        "retry_policy": {"timeout": 5.0},
+    },
+
     timezone="UTC",
     enable_utc=True,
 )
