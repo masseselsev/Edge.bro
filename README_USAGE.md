@@ -552,6 +552,28 @@ The base template caching and client ISO compilation is fully automated. You do 
 5. Click **Download** on the kiosk row to download the compiled ISO.
 6. If the cache is pruned or configuration changes require a rebuild, click **Re-create** next to the kiosk row to repack the ISO.
 
+#### The template ISO keeps itself current
+
+Every kiosk ISO is packed on top of a shared template, shown on the left of
+the tab as **USB-Kiosk Client**. The template contains the dashboard bundle,
+the payload scripts and the borg binary, so an upgrade that changes any of
+them leaves it out of date and the card is marked **OUTDATED**.
+
+Nothing needs to be done about that. The orchestrator compares the template
+against its sources every ten minutes and rebuilds it when they differ; the
+card moves to **REBUILDING** and then back to **READY**, typically within a
+couple of minutes. Approved kiosks are then flagged for repacking on top of
+the new template.
+
+Two behaviours worth knowing:
+
+- A rebuild that fails is not retried on the next check. Retrying the same
+  sources every ten minutes costs an ISO build each time and cannot succeed;
+  the next change to the sources clears the block. The failure is recorded in
+  the Logs tab as an `ISO_GEN` task.
+- Issuing a kiosk while the template is rebuilding is fine — the new kiosk is
+  packed once the template is ready.
+
 ### 6.2 Write the ISO to USB
 
 Use one of these tools (in **DD mode**, not ISO mode):
