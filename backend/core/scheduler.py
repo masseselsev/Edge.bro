@@ -328,23 +328,30 @@ def check_and_trigger_backups(db: Session, now: Optional[datetime] = None):
             )
             effective_concurrency = bandwidth_cap
 
-        # So is the number of repositories, for the same reason and more
-        # absolutely. Borg holds a repository's lock for the whole of
-        # `borg create`, so backups landing on one shard run one at a time no
-        # matter how many are dispatched. Anything past this does not run
-        # sooner — it occupies a Celery worker doing nothing but waiting out
+        # So are the repositories this queue actually occupies, for the same
+        # reason and more absolutely. Borg holds a repository's lock for the
+        # whole of `borg create`, so backups landing on one shard run one at a
+        # time no matter how many are dispatched. Anything past this does not
+        # run sooner — it occupies a Celery worker doing nothing but waiting out
         # `--lock-wait`, and if the queue ahead of it is long enough it times
         # out and fails a backup that would have succeeded next tick.
         #
-        # This is why the dynamic raise above cannot help a single-shard
-        # install: there is no parallelism to buy.
-        if effective_concurrency > repo_paths.SHARD_COUNT:
+        # Counted from the pending nodes rather than from SHARD_COUNT, because
+        # shards are assigned `node_id % SHARD_COUNT` and know nothing about
+        # group membership: a queue of five nodes can sit entirely in one
+        # repository while four others stand idle, and dispatching five would
+        # park four workers on a lock. It also cannot exceed SHARD_COUNT, so
+        # this subsumes the fleet-wide cap rather than relaxing it.
+        occupied_shards = len({
+            (node.borg_shard_index or 0) for node, _ in pending_nodes_stagger
+        })
+        if effective_concurrency > occupied_shards:
             logger.info(
                 f"Group {group.name}: capping concurrency {effective_concurrency} -> "
-                f"{repo_paths.SHARD_COUNT} — one writer per repository, and the fleet "
-                f"has {repo_paths.SHARD_COUNT}."
+                f"{occupied_shards} — one writer per repository, and this queue "
+                f"occupies {occupied_shards} of the fleet's {repo_paths.SHARD_COUNT}."
             )
-            effective_concurrency = repo_paths.SHARD_COUNT
+            effective_concurrency = occupied_shards
 
         # Sort queue sequentially by stagger offset (earlier staggered nodes first)
         pending_nodes_stagger.sort(key=lambda x: x[1])

@@ -446,7 +446,7 @@ def test_a_live_lock_still_counts_against_the_group_limit(mock_run_backup_task, 
 # install there is no parallelism for it to buy.
 
 
-def _group_of(test_db, count, concurrency):
+def _group_of(test_db, count, concurrency, shard_count=1):
     group = models.BackupGroup(
         name="NightlyGroup", interval="10min",
         start_time="00:00", end_time="23:59",
@@ -460,6 +460,12 @@ def _group_of(test_db, count, concurrency):
         test_db.add(models.Node(
             hostname=f"node-{i:02d}", ip_address=f"192.168.1.{i + 10}",
             group_id=group.id, backup_paused=False, status="READY",
+            # Spread across the repositories under test. Shards are assigned
+            # `node_id % SHARD_COUNT` at enrolment and stored, never
+            # recomputed, so a fixture that left every node on repository 0
+            # while asserting five parallel backups would be asserting a
+            # parallelism one lock cannot give.
+            borg_shard_index=i % shard_count,
         ))
     test_db.commit()
     return group
@@ -496,7 +502,7 @@ def test_more_shards_admit_more_backups(
     mock_redis.get.return_value = None
     mock_redis.mget.side_effect = lambda keys: [None] * len(keys)
 
-    _group_of(test_db, count=8, concurrency=5)
+    _group_of(test_db, count=8, concurrency=5, shard_count=5)
     check_and_trigger_backups(test_db, now=datetime(2026, 6, 15, 3, 0))
 
     assert mock_run_backup_task.delay.call_count == 5
@@ -515,7 +521,7 @@ def test_a_group_limit_below_the_shard_count_still_wins(
     mock_redis.get.return_value = None
     mock_redis.mget.side_effect = lambda keys: [None] * len(keys)
 
-    _group_of(test_db, count=8, concurrency=2)
+    _group_of(test_db, count=8, concurrency=2, shard_count=5)
     check_and_trigger_backups(test_db, now=datetime(2026, 6, 15, 3, 0))
 
     assert mock_run_backup_task.delay.call_count == 2

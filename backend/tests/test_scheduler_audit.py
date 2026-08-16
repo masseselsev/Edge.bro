@@ -233,17 +233,24 @@ def test_offline_node_is_skipped(mock_run_backup_task, mock_redis, test_db, monk
     test_db.commit()
     test_db.refresh(group)
 
+    # One repository each, so the group's concurrency is not what decides who
+    # runs. What is under test is the ping filter; nodes sharing a repository
+    # would serialise behind one lock and the second one's absence would look
+    # like the filter had rejected it.
     offline = models.Node(
         hostname="offline-node", ip_address="192.168.70.10", group_id=group.id,
         backup_paused=False, status="READY", last_ping_status=False,
+        borg_shard_index=0,
     )
     online = models.Node(
         hostname="online-node", ip_address="192.168.70.11", group_id=group.id,
         backup_paused=False, status="READY", last_ping_status=True,
+        borg_shard_index=1,
     )
     never_pinged = models.Node(
         hostname="unknown-node", ip_address="192.168.70.12", group_id=group.id,
         backup_paused=False, status="READY", last_ping_status=None,
+        borg_shard_index=2,
     )
     test_db.add_all([offline, online, never_pinged])
     test_db.commit()
