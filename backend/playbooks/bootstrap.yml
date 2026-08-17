@@ -176,7 +176,7 @@
           *) echo "APT_FALLBACK_SKIPPED: ${ID:-unknown} is not Debian or Ubuntu; mirrors left alone."; exit 0 ;;
         esac
 
-        # Backed up once only: a second run must not overwrite the operator's
+        # Backed up once only: a second run must not overwrite the operator
         # original with our already-rewritten copy.
         for f in $LISTS; do
           [ -e "$f.edge-bro-orig" ] || cp -p "$f" "$f.edge-bro-orig"
