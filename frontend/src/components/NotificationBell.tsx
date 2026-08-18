@@ -80,12 +80,12 @@ export default function NotificationBell({ timezone }: NotificationBellProps) {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 font-bold transition-all duration-200 cursor-pointer outline-none"
+        className="relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 font-bold transition-all duration-200 cursor-pointer outline-none"
         title={t('notificationsBellTitle')}
       >
-        <Bell size={13} className={count > 0 ? 'text-amber-400' : 'text-zinc-400'} />
+        <Bell size={12} className={count > 0 ? 'text-amber-400' : 'text-zinc-400'} />
         {count > 0 && (
-          <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold leading-none">
+          <span className="inline-flex items-center justify-center min-w-[15px] h-3.5 px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold leading-none">
             {count > 99 ? '99+' : count}
           </span>
         )}

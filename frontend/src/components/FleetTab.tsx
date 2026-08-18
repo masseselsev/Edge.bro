@@ -9,6 +9,7 @@ import type { Node } from '../types';
 interface BackupGroup {
   id: number;
   name: string;
+  upload_rate_limit?: number | null;
 }
 
 interface FleetTabProps {
@@ -352,33 +353,33 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     }
   }, [onViewLogs]);
 
-  // Was `groups.find(...)` inside the row renderer: O(rows x groups) on every
-  // one of the twelve renders a minute the 5s poll causes. A fleet of 2000
-  // nodes across 50 groups made that 100,000 comparisons a tick to look up a
-  // name that had not changed.
-  const groupNamesById = useMemo(
-    () => new Map(groups.map(g => [g.id, g.name])),
+  const groupsById = useMemo(
+    () => new Map(groups.map(g => [g.id, g])),
     [groups],
   );
 
-  const renderNodeRow = (node: Node, depth = 0) => (
-    <NodeRow
-      key={node.id}
-      node={node}
-      depth={depth}
-      bulkDeleteMode={bulkDeleteMode}
-      isSelected={!!selectedNodeIds[node.id]}
-      onSelectNode={handleSelectNode}
-      onRunPrepare={runPrepare}
-      onShowProvision={setShowProvisionModal}
-      onInstantProvision={handleInstantProvision}
-      onShowBackup={handleShowBackup}
-      onDeleteNode={handleDeleteNode}
-      onShowDetails={handleShowDetails}
-      groupName={node.group_id === null ? null : groupNamesById.get(node.group_id) ?? null}
-      timezone={timezone}
-    />
-  );
+  const renderNodeRow = (node: Node, depth = 0) => {
+    const group = node.group_id === null ? null : groupsById.get(node.group_id) ?? null;
+    return (
+      <NodeRow
+        key={node.id}
+        node={node}
+        depth={depth}
+        bulkDeleteMode={bulkDeleteMode}
+        isSelected={!!selectedNodeIds[node.id]}
+        onSelectNode={handleSelectNode}
+        onRunPrepare={runPrepare}
+        onShowProvision={setShowProvisionModal}
+        onInstantProvision={handleInstantProvision}
+        onShowBackup={handleShowBackup}
+        onDeleteNode={handleDeleteNode}
+        onShowDetails={handleShowDetails}
+        groupName={group ? group.name : null}
+        groupRateLimit={group ? group.upload_rate_limit : null}
+        timezone={timezone}
+      />
+    );
+  };
 
   const renderGroupedContent = () => {
     if (grouping === 'flat') {
@@ -570,10 +571,10 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
       <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/50 backdrop-blur-md">
         <table className="min-w-full divide-y divide-zinc-800 text-left text-sm text-zinc-300">
-          <thead className="bg-zinc-900 text-xs uppercase tracking-wider text-zinc-400">
+          <thead className="bg-zinc-950/60 text-[11px] font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800">
             <tr>
               {bulkDeleteMode && (
-                <th className="px-4 py-2.5 w-10 text-center">
+                <th className="px-3.5 py-3 w-10 text-center">
                   <input
                     type="checkbox"
                     checked={nodes.length > 0 && nodes.every(n => selectedNodeIds[n.id])}
@@ -589,7 +590,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                   />
                 </th>
               )}
-              <th className="px-4 py-2.5 select-none">
+              <th className="px-3.5 py-3 select-none whitespace-nowrap">
                 <div className="flex items-center gap-2 text-zinc-400">
                   <span 
                     className={`cursor-pointer transition-colors hover:text-white ${sortKey === 'hostname' ? 'text-white font-bold' : ''}`}
@@ -608,37 +609,37 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                   </span>
                 </div>
               </th>
-              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('ip_address')}>
+              <th className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('ip_address')}>
                 <div className="flex items-center gap-1">
                   {t('ipAddressLabel')}
                   {renderSortIcon('ip_address')}
                 </div>
               </th>
-              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('os_version')}>
+              <th className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('os_version')}>
                 <div className="flex items-center gap-1">
                   {t('osVersion') || 'OS Version'}
                   {renderSortIcon('os_version')}
                 </div>
               </th>
-              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('disk_type')}>
+              <th className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('disk_type')}>
                 <div className="flex items-center gap-1">
                   {t('diskInterface') || 'Disk & Interface'}
                   {renderSortIcon('disk_type')}
                 </div>
               </th>
-              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('status')}>
+              <th className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('status')}>
                 <div className="flex items-center gap-1">
                   {t('statusAction') || 'Status / Action'}
                   {renderSortIcon('status')}
                 </div>
               </th>
-              <th className="px-4 py-2.5 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none" onClick={() => handleSort('last_backup')}>
+              <th className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('last_backup')}>
                 <div className="flex items-center gap-1">
                   {t('lastBackup') || 'Last Backup'}
                   {renderSortIcon('last_backup')}
                 </div>
               </th>
-              <th className="px-4 py-2.5 text-right select-none">{t('actions')}</th>
+              <th className="px-3.5 py-3 text-right select-none whitespace-nowrap w-[150px]">{t('actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">

@@ -439,7 +439,7 @@ function AppContent() {
         />
       )}
 
-      <main className={`flex-1 max-w-7xl w-full mx-auto px-6 py-8 ${isKiosk ? (restoreMode === 'online' && pairing.status !== 'APPROVED' ? 'pb-28' : 'pb-20') : 'pb-20'}`}>
+      <main className={`flex-1 max-w-7xl w-full mx-auto px-6 py-6 ${isKiosk ? (restoreMode === 'online' && pairing.status !== 'APPROVED' ? 'pb-28' : 'pb-20') : 'pb-20'}`}>
         {/* Keyed on the tab so a switch remounts rather than reconciling two
             unrelated trees, and so the entry animation replays. The fallback
             is what shows while the tab's chunk downloads - deliberately the

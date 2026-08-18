@@ -1,6 +1,7 @@
 import React from 'react';
 import { Cpu, CheckCircle, AlertTriangle, Settings as Gear, ShieldAlert, Trash2 } from 'lucide-react';
 import { formatDate } from './dateUtils';
+import { kibToMbit, formatMbit } from './rateLimit';
 import { useTranslation } from '../context/TranslationContext';
 import type { Node } from '../types';
 
@@ -20,6 +21,7 @@ interface NodeRowProps {
   /** Takes the id so FleetTab can hold one stable callback for every row. */
   onShowDetails: (nodeId: number) => void;
   groupName: string | null;
+  groupRateLimit?: number | null;
   timezone?: string;
 }
 
@@ -36,6 +38,7 @@ function NodeRowComponent({
   onDeleteNode,
   onShowDetails,
   groupName,
+  groupRateLimit,
   timezone,
 }: NodeRowProps) {
   const { t } = useTranslation();
@@ -92,6 +95,16 @@ function NodeRowComponent({
     }
     return t('nodeNeverOnline') || 'Never online';
   };
+
+  const effectiveLimitStr = (() => {
+    if (node.upload_rate_limit != null && node.upload_rate_limit > 0) {
+      return `${formatMbit(kibToMbit(node.upload_rate_limit))} Mbit/s`;
+    }
+    if (groupRateLimit != null && groupRateLimit > 0) {
+      return `${formatMbit(kibToMbit(groupRateLimit))} Mbit/s`;
+    }
+    return t('rateLimitUnlimited') || 'unlimited';
+  })();
   
   const renderStatusButton = () => {
     const statusMap: Record<string, { bg: string, text: string, border: string, label: string, icon: React.ReactNode, title: string, onClick: () => void }> = {
@@ -127,7 +140,7 @@ function NodeRowComponent({
     return (
       <button
         onClick={config.onClick}
-        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${config.bg} ${config.text} ${config.border} ${node.status === 'RESTORED' ? 'animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''}`}
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${config.bg} ${config.text} ${config.border} ${node.status === 'RESTORED' ? 'animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''}`}
         title={config.title}
       >
         {config.icon} {config.label}
@@ -138,7 +151,7 @@ function NodeRowComponent({
   return (
     <tr className="hover:bg-zinc-800/30 transition-colors">
       {bulkDeleteMode && (
-        <td className="px-4 py-2.5 w-10 text-center">
+        <td className="px-3.5 py-2.5 w-10 text-center">
           <input
             type="checkbox"
             checked={isSelected}
@@ -147,13 +160,19 @@ function NodeRowComponent({
           />
         </td>
       )}
-      <td className="px-4 py-2.5 font-semibold text-zinc-50 flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 24}px` }}>
-        <Cpu size={14} className="text-zinc-500" />
-        <div className="flex flex-col">
-          <span className="break-all" title={node.hostname}>{node.hostname}</span>
-          <span className="text-[10px] text-indigo-400/80 font-semibold leading-none mt-1">
-            {t('groupLabel') || 'Group'}: {groupName || '—'}
-          </span>
+      <td className="px-3.5 py-2.5 font-semibold text-zinc-50 flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 20}px` }}>
+        <Cpu size={14} className="text-zinc-500 shrink-0" />
+        <div className="flex flex-col min-w-0">
+          <span className="truncate" title={node.hostname}>{node.hostname}</span>
+          <div className="text-[11px] text-zinc-400 flex items-center gap-1.5 font-normal leading-none mt-1 whitespace-nowrap">
+            <span className="text-indigo-400/90 font-semibold">
+              {t('groupLabel') || 'Group'}: {groupName || '—'}
+            </span>
+            <span className="text-zinc-600">•</span>
+            <span className="text-zinc-400 font-mono text-[10px] bg-zinc-800/80 px-1.5 py-0.5 rounded border border-zinc-700/50">
+              {effectiveLimitStr}
+            </span>
+          </div>
           {(node.backup_paused || node.missed_window) && (
             <div className="flex gap-1 mt-1">
               {node.backup_paused && (
@@ -170,53 +189,59 @@ function NodeRowComponent({
           )}
         </div>
       </td>
-      <td className="px-4 py-2.5 text-zinc-400">
+      <td className="px-3.5 py-2.5 text-zinc-400 whitespace-nowrap text-xs">
         <span className={getIpColorClass()} title={getIpTooltip()}>
           {node.ip_address}
         </span>
         :{node.ssh_port}
       </td>
-      <td className="px-4 py-2.5 text-zinc-300 font-medium text-xs">{node.os_version || t('unknown')}</td>
-      <td className="px-4 py-2.5">
-        <div className="flex flex-col">
+      <td className="px-3.5 py-2.5 text-zinc-300 font-medium text-xs whitespace-nowrap">{node.os_version || t('unknown')}</td>
+      <td className="px-3.5 py-2.5 whitespace-nowrap">
+        <div className="flex flex-col leading-tight">
           <span className="text-zinc-300 font-medium text-xs">{t('diskLabel')}: {node.disk_type ? node.disk_type.split(' ')[0] : 'UNKNOWN'}</span>
-          <span className="text-zinc-500 text-xs">{t('netLabel')}: {node.network_iface || t('unknown').toUpperCase()}</span>
+          <span className="text-zinc-500 text-[11px] mt-0.5">{t('netLabel')}: {node.network_iface || t('unknown').toUpperCase()}</span>
         </div>
       </td>
-      <td className="px-4 py-2.5">{renderStatusButton()}</td>
-      <td className="px-4 py-2.5 text-zinc-400">
+      <td className="px-3.5 py-2.5 whitespace-nowrap">{renderStatusButton()}</td>
+      <td className="px-3.5 py-2.5 text-zinc-400 text-xs whitespace-nowrap">
         {node.last_backup ? formatDate(node.last_backup, timezone) : t('never')}
       </td>
-      <td className="px-4 py-2.5 text-right flex flex-wrap items-center justify-end gap-2 text-zinc-300 font-sans">
-        <button
-          onClick={() => onShowDetails(node.id)}
-          className="px-2.5 py-1.5 text-xs font-semibold bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700/80 rounded hover:text-indigo-400 transition-colors"
-        >
-          {t('nodeDetails')}
-        </button>
-        <button
-          onClick={() => onShowBackup(node)}
-          disabled={node.status !== 'READY' && !node.is_backup_running}
-          style={node.is_backup_running ? {
-            background: `linear-gradient(to right, rgba(99, 102, 241, 0.25) ${node.backup_progress}%, transparent ${node.backup_progress}%)`
-          } : undefined}
-          className={`px-2.5 py-1.5 text-xs font-semibold rounded border transition-colors ${
-            node.is_backup_running
-              ? 'animate-pulse text-indigo-300 border-indigo-500 bg-indigo-500/5 hover:bg-indigo-500/10 cursor-pointer'
-              : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border-indigo-500/20 disabled:opacity-30'
-          }`}
-        >
-          {node.is_backup_running
-            ? `${t('backupAction')} (${node.backup_progress}%)`
-            : t('backupAction')}
-        </button>
-        <button
-          onClick={() => onDeleteNode(node.id, node.hostname)}
-          className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/20 transition-colors"
-          title={t('deleteNodeTooltip')}
-        >
-          <Trash2 size={14} />
-        </button>
+      <td className="px-3.5 py-2 text-right whitespace-nowrap">
+        <div className="inline-flex flex-col items-end gap-1.5 w-[140px]">
+          {/* Top row: Node Details */}
+          <button
+            onClick={() => onShowDetails(node.id)}
+            className="w-full text-center px-2 py-1 text-xs font-semibold bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700/80 rounded hover:text-indigo-400 hover:border-zinc-600 transition-colors cursor-pointer"
+          >
+            {t('nodeDetails')}
+          </button>
+          {/* Bottom row: Backup + Delete */}
+          <div className="flex items-center gap-1.5 w-full">
+            <button
+              onClick={() => onShowBackup(node)}
+              disabled={node.status !== 'READY' && !node.is_backup_running}
+              style={node.is_backup_running ? {
+                background: `linear-gradient(to right, rgba(99, 102, 241, 0.25) ${node.backup_progress}%, transparent ${node.backup_progress}%)`
+              } : undefined}
+              className={`flex-1 px-2 py-1 text-xs font-semibold rounded border transition-colors text-center truncate ${
+                node.is_backup_running
+                  ? 'animate-pulse text-indigo-300 border-indigo-500 bg-indigo-500/5 hover:bg-indigo-500/10 cursor-pointer'
+                  : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border-indigo-500/20 disabled:opacity-30 cursor-pointer'
+              }`}
+            >
+              {node.is_backup_running
+                ? `${t('backupAction')} (${node.backup_progress}%)`
+                : t('backupAction')}
+            </button>
+            <button
+              onClick={() => onDeleteNode(node.id, node.hostname)}
+              className="p-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded border border-rose-500/20 transition-colors cursor-pointer shrink-0"
+              title={t('deleteNodeTooltip')}
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        </div>
       </td>
     </tr>
   );
@@ -235,3 +260,4 @@ function NodeRowComponent({
  * which is worse than not having it: it reads as solved.
  */
 export const NodeRow = React.memo(NodeRowComponent);
+
