@@ -128,13 +128,17 @@ def scan_devices():
             except Exception:
                 pass
 
+            # Disks that are not connected via USB or are root host drives are marked as system
+            is_system = (not is_usb) or (name in host_root_disks)
+
             devices.append(schemas.DeviceResponse(
                 name=f"/dev/{name}",
                 size=size_bytes,
                 model=model,
                 rotational=rotational,
                 disk_type=disk_type,
-                is_usb=is_usb
+                is_usb=is_usb,
+                is_system=is_system
             ))
     except Exception as e:
         raise HTTPException(

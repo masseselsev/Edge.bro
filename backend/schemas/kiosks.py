@@ -46,8 +46,9 @@ class KioskEnrollRequest(BaseModel):
     kiosk_id: Optional[str] = None
     uuid: Optional[str] = None
     name: str
-    contact: str
-    comment: str
+    contact: Optional[str] = ""
+    phone: Optional[str] = None
+    comment: Optional[str] = ""
     ssh_pub_key: str
 
 class KioskIssueRequest(BaseModel):

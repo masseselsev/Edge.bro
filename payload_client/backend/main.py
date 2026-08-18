@@ -49,7 +49,7 @@ except ImportError:
 try:
     from version import VERSION
 except ImportError:
-    VERSION = "v1.6.2"
+    VERSION = "v1.6.3"
 
 def utcnow_iso() -> str:
     """A log timestamp in the shape the kiosk UI parses: UTC, suffixed with Z.
@@ -488,8 +488,9 @@ def get_version():
 class ClientEnrollRequest(BaseModel):
     orchestrator_ip: str
     name: str
-    contact: str
-    comment: str
+    contact: Optional[str] = None
+    phone: Optional[str] = None
+    comment: Optional[str] = ""
 
 @app.post("/api/kiosk/enroll")
 def enroll_client_kiosk(req: ClientEnrollRequest):
@@ -507,11 +508,13 @@ def enroll_client_kiosk(req: ClientEnrollRequest):
         raise HTTPException(status_code=500, detail=f"Failed to read local SSH public key: {str(e)}")
         
     url = f"http://{req.orchestrator_ip}:8000/api/kiosks/enroll"
+    contact_val = (req.contact or req.phone or "").strip()
+    comment_val = (req.comment or "").strip()
     payload = {
         "kiosk_id": kiosk_id,
         "name": req.name.strip(),
-        "contact": req.contact.strip(),
-        "comment": req.comment.strip(),
+        "contact": contact_val,
+        "comment": comment_val,
         "ssh_pub_key": pub_key_data
     }
     
@@ -681,13 +684,24 @@ def scan_devices():
                 continue
 
             is_usb = bd.get("tran") == "usb"
-            # Exclude the USB drive we booted from if possible.
+            if not is_usb:
+                try:
+                    real_block_path = os.path.realpath(f"/sys/block/{name}")
+                    is_usb = any(part.startswith("usb") for part in real_block_path.split("/"))
+                except Exception:
+                    pass
+
+            # Exclude the USB drive we booted from (live media or usb-data).
             try:
                 mounts = subprocess.check_output(f"lsblk -J -o MOUNTPOINT /dev/{name}", shell=True, text=True)
-                if "live" in mounts.lower():
+                mounts_lower = mounts.lower()
+                if "live" in mounts_lower or "usb-data" in mounts_lower:
                     continue
-            except:
+            except Exception:
                 pass
+            
+            # On a live kiosk client, non-USB drives belong to the host laptop/workstation
+            is_system = not is_usb
             
             devices.append({
                 "name": f"/dev/{name}",
@@ -695,7 +709,8 @@ def scan_devices():
                 "model": model,
                 "rotational": bd.get("rota", False),
                 "disk_type": "NVME" if "nvme" in name else "SATA",
-                "is_usb": is_usb
+                "is_usb": is_usb,
+                "is_system": is_system
             })
         return devices
     except Exception as e:

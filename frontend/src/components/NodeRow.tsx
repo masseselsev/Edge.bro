@@ -140,7 +140,7 @@ function NodeRowComponent({
     return (
       <button
         onClick={config.onClick}
-        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${config.bg} ${config.text} ${config.border} ${node.status === 'RESTORED' ? 'animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''}`}
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer whitespace-nowrap ${config.bg} ${config.text} ${config.border} ${node.status === 'RESTORED' ? 'shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''}`}
         title={config.title}
       >
         {config.icon} {config.label}
@@ -181,7 +181,7 @@ function NodeRowComponent({
                 </span>
               )}
               {node.missed_window && (
-                <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded text-[9px] font-bold animate-pulse">
+                <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded text-[9px] font-bold">
                   {t('missedWindow')}
                 </span>
               )}
@@ -225,7 +225,7 @@ function NodeRowComponent({
               } : undefined}
               className={`flex-1 px-2 py-1 text-xs font-semibold rounded border transition-colors text-center truncate ${
                 node.is_backup_running
-                  ? 'animate-pulse text-indigo-300 border-indigo-500 bg-indigo-500/5 hover:bg-indigo-500/10 cursor-pointer'
+                  ? 'text-indigo-300 border-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 cursor-pointer font-bold'
                   : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border-indigo-500/20 disabled:opacity-30 cursor-pointer'
               }`}
             >

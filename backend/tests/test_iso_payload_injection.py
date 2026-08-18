@@ -101,6 +101,31 @@ def test_injected_modules_only_import_other_injected_modules(package, filename):
         )
 
 
+@pytest.mark.parametrize(
+    "package,filename",
+    [(p, f) for p, f, _ in _injected_files()],
+    ids=[f"{p}/{f}" for p, f, _ in _injected_files()],
+)
+def test_injected_modules_import_without_server_database(package, filename, monkeypatch):
+    """Kiosk payload has no database.py or models.py — injected modules must not crash."""
+    import importlib
+    import sys
+
+    # Block imports of server-only modules
+    orig_import = __import__
+
+    def restricted_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name in ("database", "models") and level == 0:
+            raise ModuleNotFoundError(f"No module named '{name}' (simulated kiosk environment)")
+        return orig_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr("builtins.__import__", restricted_import)
+
+    mod_name = f"{package}.{filename.replace('.py', '')}"
+    sys.modules.pop(mod_name, None)
+    importlib.import_module(mod_name)
+
+
 @pytest.mark.parametrize("module", ["core/iso_build.py", "iso_tasks.py"])
 def test_the_injection_loop_uses_the_declared_lists(module):
     """Guard the guard: a literal path in the build bypasses all of the above.

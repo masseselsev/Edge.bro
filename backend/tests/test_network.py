@@ -310,8 +310,8 @@ def test_bandwidth_first_call_returns_zero():
     mock_redis.get.return_value = None  # no previous snapshot
 
     with patch.object(network_module, "_redis_client", mock_redis):
-        with patch("routers.network.get_network_bytes", return_value=(1000.0, 5_000_000, 3_000_000)):
-            result = get_bandwidth()
+        with patch.object(network_module, "get_network_bytes", return_value=(1000.0, 5_000_000, 3_000_000)):
+            result = get_bandwidth(db=None)
 
     assert result.rx_speed == 0.0
     assert result.tx_speed == 0.0
@@ -334,8 +334,8 @@ def test_bandwidth_calculates_correct_speed():
     mock_redis.get.return_value = json.dumps(prev_snapshot).encode()
 
     with patch.object(network_module, "_redis_client", mock_redis):
-        with patch("routers.network.get_network_bytes", return_value=(1001.0, 6_000_000, 3_500_000)):
-            result = get_bandwidth()
+        with patch.object(network_module, "get_network_bytes", return_value=(1001.0, 6_000_000, 3_500_000)):
+            result = get_bandwidth(db=None)
 
     assert abs(result.rx_speed - 1_000_000.0) < 1, f"Unexpected rx_speed: {result.rx_speed}"
     assert abs(result.tx_speed - 500_000.0) < 1, f"Unexpected tx_speed: {result.tx_speed}"
@@ -359,8 +359,8 @@ def test_bandwidth_rate_limits_sub_half_second():
 
     # Only 0.1 s elapsed — below threshold
     with patch.object(network_module, "_redis_client", mock_redis):
-        with patch("routers.network.get_network_bytes", return_value=(1000.1, 5_100_000, 3_100_000)):
-            result = get_bandwidth()
+        with patch.object(network_module, "get_network_bytes", return_value=(1000.1, 5_100_000, 3_100_000)):
+            result = get_bandwidth(db=None)
 
     assert result.rx_speed == 12345.0
     assert result.tx_speed == 67890.0
@@ -376,9 +376,9 @@ def test_bandwidth_fallback_to_memory_on_redis_failure():
     mock_redis.get.side_effect = Exception("Redis connection refused")
 
     with patch.object(network_module, "_redis_client", mock_redis):
-        with patch("routers.network.get_network_bytes", return_value=(1000.0, 5_000_000, 3_000_000)):
+        with patch.object(network_module, "get_network_bytes", return_value=(1000.0, 5_000_000, 3_000_000)):
             # First call — no fallback entry yet, should return zeros
-            result = get_bandwidth()
+            result = get_bandwidth(db=None)
 
     assert result.rx_speed == 0.0
     assert result.tx_speed == 0.0
@@ -387,8 +387,8 @@ def test_bandwidth_fallback_to_memory_on_redis_failure():
 
     # Second call — fallback cache has previous entry, 1s later with more bytes
     with patch.object(network_module, "_redis_client", mock_redis):
-        with patch("routers.network.get_network_bytes", return_value=(1001.0, 6_000_000, 3_500_000)):
-            result2 = get_bandwidth()
+        with patch.object(network_module, "get_network_bytes", return_value=(1001.0, 6_000_000, 3_500_000)):
+            result2 = get_bandwidth(db=None)
 
     assert result2.rx_speed > 0, "Should calculate non-zero speed on second call"
 
@@ -401,8 +401,8 @@ def test_bandwidth_endpoint_metrics():
     mock_redis.get.return_value = None
 
     with patch.object(network_module, "_redis_client", mock_redis):
-        with patch("routers.network.get_network_bytes", return_value=(1000.0, 5_000_000, 3_000_000)):
-            result = get_bandwidth()
+        with patch.object(network_module, "get_network_bytes", return_value=(1000.0, 5_000_000, 3_000_000)):
+            result = get_bandwidth(db=None)
 
     assert hasattr(result, "rx_speed")
     assert hasattr(result, "tx_speed")

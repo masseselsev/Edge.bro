@@ -181,7 +181,7 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
             {getStatusIndicator()}
             {downloadSpeed && (
               <span className="inline-flex items-center gap-1 text-indigo-400 text-[10px] font-bold bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full select-none shrink-0">
-                <ArrowDown size={10} className="animate-pulse" />
+                <ArrowDown size={10} className="text-indigo-400" />
                 {downloadSpeed}
                 {eta && eta !== '--' && ` (ETA: ${eta})`}
               </span>
@@ -192,17 +192,17 @@ export default function TaskLogsModal({ taskId, title, timezone, onClose, bandwi
           {bandwidth && (
             <div className="flex-shrink-0 flex items-center gap-3 bg-zinc-950/40 border border-zinc-800/60 rounded-xl px-3 py-1 shadow-inner mr-4">
               <div className="flex items-center gap-1.5" title={t('bandwidthDownload') || 'Download'}>
-                <ArrowDown size={11} className={bandwidth.rx_speed > 1024 ? 'text-emerald-400 animate-pulse' : 'text-zinc-600'} />
+                <ArrowDown size={11} className={bandwidth.rx_speed > 1024 ? 'text-emerald-400' : 'text-zinc-600'} />
                 <span className="text-[9px] text-zinc-500 font-bold font-mono">RX</span>
-                <span className={`text-[10px] font-mono font-semibold transition-colors duration-500 ${bandwidth.rx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                <span className={`text-[10px] font-mono font-semibold ${bandwidth.rx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
                   {formatBytesPerSecond(bandwidth.rx_speed)}
                 </span>
               </div>
               <div className="w-px h-2.5 bg-zinc-800" />
               <div className="flex items-center gap-1.5" title={t('bandwidthUpload') || 'Upload'}>
-                <ArrowUp size={11} className={bandwidth.tx_speed > 1024 ? 'text-indigo-400 animate-pulse' : 'text-zinc-600'} />
+                <ArrowUp size={11} className={bandwidth.tx_speed > 1024 ? 'text-indigo-400' : 'text-zinc-600'} />
                 <span className="text-[9px] text-zinc-500 font-bold font-mono">TX</span>
-                <span className={`text-[10px] font-mono font-semibold transition-colors duration-500 ${bandwidth.tx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
+                <span className={`text-[10px] font-mono font-semibold ${bandwidth.tx_speed > 1024 ? 'text-zinc-200' : 'text-zinc-500'}`}>
                   {formatBytesPerSecond(bandwidth.tx_speed)}
                 </span>
               </div>

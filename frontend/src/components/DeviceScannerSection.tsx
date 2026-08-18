@@ -10,6 +10,7 @@ interface Device {
   rotational: boolean;
   disk_type: string;
   is_usb?: boolean;
+  is_system?: boolean;
 }
 
 interface StorageInfo {
@@ -60,15 +61,19 @@ export function DeviceScannerSection({
             <div className="text-center py-8 text-xs text-zinc-500">{t('noDrivesFound')}</div>
           ) : (
             devices.map((d) => (
-              <div key={d.name} className="p-3 bg-zinc-950 border border-zinc-800/80 rounded-xl space-y-1">
+              <div key={d.name} className={`p-3 bg-zinc-950 rounded-xl space-y-1 ${d.is_system ? 'border border-rose-500/30 bg-rose-950/10' : 'border border-zinc-800/80'}`}>
                 <div className="flex justify-between text-xs font-bold text-zinc-50">
                   <span className="flex items-center gap-1.5">
                     {d.name}
-                    {d.is_usb && (
+                    {d.is_system ? (
+                      <span className="px-1.5 py-0.5 text-[9px] bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded font-bold uppercase tracking-wider">
+                        {t('systemDiskBadge') || 'SYSTEM'}
+                      </span>
+                    ) : d.is_usb ? (
                       <span className="px-1.5 py-0.5 text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded font-semibold uppercase tracking-wider">
                         USB
                       </span>
-                    )}
+                    ) : null}
                   </span>
                   <span className="text-indigo-400">{d.disk_type}</span>
                 </div>

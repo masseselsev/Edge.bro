@@ -1015,6 +1015,13 @@ const en: Record<string, string> = {
   dayShortFri: 'Fri',
   dayShortSat: 'Sat',
   dayShortSun: 'Sun',
+
+  systemDiskBadge: 'SYSTEM',
+  systemDiskWarningTitle: 'ARE YOU SURE YOU WANT TO OVERWRITE THIS SYSTEM DISK?!',
+  systemDiskWarningDesc: 'This drive is an internal system disk of the host device (laptop/PC). Writing to it will completely erase the host operating system and all local partitions!',
+  systemDiskConfirmCheckbox: 'Yes, I understand the risks and confirm selecting this system disk',
+  confirmSelectSystemDisk: 'Confirm System Disk Selection',
+  cancelSelection: 'Cancel',
 };
 
 export default en;

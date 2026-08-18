@@ -51,9 +51,9 @@ export interface AppHeaderProps {
   orchestratorReachable: boolean | null;
 }
 
-/** Green below half, amber past 50%, and pulsing red past 80%. */
+/** Green below half, amber past 50%, and red past 80%. */
 const getUsageColorClass = (percent: number): string => {
-  if (percent >= 80) return 'text-rose-400 font-bold animate-pulse';
+  if (percent >= 80) return 'text-rose-400 font-bold';
   if (percent >= 50) return 'text-amber-400 font-semibold';
   return 'text-emerald-400';
 };
@@ -97,18 +97,17 @@ export default function AppHeader({
   const visibleTabs = TABS.filter(tab => !isKiosk || tab.kioskVisible);
 
   return (
-    <header className="bg-zinc-900/80 backdrop-blur-md border-b border-zinc-800/80 sticky top-0 z-40">
+    <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-6 py-2.5 space-y-2.5">
         {/* Row 1: Logo/Title | Bandwidth | Actions */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-3">
           {/* Left: Brand Identity with SVG logo */}
           <div className="flex-1 flex items-center gap-2.5 justify-center md:justify-start">
-            <div className="relative p-1.5 bg-indigo-600/15 border border-indigo-500/30 rounded-lg shadow-lg flex items-center justify-center w-9 h-9">
-              <svg className="w-5 h-5 text-indigo-400 filter drop-shadow-[0_0_4px_rgba(99,102,241,0.6)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+            <div className="relative p-1.5 bg-indigo-600/15 border border-indigo-500/30 rounded-lg shadow-sm flex items-center justify-center w-9 h-9">
+              <svg className="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_4px_rgba(16,185,129,0.8)]"></span>
             </div>
             <div>
               <h1 className="text-sm font-bold text-zinc-50 tracking-tight leading-none flex items-center gap-1.5">
@@ -123,10 +122,10 @@ export default function AppHeader({
 
           {/* Center: Server Metrics Widget — admin-only, orchestrator mode */}
           {!isKiosk && isAuthenticated && bandwidth && (
-            <div className="flex-shrink-0 flex items-center gap-2.5 bg-zinc-950/40 border border-zinc-800/60 rounded-xl px-2.5 py-1 shadow-inner transition-all duration-300">
+            <div className="flex-shrink-0 flex items-center gap-2.5 bg-zinc-950/40 border border-zinc-800/60 rounded-xl px-2.5 py-1 shadow-inner">
               <div className="flex items-center gap-1" title="CPU Utilization">
                 <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-bold font-mono">CPU</span>
-                <span className={`text-[10px] font-mono font-semibold transition-colors duration-500 ${getUsageColorClass(bandwidth.cpu_usage)}`}>
+                <span className={`text-[10px] font-mono font-semibold ${getUsageColorClass(bandwidth.cpu_usage)}`}>
                   {bandwidth.cpu_usage.toFixed(0)}%
                 </span>
               </div>
@@ -134,16 +133,16 @@ export default function AppHeader({
 
               <div className="flex items-center gap-1" title="RAM Utilization">
                 <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-bold font-mono">RAM</span>
-                <span className={`text-[10px] font-mono font-semibold transition-colors duration-500 ${getUsageColorClass(bandwidth.ram_usage)}`}>
+                <span className={`text-[10px] font-mono font-semibold ${getUsageColorClass(bandwidth.ram_usage)}`}>
                   {bandwidth.ram_usage.toFixed(0)}%
                 </span>
               </div>
               <div className="w-px h-2.5 bg-zinc-800" />
 
               <div className="flex items-center gap-1" title={t('bandwidthDownload')}>
-                <ArrowDown size={11} className={bandwidth.rx_speed > 1024 ? `${getUsageColorClass(bandwidth.rx_percent)} animate-pulse` : 'text-zinc-600'} />
+                <ArrowDown size={11} className={bandwidth.rx_speed > 1024 ? getUsageColorClass(bandwidth.rx_percent) : 'text-zinc-600'} />
                 <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-bold font-mono">RX</span>
-                <span className={`text-[10px] font-mono font-semibold transition-colors duration-500 ${getUsageColorClass(bandwidth.rx_percent)}`}>
+                <span className={`text-[10px] font-mono font-semibold ${getUsageColorClass(bandwidth.rx_percent)}`}>
                   {formatBytesPerSecond(bandwidth.rx_speed)}
                 </span>
                 <span className={`text-[8.5px] font-mono ${getUsageColorClass(bandwidth.rx_percent)}`}>({bandwidth.rx_percent.toFixed(1)}%)</span>
@@ -151,9 +150,9 @@ export default function AppHeader({
               <div className="w-px h-2.5 bg-zinc-800" />
 
               <div className="flex items-center gap-1" title={t('bandwidthUpload')}>
-                <ArrowUp size={11} className={bandwidth.tx_speed > 1024 ? `${getUsageColorClass(bandwidth.tx_percent)} animate-pulse` : 'text-zinc-600'} />
+                <ArrowUp size={11} className={bandwidth.tx_speed > 1024 ? getUsageColorClass(bandwidth.tx_percent) : 'text-zinc-600'} />
                 <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-bold font-mono">TX</span>
-                <span className={`text-[10px] font-mono font-semibold transition-colors duration-500 ${getUsageColorClass(bandwidth.tx_percent)}`}>
+                <span className={`text-[10px] font-mono font-semibold ${getUsageColorClass(bandwidth.tx_percent)}`}>
                   {formatBytesPerSecond(bandwidth.tx_speed)}
                 </span>
                 <span className={`text-[8.5px] font-mono ${getUsageColorClass(bandwidth.tx_percent)}`}>({bandwidth.tx_percent.toFixed(1)}%)</span>
@@ -168,20 +167,20 @@ export default function AppHeader({
                 <div className="flex items-center bg-zinc-950 p-1 rounded-xl border border-zinc-800/80 shadow-inner">
                   <button
                     onClick={() => restoreMode !== 'online' && onToggleRestoreMode()}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all duration-300 cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors duration-150 cursor-pointer ${
                       restoreMode === 'online'
-                        ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-950/50 scale-105'
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-950/50'
                         : 'text-zinc-500 hover:text-zinc-400'
                     }`}
                   >
-                    <Globe2 size={12} className={restoreMode === 'online' ? 'animate-pulse' : ''} />
+                    <Globe2 size={12} className={restoreMode === 'online' ? 'text-emerald-300' : ''} />
                     <span>{t('modeOnline')}</span>
                   </button>
                   <button
                     onClick={() => restoreMode !== 'offline' && onToggleRestoreMode()}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all duration-300 cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors duration-150 cursor-pointer ${
                       restoreMode === 'offline'
-                        ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md shadow-amber-950/50 scale-105'
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md shadow-amber-950/50'
                         : 'text-zinc-500 hover:text-zinc-400'
                     }`}
                   >
@@ -195,10 +194,10 @@ export default function AppHeader({
                 {restoreMode === 'online' && (
                   <button
                     onClick={onOpenPairing}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/40 hover:bg-indigo-950/60 border border-indigo-900/30 hover:border-indigo-900/60 text-[11px] text-indigo-400 font-bold transition-all duration-200 cursor-pointer animate-fade-in"
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/40 hover:bg-indigo-950/60 border border-indigo-900/30 hover:border-indigo-900/60 text-[11px] text-indigo-400 font-bold transition-colors duration-150 cursor-pointer"
                     title="Link to Orchestrator Server"
                   >
-                    <Link2 size={12} className="text-indigo-400 animate-pulse" />
+                    <Link2 size={12} className="text-indigo-400" />
                     <span>{t('linkServerButton') || 'Pair Server'}</span>
                   </button>
                 )}

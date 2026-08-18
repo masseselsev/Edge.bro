@@ -27,37 +27,15 @@ import { api, installApiErrorHandling } from './api';
 //
 // Static imports for these would defeat the split: one eager import anywhere
 // pulls the module back into the main chunk.
-const FleetTab = lazy(() => import('./components/FleetTab'));
-const FlasherTab = lazy(() => import('./components/FlasherTab'));
-const HistoryTab = lazy(() => import('./components/HistoryTab'));
-const LogsTab = lazy(() => import('./components/LogsTab'));
-const SettingsTab = lazy(() => import('./components/SettingsTab'));
-const ClientIsoTab = lazy(() => import('./components/ClientIsoTab'));
-const ScheduleTab = lazy(() => import('./components/ScheduleTab'));
+import FleetTab from './components/FleetTab';
+import FlasherTab from './components/FlasherTab';
+import HistoryTab from './components/HistoryTab';
+import LogsTab from './components/LogsTab';
+import SettingsTab from './components/SettingsTab';
+import ClientIsoTab from './components/ClientIsoTab';
+import ScheduleTab from './components/ScheduleTab';
 
-/**
- * The shell: boot sequence, chrome, and which tab is on screen.
- *
- * Everything with a life of its own has been moved out — the polling loops to
- * `usePolledResource`, the two halves of kiosk pairing to their own hooks, the
- * header and the modals to components. What is left is the part that genuinely
- * belongs to the whole app: finding out what kind of installation this is,
- * getting past the login, and holding the handful of pieces of state that more
- * than one of those things reads.
- */
-
-// Persists across reloads so the empty-fleet nag stops once dismissed —
-// only re-armed if the flag itself is cleared (e.g. cleared browser storage).
 const IP_PROMPT_DISMISSED_KEY = 'edge_bro_ip_prompt_dismissed';
-
-/** Shown while a tab's chunk is in flight. */
-function TabChunkFallback() {
-  return (
-    <div className="flex items-center justify-center py-24">
-      <Loader2 size={22} className="animate-spin text-indigo-400" />
-    </div>
-  );
-}
 
 function AppContent() {
   const { t } = useTranslation();
@@ -440,16 +418,7 @@ function AppContent() {
       )}
 
       <main className={`flex-1 max-w-7xl w-full mx-auto px-6 py-6 ${isKiosk ? (restoreMode === 'online' && pairing.status !== 'APPROVED' ? 'pb-28' : 'pb-20') : 'pb-20'}`}>
-        {/* Keyed on the tab so a switch remounts rather than reconciling two
-            unrelated trees, and so the entry animation replays. The fallback
-            is what shows while the tab's chunk downloads - deliberately the
-            same spinner the tabs use for their own loading states, so a slow
-            link looks like slow data rather than a broken page. */}
-        <div key={activeTab} className="animate-tab-in">
-          <Suspense fallback={<TabChunkFallback />}>
-            {renderTabContent()}
-          </Suspense>
-        </div>
+        {renderTabContent()}
       </main>
 
       {!isKiosk && (

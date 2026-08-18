@@ -144,6 +144,7 @@ export function useKioskPairing(isKiosk: boolean) {
       await api.post('/api/kiosk/enroll', {
         orchestrator_ip: ip.trim(),
         name: name.trim(),
+        contact: phone.trim(),
         phone: phone.trim(),
         comment: comment.trim(),
       });

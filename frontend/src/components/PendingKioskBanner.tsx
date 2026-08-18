@@ -40,11 +40,10 @@ export default function PendingKioskBanner({ pending, onReview }: PendingKioskBa
 
   return (
     <div className="max-w-7xl w-full mx-auto px-6 pt-4">
-      <div className="pending-kiosk-alert border rounded-2xl p-3 sm:px-4 sm:py-2.5 flex items-center justify-between gap-4 flex-wrap shadow-sm transition-all duration-300 animate-fade-in">
+      <div className="pending-kiosk-alert border rounded-2xl p-3 sm:px-4 sm:py-2.5 flex items-center justify-between gap-4 flex-wrap shadow-sm animate-fade-in">
         <div className="flex items-center gap-3 text-xs font-semibold">
           <span className="flex h-2.5 w-2.5 relative shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)]"></span>
           </span>
           <span className="alert-text font-medium leading-snug">
             {message}

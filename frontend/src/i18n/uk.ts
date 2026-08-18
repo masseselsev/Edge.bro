@@ -1007,6 +1007,13 @@ const uk: Record<string, string> = {
   dayShortFri: 'Пт',
   dayShortSat: 'Сб',
   dayShortSun: 'Нд',
+
+  systemDiskBadge: 'СИСТЕМНИЙ',
+  systemDiskWarningTitle: 'ВИ ДІЙСНО ХОЧЕТЕ ПЕРЕЗАПИСАТИ ЦЕЙ СИСТЕМНИЙ ДИСК?!',
+  systemDiskWarningDesc: 'Цей накопичувач є внутрішнім системним диском хост-пристрою (ноутбука/ПК). Запис на нього повністю знищить операційну систему хоста та всі локальні розділи!',
+  systemDiskConfirmCheckbox: 'Так, я розумію ризики і підтверджую вибір системного диска',
+  confirmSelectSystemDisk: 'Підтвердити вибір системного диска',
+  cancelSelection: 'Скасувати',
 };
 
 export default uk;

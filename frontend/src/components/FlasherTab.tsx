@@ -10,6 +10,7 @@ interface Device {
   rotational: boolean;
   disk_type: string;
   is_usb?: boolean;
+  is_system?: boolean;
 }
 
 interface EdgeNode {
@@ -53,6 +54,8 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [selectedSnapshot, setSelectedSnapshot] = useState<string>('');
   const [selectedDevice, setSelectedDevice] = useState<string>('');
+  const [systemDiskPending, setSystemDiskPending] = useState<Device | null>(null);
+  const [systemDiskConfirmed, setSystemDiskConfirmed] = useState(false);
   
   const [scanning, setScanning] = useState(false);
   const [loadingNodes, setLoadingNodes] = useState(true);
@@ -298,14 +301,97 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
   const deviceOptions = devices.map(d => ({
     value: d.name,
     label: d.name,
-    sublabel: `${d.model} (${formatBytes(d.size)} - ${d.disk_type} ${d.rotational ? 'HDD' : 'SSD'}${d.is_usb ? ' [USB]' : ''})`,
+    sublabel: `${d.model} (${formatBytes(d.size)} - ${d.disk_type} ${d.rotational ? 'HDD' : 'SSD'}${d.is_system ? ' [SYSTEM]' : (d.is_usb ? ' [USB]' : '')})`,
     disabled: false
   }));
+
+  const handleDeviceChange = (devName: string | number) => {
+    const val = String(devName || '');
+    if (!val) {
+      setSelectedDevice('');
+      return;
+    }
+    const dev = devices.find(d => d.name === val);
+    if (dev?.is_system) {
+      setSystemDiskPending(dev);
+      setSystemDiskConfirmed(false);
+    } else {
+      setSelectedDevice(val);
+    }
+  };
 
   const isOnlineWaitingApproval = isKiosk && restoreMode === 'online' && kioskStatus !== 'APPROVED';
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative">
+      {systemDiskPending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md p-6 bg-zinc-900 border-2 border-rose-500/50 rounded-2xl shadow-2xl space-y-4 animate-modal-in">
+            <div className="flex items-start gap-3 border-b border-zinc-800 pb-3">
+              <div className="p-2.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl shrink-0">
+                <AlertTriangle size={24} className="animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-rose-400 uppercase tracking-tight leading-snug">
+                  {t('systemDiskWarningTitle') || 'ARE YOU SURE YOU WANT TO OVERWRITE THIS SYSTEM DISK?!'}
+                </h3>
+                <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                  {t('systemDiskWarningDesc') || 'This drive is an internal system disk of the host device (laptop/PC). Writing to it will completely erase the host operating system and all local partitions!'}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-zinc-950 border border-rose-500/20 rounded-xl space-y-1 text-xs">
+              <div className="flex justify-between font-mono font-bold text-zinc-200">
+                <span>{systemDiskPending.name}</span>
+                <span className="text-rose-400 font-semibold uppercase">{systemDiskPending.disk_type}</span>
+              </div>
+              <div className="flex justify-between text-[11px] text-zinc-400">
+                <span>Model: {systemDiskPending.model}</span>
+                <span>{formatBytes(systemDiskPending.size)}</span>
+              </div>
+            </div>
+
+            <label className="flex items-start gap-2.5 p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl cursor-pointer">
+              <input
+                type="checkbox"
+                checked={systemDiskConfirmed}
+                onChange={(e) => setSystemDiskConfirmed(e.target.checked)}
+                className="mt-0.5 rounded border-zinc-700 text-rose-600 focus:ring-rose-500 bg-zinc-900 cursor-pointer"
+              />
+              <span className="text-xs font-semibold text-rose-200 leading-snug">
+                {t('systemDiskConfirmCheckbox') || 'Yes, I understand the risks and confirm selecting this system disk'}
+              </span>
+            </label>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setSystemDiskPending(null);
+                  setSystemDiskConfirmed(false);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+              >
+                {t('cancelSelection') || 'Cancel'}
+              </button>
+              <button
+                type="button"
+                disabled={!systemDiskConfirmed}
+                onClick={() => {
+                  setSelectedDevice(systemDiskPending.name);
+                  setSystemDiskPending(null);
+                  setSystemDiskConfirmed(false);
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-lg shadow-rose-950/50"
+              >
+                {t('confirmSelectSystemDisk') || 'Confirm System Disk Selection'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isOnlineWaitingApproval && (
         <div className="absolute inset-0 z-30 bg-zinc-950/45 backdrop-blur-[2px] rounded-3xl flex items-center justify-center p-6 text-center animate-fade-in border border-zinc-800/30">
           <div className="max-w-xs p-5 bg-zinc-900/90 border border-zinc-800 rounded-2xl shadow-xl space-y-2">
@@ -361,7 +447,7 @@ export default function FlasherTab({ onViewLogs, timezone, restoreMode = 'offlin
               <SearchableSelect
                 options={deviceOptions}
                 value={selectedDevice}
-                onChange={(val) => setSelectedDevice(val)}
+                onChange={handleDeviceChange}
                 placeholder={t('selectDiskPlaceholder')}
                 disabled={scanning}
               />

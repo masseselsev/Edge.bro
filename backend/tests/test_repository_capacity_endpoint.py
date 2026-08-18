@@ -210,6 +210,7 @@ def test_every_repository_appears_even_before_it_holds_anything(
     """Repositories past the first are created lazily, on the first backup of
     the first node routed there. An empty one is not a fault."""
     monkeypatch.setattr(repo_paths, "SHARD_COUNT", 5)
+    monkeypatch.setattr(repo_paths, "is_initialized", lambda path: False)
     db_session.add(models.Settings())
     db_session.commit()
 

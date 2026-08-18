@@ -88,6 +88,7 @@ class DeviceResponse(BaseModel):
     rotational: bool
     disk_type: str # SATA, NVME
     is_usb: bool = False
+    is_system: bool = False
 
 class NodeCheckinRequest(BaseModel):
     hostname: str

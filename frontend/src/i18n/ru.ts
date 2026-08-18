@@ -1010,6 +1010,13 @@ const ru: Record<string, string> = {
   dayShortFri: 'Пт',
   dayShortSat: 'Сб',
   dayShortSun: 'Вс',
+
+  systemDiskBadge: 'СИСТЕМНЫЙ',
+  systemDiskWarningTitle: 'ВЫ ДЕЙСТВИТЕЛЬНО ХОТИТЕ ПЕРЕЗАПИСАТЬ ЭТОТ СИСТЕМНЫЙ ДИСК?!',
+  systemDiskWarningDesc: 'Этот накопитель является внутренним системным диском хост-устройства (ноутбука/ПК). Запись на него полностью уничтожит операционную систему хоста и все локальные разделы!',
+  systemDiskConfirmCheckbox: 'Да, я понимаю риски и подтверждаю выбор системного диска',
+  confirmSelectSystemDisk: 'Подтвердить выбор системного диска',
+  cancelSelection: 'Отмена',
 };
 
 export default ru;

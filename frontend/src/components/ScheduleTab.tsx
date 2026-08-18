@@ -242,7 +242,7 @@ export default function ScheduleTab() {
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-md space-y-6">
         <div className="flex justify-between items-center border-b border-zinc-800 pb-3 gap-4 flex-wrap">
           <h3 className="text-lg font-semibold text-zinc-200 flex items-center gap-2">
-            <Activity className="h-5 w-5 text-indigo-400 animate-pulse" />
+            <Activity className="h-5 w-5 text-indigo-400" />
             {t('schedulerLoad')}
           </h3>
 

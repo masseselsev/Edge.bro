@@ -8,9 +8,15 @@ try:
 except ImportError:
     redis = None
 from fastapi import APIRouter, Depends
-from database import get_db, SessionLocal
-from sqlalchemy.orm import Session
-import models
+try:
+    from database import get_db, SessionLocal
+    from sqlalchemy.orm import Session
+    import models
+except ImportError:
+    get_db = lambda: None
+    SessionLocal = None
+    Session = None
+    models = None
 from pydantic import BaseModel, Field
 from typing import Optional, List
 
@@ -271,7 +277,7 @@ def get_bandwidth(db: Optional[Session] = Depends(get_db)) -> BandwidthResponse:
             settings = db.query(models.Settings).first()
             if settings and settings.server_net_capacity_mbps is not None:
                 capacity_mbps = settings.server_net_capacity_mbps
-        else:
+        elif SessionLocal is not None and models is not None:
             temp_db = SessionLocal()
             settings = temp_db.query(models.Settings).first()
             if settings and settings.server_net_capacity_mbps is not None:
