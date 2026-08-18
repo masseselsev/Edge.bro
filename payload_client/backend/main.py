@@ -49,7 +49,7 @@ except ImportError:
 try:
     from version import VERSION
 except ImportError:
-    VERSION = "v1.1.1"
+    VERSION = "v1.6.1"
 
 def utcnow_iso() -> str:
     """A log timestamp in the shape the kiosk UI parses: UTC, suffixed with Z.
