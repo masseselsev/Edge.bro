@@ -117,7 +117,7 @@ def test_build_borg_create_inner_cmd_is_unchanged():
         cpu_quota=None,
         borg_passphrase="secret",
     )
-    assert cmd.startswith('bash -c "')
+    assert "BORG_RSH=" in cmd
     assert "borg create" in cmd
     assert "systemd-run" not in cmd
 

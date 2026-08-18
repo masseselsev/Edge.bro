@@ -51,6 +51,12 @@
 
     - name: Ensure python3/pip are installed (with dynamic proxy test and temporary fallback)
       raw: |
+        # If python3 is already available on the target node, we can proceed directly
+        if command -v python3 >/dev/null 2>&1; then
+          echo "PYTHON3_OK: Python 3 is already installed on the node."
+          exit 0
+        fi
+
         FORCE_ORCHESTRATOR="{% if force_orchestrator_proxy | default(false) | bool %}true{% else %}false{% endif %}"
         PROXY_RAW=$(apt-config dump | grep -i 'Acquire::http::Proxy ' | head -n1 | sed -E 's/.*http:\/\/([^"/]+).*/\1/')
         if [ "$FORCE_ORCHESTRATOR" != "true" ] && [ -n "$PROXY_RAW" ]; then
@@ -67,11 +73,12 @@
           fi
         fi
 
-        # Tier 2: Check direct internet access
+        # Tier 2: Check direct internet access or local repository
         if [ "$FORCE_ORCHESTRATOR" != "true" ]; then
           if timeout 2 bash -c "cat < /dev/null > /dev/tcp/deb.debian.org/80" 2>/dev/null || \
-             timeout 2 bash -c "cat < /dev/null > /dev/tcp/archive.ubuntu.com/80" 2>/dev/null; then
-            echo "Direct internet connection is available. Disabling native proxy and running directly."
+             timeout 2 bash -c "cat < /dev/null > /dev/tcp/archive.ubuntu.com/80" 2>/dev/null || \
+             apt-get update -qq >/dev/null 2>&1; then
+            echo "Direct connection or local repository is available."
             if [ -n "$PROXY_RAW" ]; then
               for path in /etc/apt/apt.conf /etc/apt/apt.conf.d; do
                 if [ -e "$path" ]; then
@@ -107,7 +114,7 @@
         PROXY_SUCCESS=false
         for test_ip in $IP_LIST; do
           if timeout 2 bash -c "cat < /dev/null > /dev/tcp/$test_ip/3142" 2>/dev/null; then
-            echo "Direct connection and native proxy failed. Using orchestrator APT proxy at $test_ip:3142."
+            echo "Using orchestrator APT proxy at $test_ip:3142."
             # Disable native proxy configurations temporarily
             if [ -n "$PROXY_RAW" ]; then
               for path in /etc/apt/apt.conf /etc/apt/apt.conf.d; do
@@ -222,6 +229,12 @@
     - name: Install dependencies
       raw: apt-get update -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false --allow-releaseinfo-change || true; apt-get install -y -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false --allow-unauthenticated borgbackup parted udev dosfstools e2fsprogs util-linux
 
+    # A node can be enrolled with more than one orchestrator (an on-site
+    # and an off-site server, say), each a separate install with its own
+    # host key. This used to wipe the whole file and rescan just the
+    # current orchestrator_ip, on the assumption that only one entry
+    # would ever be needed. Instead, remove only the entry for this orchestrator
+    # host and port and append the fresh one, leaving other entries alone.
     - name: Create borg system user and generate SSH key
       raw: |
         if ! id -u borg >/dev/null 2>&1; then
@@ -230,22 +243,11 @@
         mkdir -p /home/borg/.ssh
         chmod 700 /home/borg/.ssh
         chown borg:borg /home/borg/.ssh
-        # A node can be enrolled with more than one orchestrator (an on-site
-        # and an off-site server, say), each a separate install with its own
-        # host key. This used to wipe the whole file and rescan just the
-        # current orchestrator_ip, on the assumption that only one entry
-        # would ever be needed — which silently dropped every other
-        # orchestrator's entry the moment a second one ran bootstrap. Instead,
-        # remove only the entry for *this* orchestrator's host:port (in case
-        # its host key rotated) and append the fresh one, leaving every other
-        # orchestrator's entry alone. /root/.ssh/known_hosts and
-        # /etc/ssh/ssh_known_hosts are no longer touched here at all: nothing
-        # in this playbook ever populates either file, so clearing them
-        # accomplished nothing.
+
         KH=/home/borg/.ssh/known_hosts
         touch "$KH"
-        ORCH_IP='{{ orchestrator_ip }}'
-        BORG_SSH_PORT='{{ borg_ssh_port | default(12345) }}'
+        ORCH_IP="{{ orchestrator_ip }}"
+        BORG_SSH_PORT="{{ borg_ssh_port | default(12345) }}"
         if [ -n "$ORCH_IP" ]; then
           ssh-keygen -R "$ORCH_IP" -f "$KH" >/dev/null 2>&1 || true
           ssh-keygen -R "[$ORCH_IP]:$BORG_SSH_PORT" -f "$KH" >/dev/null 2>&1 || true
@@ -254,7 +256,7 @@
           chmod 644 "$KH" 2>/dev/null || true
         fi
         if [ ! -f /home/borg/.ssh/id_ed25519 ]; then
-          ssh-keygen -t ed25519 -N '' -f /home/borg/.ssh/id_ed25519
+          ssh-keygen -t ed25519 -N "" -f /home/borg/.ssh/id_ed25519
           chown borg:borg /home/borg/.ssh/id_ed25519*
           chmod 600 /home/borg/.ssh/id_ed25519
           chmod 644 /home/borg/.ssh/id_ed25519.pub

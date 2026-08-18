@@ -69,8 +69,40 @@ def create_kiosk(req: schemas.KioskCreate, request: Request = None, db: Session 
     log_user_action(db, username, "Create Kiosk", f"Created kiosk pairing record with friendly name '{kiosk.name}' (KioskID placeholder: {kiosk.kiosk_id})", request)
     return kiosk
 
+PENDING_KIOSK_EXPIRY_HOURS = 72
+
+
+def sweep_expired_pending_kiosks(db: Session, max_age_hours: int = PENDING_KIOSK_EXPIRY_HOURS) -> int:
+    """
+    Deletes unconfirmed (PENDING) kiosk requests older than max_age_hours (default 72h).
+    """
+    from datetime import timedelta
+    cutoff = utcnow() - timedelta(hours=max_age_hours)
+    expired_kiosks = db.query(models.Kiosk).filter(
+        models.Kiosk.status == "PENDING",
+        models.Kiosk.created_at < cutoff,
+    ).all()
+
+    if not expired_kiosks:
+        return 0
+
+    count = len(expired_kiosks)
+    for k in expired_kiosks:
+        if k.ssh_pub_key:
+            try:
+                revoke_ssh_key(k.ssh_pub_key)
+            except Exception as e:
+                logger.error(f"Failed to revoke SSH key for expired kiosk {k.id}: {e}")
+        db.delete(k)
+
+    db.commit()
+    logger.info(f"Swept {count} expired pending kiosk connection request(s) older than {max_age_hours}h.")
+    return count
+
+
 @router.get("", response_model=List[schemas.KioskResponse])
 def list_kiosks(db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    sweep_expired_pending_kiosks(db)
     kiosks = db.query(models.Kiosk).all()
     from iso_tasks import CACHE_DIR
     settings = db.query(models.Settings).first()

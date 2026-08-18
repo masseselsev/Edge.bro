@@ -133,7 +133,8 @@ def build_borg_create_inner_cmd(
     """
     borg_env = (
         f"BORG_RSH='{ssh.borg_rsh()}' BORG_PASSPHRASE='{borg_passphrase}' "
-        f"BORG_RELOCATED_REPO_ACCESS_IS_OK=yes"
+        f"BORG_RELOCATED_REPO_ACCESS_IS_OK=yes "
+        f"BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK=yes"
     )
     borg_compression = compression.replace(":", ",")
     rate_limit_str = ""
@@ -155,7 +156,7 @@ def build_borg_create_inner_cmd(
             f"-p CPUQuota={cpu_quota}% "
             f"-- bash -c \"{borg_env} {borg_create}\""
         )
-    return f"bash -c \"{borg_env} {borg_create}\""
+    return f"{borg_env} {borg_create}"
 
 
 def force_cleanup_stale_repo_locks(task_id: str, repo_path: str) -> None:
@@ -708,10 +709,8 @@ def _transfer_and_record(
         # independent orchestrator installs sharing this node can coordinate
         # through. See core.node_lock for why this can't be three SSH calls.
         cleanup_cmd = (
-            "pkill -f '[b]org create' || true; "
-            "find /root/.cache/borg -name 'lock*' -delete 2>/dev/null; "
-            "find /root/.cache/borg -mindepth 1 -maxdepth 1 -type d -exec sh -c "
-            "'[ ! -s \"$1/config\" ] && rm -rf \"$1\" && echo \"Removed corrupt borg cache: $1\"' _ {} \\; 2>/dev/null; "
+            "pkill -x borg || true; "
+            "find /root/.cache/borg -name 'lock*' -delete 2>/dev/null || true; "
         )
 
         # Compression on: `borg init` writes a tiny repo config, not chunks.
@@ -721,8 +720,9 @@ def _transfer_and_record(
         # overwritten by create's before Python ever sees it.
         init_cmd = (
             f"BORG_RSH='{ssh.borg_rsh(compression=True)}' "
-            f"BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' "
+            f"BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE', '')}' "
             f"BORG_RELOCATED_REPO_ACCESS_IS_OK=yes "
+            f"BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK=yes "
             f"borg init --lock-wait {LOCK_WAIT_SECONDS} "
             f"--encryption=repokey {borg_repo_url} >&2; "
             f"echo \"{node_lock.INIT_RC_MARKER}:$?\" >&2;"

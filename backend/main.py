@@ -187,6 +187,18 @@ def startup_db_init():
     except Exception as e:
         print(f"Error during USB-Kiosk template check on startup: {str(e)}")
 
+    try:
+        from routers.kiosks import sweep_expired_pending_kiosks
+        db_sweep = next(get_db())
+        try:
+            swept_kiosks = sweep_expired_pending_kiosks(db_sweep, max_age_hours=72)
+            if swept_kiosks:
+                print(f"Swept {swept_kiosks} expired pending kiosk request(s) on startup.")
+        finally:
+            db_sweep.close()
+    except Exception as e:
+        print(f"Error sweeping expired pending kiosks on startup: {str(e)}")
+
     db = next(get_db())
     upgrade_settings(db)
     seed_superadmin(db)

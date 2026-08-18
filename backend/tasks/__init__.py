@@ -112,6 +112,11 @@ celery_app.conf.beat_schedule = {
         # windows, so an hour of latency loses nothing for either producer.
         'schedule': crontab(minute=40),
     },
+    'prune-expired-pending-kiosks-task': {
+        'task': 'tasks.prune_expired_pending_kiosks_task',
+        # Hourly cleanup of unconfirmed pending kiosk pairing requests older than 72h.
+        'schedule': crontab(minute=10),
+    },
 }
 celery_app.conf.timezone = 'UTC'
 
@@ -191,6 +196,7 @@ from tasks.cleanup import (
     db_task_log_prune_task,
     backfill_error_categories_task,
     prune_log_tables_task,
+    prune_expired_pending_kiosks_task,
 )
 from tasks.monitoring import (
     harvest_node_task,

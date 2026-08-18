@@ -156,3 +156,20 @@ def prune_log_tables_task() -> Dict[str, Any]:
         return {"status": "FAILED", "error": str(e)}
     finally:
         db.close()
+
+
+@celery_app.task(name="tasks.prune_expired_pending_kiosks_task")
+def prune_expired_pending_kiosks_task() -> Dict[str, Any]:
+    """
+    Hourly cleanup task. Deletes unconfirmed (PENDING) kiosk requests older than 72 hours.
+    """
+    db: Session = tasks.SessionLocal()
+    try:
+        from routers.kiosks import sweep_expired_pending_kiosks
+        deleted = sweep_expired_pending_kiosks(db, max_age_hours=72)
+        return {"status": "SUCCESS", "deleted_count": deleted}
+    except Exception as e:
+        tasks.logger.error(f"Error in prune_expired_pending_kiosks_task: {str(e)}")
+        return {"status": "FAILED", "error": str(e)}
+    finally:
+        db.close()
