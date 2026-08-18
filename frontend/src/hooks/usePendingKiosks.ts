@@ -21,10 +21,13 @@ import { useTranslation } from '../context/TranslationContext';
 
 export interface PendingKiosk {
   id: number;
-  uuid: string;
-  name?: string;
-  phone?: string;
-  comment?: string;
+  kiosk_id?: string;
+  uuid?: string;
+  name?: string | null;
+  contact?: string | null;
+  phone?: string | null;
+  comment?: string | null;
+  key?: string;
   status: string;
 }
 
@@ -35,7 +38,16 @@ export function usePendingKiosks(enabled: boolean) {
 
   const { refresh } = usePolledResource<PendingKiosk[]>('/api/kiosks', 10000, {
     enabled,
-    transform: (all: PendingKiosk[]) => all.filter(k => k.status === 'PENDING'),
+    transform: (all: any[]) =>
+      (all || [])
+        .filter((k: any) => k.status === 'PENDING')
+        .map((k: any) => ({
+          ...k,
+          kiosk_id: k.kiosk_id || k.uuid || '',
+          uuid: k.kiosk_id || k.uuid || '',
+          contact: k.contact || k.phone || '',
+          phone: k.contact || k.phone || '',
+        })),
     onData: setPending,
     onError: (err) => console.error('Failed to fetch pending kiosks:', err),
   });

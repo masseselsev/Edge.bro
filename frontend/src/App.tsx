@@ -432,7 +432,10 @@ function AppContent() {
       {!isKiosk && pendingKiosks.pending.length > 0 && (
         <PendingKioskBanner
           pending={pendingKiosks.pending}
-          onReview={pendingKiosks.setActiveReview}
+          onReview={(kiosk) => {
+            setActiveTab('clientiso');
+            pendingKiosks.setActiveReview(kiosk);
+          }}
         />
       )}
 

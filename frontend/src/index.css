@@ -290,6 +290,55 @@ button, a, label, span, p, h1, h2, h3, h4, h5, h6 {
   border-color: #e4e4e7 !important;
 }
 
+/* Pending Kiosk Connection Alert (Theme-aware) */
+.pending-kiosk-alert {
+  background-color: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
+  color: rgb(253, 230, 138);
+}
+.pending-kiosk-alert .alert-icon {
+  color: rgb(251, 191, 36);
+}
+.pending-kiosk-alert .alert-text {
+  color: rgb(254, 243, 199);
+}
+.pending-kiosk-alert .alert-badge {
+  background-color: rgba(245, 158, 11, 0.2);
+  color: rgb(253, 230, 138);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.pending-kiosk-alert .alert-btn {
+  background-color: rgb(245, 158, 11);
+  color: rgb(9, 9, 11);
+}
+.pending-kiosk-alert .alert-btn:hover {
+  background-color: rgb(251, 191, 36);
+}
+
+.light .pending-kiosk-alert {
+  background-color: #fffbeb !important;
+  border-color: #fde68a !important;
+  box-shadow: 0 1px 3px rgba(217, 119, 6, 0.08) !important;
+}
+.light .pending-kiosk-alert .alert-icon {
+  color: #d97706 !important;
+}
+.light .pending-kiosk-alert .alert-text {
+  color: #78350f !important;
+}
+.light .pending-kiosk-alert .alert-badge {
+  background-color: #fef3c7 !important;
+  color: #92400e !important;
+  border-color: #fcd34d !important;
+}
+.light .pending-kiosk-alert .alert-btn {
+  background-color: #f59e0b !important;
+  color: #ffffff !important;
+}
+.light .pending-kiosk-alert .alert-btn:hover {
+  background-color: #d97706 !important;
+}
+
 /* Global typography overrides to increase system-wide font readability */
 label {
   font-size: 11.5px !important;

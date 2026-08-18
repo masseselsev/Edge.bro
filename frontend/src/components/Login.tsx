@@ -25,9 +25,25 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         body: JSON.stringify({ username, password }),
       });
 
-      const data = await res.json();
+      let data: any = null;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        try {
+          data = await res.json();
+        } catch {
+          data = null;
+        }
+      }
+
       if (!res.ok) {
-        throw new Error(data.detail || t('loginError'));
+        if (res.status === 502 || res.status === 503 || res.status === 504) {
+          throw new Error('Backend service is currently unreachable / restarting (502 Bad Gateway). Please wait a few seconds and try again.');
+        }
+        throw new Error((data && data.detail) || res.statusText || t('loginError'));
+      }
+
+      if (!data) {
+        throw new Error(t('loginError'));
       }
 
       onLoginSuccess(data);

@@ -503,7 +503,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                     <td className="py-2 px-2.5 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-1.5 justify-end">
                         {/* Toggle Active state (Block/Unblock) */}
-                        {(kiosk.status === 'APPROVED' || kiosk.status === 'DISABLED' || (kiosk.status === 'PENDING' && !kiosk.kiosk_id.startsWith('PENDING-'))) && (
+                        {(kiosk.status === 'APPROVED' || kiosk.status === 'DISABLED' || kiosk.status === 'PENDING') && (
                           <button
                             onClick={() => handleToggleActive(kiosk.id)}
                             className={`px-2.5 py-1 border rounded text-[10px] font-bold transition-all cursor-pointer text-center whitespace-nowrap ${

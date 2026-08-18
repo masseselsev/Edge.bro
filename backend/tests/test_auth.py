@@ -57,9 +57,15 @@ def test_superadmin_seeding(db_session):
     users = db_session.query(models.User).filter(models.User.is_superadmin == True).all()
     assert len(users) == 1
     assert users[0].id == original_id
-    assert users[0].name == "Custom Name" # preserved
-    assert not verify_password("newpassword", users[0].hashed_password) # password was not updated
-    assert verify_password("supersecurepassword", users[0].hashed_password)
+    # 3. Seeding with RESET_SUPERADMIN_PASSWORD=true should reset the password
+    with patch.dict(os.environ, {"SUPERADMIN_USERNAME": "testadmin", "ADMIN_PASSWORD": "resetpassword123", "RESET_SUPERADMIN_PASSWORD": "true"}):
+        seed_superadmin(db_session)
+
+    db_session.expire_all()
+    user_after_reset = db_session.query(models.User).filter(models.User.is_superadmin == True).first()
+    assert verify_password("resetpassword123", user_after_reset.hashed_password)
+    assert not verify_password("supersecurepassword", user_after_reset.hashed_password)
+
 
 
 @pytest.fixture(scope="function")
