@@ -91,20 +91,23 @@ def test_resolve_borg_target_custom_repo_path():
     assert repo_url == "ssh://borg@127.0.0.1:9999/custom/path"
 
 
-# --- build_borg_create_cmd: extra_ssh_args must not disturb the existing shape ---
+# --- build_borg_create_inner_cmd: the shell fragment spliced into the ---
+# --- single locked script (core.node_lock) ssh.command() then wraps.   ---
+#
+# It used to build the full SSH argv itself (node_ip/port/extra_ssh_args and
+# all), one of three separate SSH calls a backup made. Now it only returns
+# the inner `bash -c "..."` fragment: cleanup, init and create are spliced
+# together and sent as one SSH call so they can share one flock — see
+# core.node_lock's docstring. NAT tunnel (-R) positioning is exercised where
+# it now actually happens, in test_run_backup_task_nat_mode_tunnels_through_node
+# below, which asserts on the single combined ssh.command() call.
 
-def test_build_borg_create_cmd_without_extra_args_is_unchanged():
-    """Baseline shape when no extra_ssh_args are passed, which is what every
-    caller but the NAT path does.
+def test_build_borg_create_inner_cmd_is_unchanged():
+    """Baseline shape: no ssh argv concerns here any more, just the borg
+    invocation itself."""
+    from backup_tasks import build_borg_create_inner_cmd
 
-    Asserted by content rather than by index: the option list is built by
-    core.ssh and adding an option there must not fail a test that only cares
-    where the key and the destination land."""
-    from backup_tasks import build_borg_create_cmd
-
-    cmd = build_borg_create_cmd(
-        node_ip="192.168.1.5",
-        node_ssh_port=22,
+    cmd = build_borg_create_inner_cmd(
         borg_repo_url="ssh://borg@192.168.1.1:12345/data/borg/fleet",
         archive_name="test-archive",
         exclude_str="",
@@ -114,49 +117,33 @@ def test_build_borg_create_cmd_without_extra_args_is_unchanged():
         cpu_quota=None,
         borg_passphrase="secret",
     )
-    assert cmd[0] == "ssh"
-    assert cmd[cmd.index("-p") + 1] == "22"
-    assert cmd[cmd.index("-i") + 1] == "/root/.ssh/id_ed25519"
-    # The destination and the remote command are the last two, always.
-    assert cmd[-2] == "root@192.168.1.5"
-    assert "-R" not in cmd
-    # Never prompt: there is no terminal, so a prompt is a hung backup.
-    assert "BatchMode=yes" in cmd
+    assert cmd.startswith('bash -c "')
+    assert "borg create" in cmd
+    assert "systemd-run" not in cmd
 
 
-def test_build_borg_create_cmd_with_extra_ssh_args_inserts_before_destination():
-    from backup_tasks import build_borg_create_cmd
+def test_build_borg_create_inner_cmd_with_cpu_quota_wraps_in_systemd_run():
+    from backup_tasks import build_borg_create_inner_cmd
 
-    cmd = build_borg_create_cmd(
-        node_ip="192.168.1.5",
-        node_ssh_port=22,
-        borg_repo_url="ssh://borg@127.0.0.1:12345/data/borg/fleet",
+    cmd = build_borg_create_inner_cmd(
+        borg_repo_url="ssh://borg@192.168.1.1:12345/data/borg/fleet",
         archive_name="test-archive",
         exclude_str="",
         compression="lz4",
         rate_limit_kib=0,
         checkpoint_secs=1800,
-        cpu_quota=None,
+        cpu_quota=40,
         borg_passphrase="secret",
-        extra_ssh_args=["-R", "12345:borg-server:22"],
     )
-    # -R flags must land after -i <key> and before root@<node> — anywhere else
-    # either breaks ssh's own arg parsing or forwards the wrong session.
-    key_idx = cmd.index("/root/.ssh/id_ed25519")
-    dest_idx = cmd.index("root@192.168.1.5")
-    assert cmd[key_idx + 1] == "-R"
-    assert cmd[key_idx + 2] == "12345:borg-server:22"
-    assert dest_idx == key_idx + 3
+    assert cmd.startswith("systemd-run --scope -p CPUQuota=40% -- bash -c")
 
 
-def test_build_borg_create_cmd_waits_for_the_repository_lock():
+def test_build_borg_create_inner_cmd_waits_for_the_repository_lock():
     """Borg's own default is a one-second wait, which fails the backup instead
     of queueing it. Two nodes sharing a repository must queue, not race."""
-    from backup_tasks import build_borg_create_cmd, LOCK_WAIT_SECONDS
+    from backup_tasks import build_borg_create_inner_cmd, LOCK_WAIT_SECONDS
 
-    cmd = build_borg_create_cmd(
-        node_ip="192.168.1.5",
-        node_ssh_port=22,
+    cmd = build_borg_create_inner_cmd(
         borg_repo_url="ssh://borg@192.168.1.1:12345/data/borg/fleet",
         archive_name="test-archive",
         exclude_str="",
@@ -166,7 +153,7 @@ def test_build_borg_create_cmd_waits_for_the_repository_lock():
         cpu_quota=None,
         borg_passphrase="secret",
     )
-    assert f"--lock-wait {LOCK_WAIT_SECONDS}" in cmd[-1]
+    assert f"--lock-wait {LOCK_WAIT_SECONDS}" in cmd
     assert LOCK_WAIT_SECONDS > 1
 
 
@@ -248,11 +235,10 @@ def _fake_subprocess_run(args, *a, **kw):
     if args[0] == "borg" and args[1] == "break-lock":
         return MagicMock(returncode=0, stdout="", stderr="")
     if args[0] == "ssh":
-        last = args[-1]
-        if "pkill" in last:
-            return MagicMock(returncode=0, stdout="10.0.0.9 5000 203.0.113.5 12345\nREACHABLE:yes\nOK\n", stderr="")
-        if "borg init" in last:
-            return MagicMock(returncode=0, stdout="", stderr="")
+        # The only remaining subprocess.run "ssh" call is the reachability
+        # probe — pkill/cache-cleanup and `borg init` now run inside the one
+        # locked script sent via subprocess.Popen (see _fake_popen).
+        return MagicMock(returncode=0, stdout="10.0.0.9 5000 203.0.113.5 12345\nREACHABLE:yes\nOK\n", stderr="")
     raise AssertionError(f"unexpected subprocess.run call: {args}")
 
 

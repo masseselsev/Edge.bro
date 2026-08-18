@@ -230,19 +230,28 @@
         mkdir -p /home/borg/.ssh
         chmod 700 /home/borg/.ssh
         chown borg:borg /home/borg/.ssh
-        # The borg user only ever talks to the orchestrator, so this file holds
-        # at most one entry. Dropping it here is safe and cheap even when
-        # nothing changed — the next connection just relearns the same key —
-        # but it means a node whose known_hosts predates an orchestrator
-        # migration (or came from a base image with a stale entry baked in)
-        # stops printing "REMOTE HOST IDENTIFICATION HAS CHANGED" on every
-        # single backup afterwards.
-        rm -f /home/borg/.ssh/known_hosts /root/.ssh/known_hosts /etc/ssh/ssh_known_hosts 2>/dev/null || true
+        # A node can be enrolled with more than one orchestrator (an on-site
+        # and an off-site server, say), each a separate install with its own
+        # host key. This used to wipe the whole file and rescan just the
+        # current orchestrator_ip, on the assumption that only one entry
+        # would ever be needed — which silently dropped every other
+        # orchestrator's entry the moment a second one ran bootstrap. Instead,
+        # remove only the entry for *this* orchestrator's host:port (in case
+        # its host key rotated) and append the fresh one, leaving every other
+        # orchestrator's entry alone. /root/.ssh/known_hosts and
+        # /etc/ssh/ssh_known_hosts are no longer touched here at all: nothing
+        # in this playbook ever populates either file, so clearing them
+        # accomplished nothing.
+        KH=/home/borg/.ssh/known_hosts
+        touch "$KH"
         ORCH_IP='{{ orchestrator_ip }}'
+        BORG_SSH_PORT='{{ borg_ssh_port | default(12345) }}'
         if [ -n "$ORCH_IP" ]; then
-          (ssh-keyscan -t ed25519 -p 12345 "$ORCH_IP" 2>/dev/null; ssh-keyscan -t ed25519 "$ORCH_IP" 2>/dev/null) > /home/borg/.ssh/known_hosts || true
-          chown borg:borg /home/borg/.ssh/known_hosts 2>/dev/null || true
-          chmod 644 /home/borg/.ssh/known_hosts 2>/dev/null || true
+          ssh-keygen -R "$ORCH_IP" -f "$KH" >/dev/null 2>&1 || true
+          ssh-keygen -R "[$ORCH_IP]:$BORG_SSH_PORT" -f "$KH" >/dev/null 2>&1 || true
+          (ssh-keyscan -t ed25519 -p "$BORG_SSH_PORT" "$ORCH_IP" 2>/dev/null; ssh-keyscan -t ed25519 "$ORCH_IP" 2>/dev/null) >> "$KH" || true
+          chown borg:borg "$KH" 2>/dev/null || true
+          chmod 644 "$KH" 2>/dev/null || true
         fi
         if [ ! -f /home/borg/.ssh/id_ed25519 ]; then
           ssh-keygen -t ed25519 -N '' -f /home/borg/.ssh/id_ed25519
@@ -262,7 +271,11 @@
     - name: Authorize orchestrator SSH public key on edge node
       raw: |
         PUBKEY='{{ orchestrator_ssh_pub_key }}'
-        TAG='edge-bro-orchestrator'
+        # Unique per orchestrator install (core.ssh_keys.orchestrator_tag), not
+        # the fixed "edge-bro-orchestrator" every install used to share — that
+        # made a second orchestrator's bootstrap match and remove the first
+        # one's line below before appending its own.
+        TAG='{{ orchestrator_tag }}'
         AUTH=/root/.ssh/authorized_keys
         KEYTYPE=$(echo "$PUBKEY" | awk '{print $1}')
         BLOB=$(echo "$PUBKEY" | awk '{print $2}')

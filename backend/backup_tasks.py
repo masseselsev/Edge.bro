@@ -7,6 +7,7 @@ import time as time_module
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Any, Optional
+from celery.exceptions import MaxRetriesExceededError
 from celery_app import celery_app
 
 from models import Node, TaskLog, BackupHistory, Settings, BackupGroup
@@ -23,6 +24,8 @@ from core.repo_lock import (
     repository_writer,
     writer_in_progress,
 )
+from core import node_lock
+from core.node_lock import NodeLockBusy
 from core.task_log import log_to_task
 from core.redis_client import make_client as make_redis_client
 
@@ -106,9 +109,7 @@ def resolve_borg_target(
     return [], borg_repo_url
 
 
-def build_borg_create_cmd(
-    node_ip: str,
-    node_ssh_port: int,
+def build_borg_create_inner_cmd(
     borg_repo_url: str,
     archive_name: str,
     exclude_str: str,
@@ -117,12 +118,18 @@ def build_borg_create_cmd(
     checkpoint_secs: int,
     cpu_quota: Optional[int],
     borg_passphrase: str,
-    extra_ssh_args: Optional[list] = None,
-) -> list:
+) -> str:
     """
-    Builds the SSH command list to run borg create on the node,
-    optionally wrapped in systemd-run --scope for CPU limiting.
+    Builds the shell fragment that runs borg create on the node, optionally
+    wrapped in systemd-run --scope for CPU limiting.
     SSH Compression=no because Borg already compresses data chunks.
+
+    Returns a plain string rather than a full SSH command: it is the last
+    statement spliced into the single locked script
+    `core.node_lock.build_locked_remote_script` assembles, alongside the
+    pre-flight cleanup and `borg init` — one SSH call holding one flock for
+    all of it, since a lock held by one call cannot be seen by another. See
+    that module's docstring for why.
     """
     borg_env = (
         f"BORG_RSH='{ssh.borg_rsh()}' BORG_PASSPHRASE='{borg_passphrase}' "
@@ -143,22 +150,12 @@ def build_borg_create_cmd(
     )
 
     if cpu_quota and cpu_quota > 0:
-        inner_cmd = (
+        return (
             f"systemd-run --scope "
             f"-p CPUQuota={cpu_quota}% "
             f"-- bash -c \"{borg_env} {borg_create}\""
         )
-    else:
-        inner_cmd = f"bash -c \"{borg_env} {borg_create}\""
-
-    # No connect timeout: a link slow enough to take a minute to hand-shake is
-    # still a link this backup should run over.
-    return ssh.command(
-        node_ip, node_ssh_port, inner_cmd,
-        connect_timeout=None,
-        keepalive=True,
-        extra_args=extra_ssh_args,
-    )
+    return f"bash -c \"{borg_env} {borg_create}\""
 
 
 def force_cleanup_stale_repo_locks(task_id: str, repo_path: str) -> None:
@@ -195,15 +192,24 @@ def cleanup_locks_and_resolve_ip(
     orchestrator_behind_nat: bool = False,
 ) -> Optional[str]:
     """
-    Cleans up stale Borg locks on the node and server, and resolves the correct
-    orchestrator IP to use by verifying configured IP reachability or falling back
-    to the incoming SSH connection IP.
+    Resolves the correct orchestrator IP to use by verifying configured IP
+    reachability or falling back to the incoming SSH connection IP, and
+    cleans up a stale repository lock on the server side.
+
+    This is read-only on the node itself: pkill-ing orphaned borg processes
+    and clearing the node's cache-lock files used to happen here too, but that
+    is destructive, and a second orchestrator sharing this node can have a
+    live backup in flight at the exact moment this pre-flight runs. That
+    cleanup now happens inside the same locked script as `borg init`/`create`
+    — see `core.node_lock` and `_transfer_and_record` — so it only ever runs
+    once this orchestrator has confirmed nothing else on the node is using it.
 
     When orchestrator_behind_nat is True, direct reachability is known to be
     impossible (that's the whole point of the flag), so the reachability probe
     is skipped — it would only waste a timeout and log a misleading "unreachable,
-    falling back" message. Lock cleanup still runs. The return value is None in
-    that case; callers must use resolve_borg_target() for the repo URL instead.
+    falling back" message. The repo-side lock check still runs. The return
+    value is None in that case; callers must use resolve_borg_target() for the
+    repo URL instead.
     """
 
     # In NAT mode direct reachability is impossible by definition, so don't even
@@ -216,9 +222,6 @@ def cleanup_locks_and_resolve_ip(
         f"else "
         f"  echo \"REACHABLE:no\"; "
         f"fi; "
-        f"pkill -f '[b]org create' || true; "
-        f"find /root/.cache/borg -name 'lock*' -delete 2>/dev/null; "
-        f"find /root/.cache/borg -mindepth 1 -maxdepth 1 -type d -exec sh -c '[ ! -s \"$1/config\" ] && rm -rf \"$1\" && echo \"Removed corrupt borg cache: $1\"' _ {{}} \\; 2>/dev/null; "
         f"echo OK"
     )
 
@@ -243,8 +246,6 @@ def cleanup_locks_and_resolve_ip(
                     if line.startswith("REACHABLE:"):
                         is_reachable = line.split(":")[1].strip() == "yes"
                         break
-            log_to_task(task_id, "[Lock cleanup] Killed orphaned borg processes on node (if any).")
-            log_to_task(task_id, "[Lock cleanup] Cleared Borg cache locks on node.")
         else:
             log_to_task(task_id, f"[Lock cleanup] WARNING: Pre-backup check failed: {res.stderr.strip()}")
     except Exception as e:
@@ -420,6 +421,11 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         f"backup_running:{plan.node_id}", plan.lock_ttl, f"{int(time.time())}:{task_id}"
     )
 
+    # Set once a NodeLockBusy retry has actually been scheduled, so `finally`
+    # below knows not to release the node lock — Celery keeps this task's id
+    # across a retry, and this key is what stops the scheduler dispatching a
+    # second backup for the same node during the countdown.
+    retrying = False
     try:
         # Check Sentinel HASP license for READY nodes
         if plan.status == "READY":
@@ -428,20 +434,49 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
                 return refusal
 
         with session_scope() as db:
-            db.add(TaskLog(
-                id=task_id, task_type="BACKUP", status="RUNNING",
-                node_id=node_id, log_output="",
-            ))
+            # A retry after NodeLockBusy re-enters this function with the same
+            # task_id, so the row (and its accumulated log) may already exist.
+            task = db.query(TaskLog).filter(TaskLog.id == task_id).first()
+            if task is None:
+                db.add(TaskLog(
+                    id=task_id, task_type="BACKUP", status="RUNNING",
+                    node_id=node_id, log_output="",
+                ))
+            else:
+                task.status = "RUNNING"
 
         return _transfer_and_record(plan, task_id, comment, log_to_task, fix_repo_permissions)
+    except NodeLockBusy as e:
+        log_to_task(
+            task_id,
+            "[WAITING] Node is currently busy with another backup task "
+            "(possibly from a different orchestrator). Will retry shortly.",
+        )
+        retrying = True
+        try:
+            self.retry(
+                exc=e,
+                countdown=node_lock.NODE_LOCK_RETRY_COUNTDOWN_SECONDS,
+                max_retries=node_lock.NODE_LOCK_MAX_RETRIES,
+            )
+        except MaxRetriesExceededError:
+            retrying = False
+            log_to_task(
+                task_id,
+                f"Gave up waiting for the node to become free after "
+                f"{node_lock.NODE_LOCK_MAX_RETRIES} attempts.",
+                status="FAILED",
+            )
+            return {"status": "FAILED", "error": str(e)}
     except Exception as e:
         log_to_task(task_id, f"Exception occurred during backup task: {str(e)}", status="FAILED")
         return {"status": "FAILED", "error": str(e)}
     finally:
-        try:
-            redis_client.delete(f"backup_running:{plan.node_id}")
-        except Exception:
-            pass
+        if not retrying:
+            try:
+                redis_client.delete(f"backup_running:{plan.node_id}")
+            except Exception:
+                pass
 
 
 @dataclass
@@ -568,10 +603,16 @@ def _refuse_unlicensed_node(
         node = db.query(Node).filter(Node.id == plan.node_id).first()
         if node:
             node.status = "RESTORED"
-        db.add(TaskLog(
-            id=task_id, task_type="BACKUP", status="FAILED",
-            node_id=plan.node_id, log_output="",
-        ))
+        # A retry after NodeLockBusy re-enters with the same task_id, so the
+        # row may already exist from an earlier attempt.
+        task = db.query(TaskLog).filter(TaskLog.id == task_id).first()
+        if task is None:
+            db.add(TaskLog(
+                id=task_id, task_type="BACKUP", status="FAILED",
+                node_id=plan.node_id, log_output="",
+            ))
+        else:
+            task.status = "FAILED"
         db.flush()
         log_user_action(
             db, "System: License Monitor", "Node Status Demoted",
@@ -630,26 +671,6 @@ def _transfer_and_record(
     ) as writer_beat:
         fix_repo_permissions(plan.repo_path)
 
-        init_cmd = ssh.command(
-            plan.ip_address, plan.ssh_port,
-            # Compression on: `borg init` writes a tiny repo config, not chunks.
-            f"BORG_RSH='{ssh.borg_rsh(compression=True)}' "
-            f"BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' "
-            f"BORG_RELOCATED_REPO_ACCESS_IS_OK=yes "
-            f"borg init --lock-wait {LOCK_WAIT_SECONDS} "
-            f"--encryption=repokey {borg_repo_url}",
-            connect_timeout=None,
-            keepalive=True,
-            extra_args=extra_ssh_args,
-        )
-        log_to_task(task_id, "Checking/Initializing Borg repository...")
-        try:
-            res_init = subprocess.run(init_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            if res_init.returncode not in (0, 2):
-                log_to_task(task_id, f"WARNING: Repository initialization status: {res_init.stderr.strip()}")
-        except Exception as e:
-            log_to_task(task_id, f"Repository initialization check warning: {str(e)}")
-
         exclude_args = []
         for ex in plan.global_exclusions:
             pattern = None
@@ -681,9 +702,33 @@ def _transfer_and_record(
             f"cpu_quota: {plan.cpu_quota}%"
         ))
 
-        ssh_cmd = build_borg_create_cmd(
-            node_ip=plan.ip_address,
-            node_ssh_port=plan.ssh_port,
+        # Pkill/cache-lock cleanup, `borg init` and `borg create` all run as one
+        # shell script under one exclusive, non-blocking flock on the node's
+        # filesystem — a lock file on the node is the only thing two
+        # independent orchestrator installs sharing this node can coordinate
+        # through. See core.node_lock for why this can't be three SSH calls.
+        cleanup_cmd = (
+            "pkill -f '[b]org create' || true; "
+            "find /root/.cache/borg -name 'lock*' -delete 2>/dev/null; "
+            "find /root/.cache/borg -mindepth 1 -maxdepth 1 -type d -exec sh -c "
+            "'[ ! -s \"$1/config\" ] && rm -rf \"$1\" && echo \"Removed corrupt borg cache: $1\"' _ {} \\; 2>/dev/null; "
+        )
+
+        # Compression on: `borg init` writes a tiny repo config, not chunks.
+        # Redirected to stderr (not the JSON stdout `borg create` parses below)
+        # with its exit code captured via a marker line, since init and create
+        # now share one script and init's own status would otherwise be
+        # overwritten by create's before Python ever sees it.
+        init_cmd = (
+            f"BORG_RSH='{ssh.borg_rsh(compression=True)}' "
+            f"BORG_PASSPHRASE='{os.getenv('BORG_PASSPHRASE')}' "
+            f"BORG_RELOCATED_REPO_ACCESS_IS_OK=yes "
+            f"borg init --lock-wait {LOCK_WAIT_SECONDS} "
+            f"--encryption=repokey {borg_repo_url} >&2; "
+            f"echo \"{node_lock.INIT_RC_MARKER}:$?\" >&2;"
+        )
+
+        create_inner_cmd = build_borg_create_inner_cmd(
             borg_repo_url=borg_repo_url,
             archive_name=archive_name,
             exclude_str=exclude_str,
@@ -692,12 +737,18 @@ def _transfer_and_record(
             checkpoint_secs=plan.checkpoint_secs,
             cpu_quota=plan.cpu_quota,
             borg_passphrase=os.getenv('BORG_PASSPHRASE', ''),
-            extra_ssh_args=extra_ssh_args,
         )
 
-        log_to_task(task_id, f"Running remote command on node: {' '.join(ssh_cmd[:6])} [COMMAND MASKED]")
+        remote_script = node_lock.build_locked_remote_script(cleanup_cmd, init_cmd, create_inner_cmd)
+        ssh_cmd = ssh.command(
+            plan.ip_address, plan.ssh_port, remote_script,
+            connect_timeout=None,
+            keepalive=True,
+            extra_args=extra_ssh_args,
+        )
 
-        # Locks have been cleaned up and IP resolved at the start of the task
+        log_to_task(task_id, "Checking/Initializing Borg repository and starting transfer...")
+        log_to_task(task_id, f"Running remote command on node: {' '.join(ssh_cmd[:6])} [COMMAND MASKED]")
 
         # stderr is consumed line by line: borg reports cumulative byte counters
         # there several times a second, which is the only way to see how fast
@@ -726,6 +777,15 @@ def _transfer_and_record(
         last_beat = started_at
 
         for raw_line in process.stderr:
+            stripped = raw_line.strip()
+            if stripped == node_lock.LOCK_BUSY_MARKER:
+                continue
+            if stripped.startswith(f"{node_lock.INIT_RC_MARKER}:"):
+                init_rc = stripped.split(":", 1)[1]
+                if init_rc not in ("0", "2"):
+                    log_to_task(task_id, f"WARNING: Repository initialization exited with status {init_rc}.")
+                continue
+
             now = time_module.monotonic()
             if now - last_beat >= WRITER_HEARTBEAT_SECONDS:
                 writer_beat()
@@ -744,6 +804,16 @@ def _transfer_and_record(
         stdout = "".join(stdout_chunks)
         stderr = "\n".join(stderr_lines)
         wall_seconds = time_module.monotonic() - started_at
+
+        if process.returncode == node_lock.LOCK_BUSY_EXIT_CODE:
+            # Nothing was touched on the node — the flock was never acquired,
+            # so the pre-flight cleanup, init and create never ran. Bail out
+            # before the writer registration below even considers this a
+            # backup attempt; run_backup_task turns this into a Celery retry.
+            raise NodeLockBusy(
+                f"Node {plan.hostname} is busy: another orchestrator's backup "
+                f"currently holds its node lock."
+            )
 
     log_to_task(task_id, f"Remote execution stdout:\n{stdout}")
     if stderr:

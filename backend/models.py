@@ -1,4 +1,5 @@
 import os
+import uuid
 
 from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean, Float, UniqueConstraint, Index, text
 from sqlalchemy.sql import func
@@ -36,6 +37,15 @@ class Settings(Base):
     # Seeded from .env so a fresh install shows the configured IP in the UI.
     # Once set through the UI the DB value wins; .env is only the initial value.
     orchestrator_ip = Column(String, default=lambda: os.getenv("ORCHESTRATOR_IP", ""), nullable=False)
+    # Identifies this install when a node is enrolled with more than one
+    # orchestrator (an on-site and an off-site server, say). Each is a fully
+    # separate install with its own DB — there is no registry to hand out
+    # IDs from — so this is generated once, locally, and used to tag this
+    # orchestrator's own entry in a node's authorized_keys/known_hosts
+    # (core.ssh_keys.orchestrator_tag) instead of the fixed string every
+    # install used to share, which made a second orchestrator's bootstrap
+    # silently overwrite the first one's access.
+    orchestrator_id = Column(String, default=lambda: uuid.uuid4().hex, nullable=False)
     # When true, nodes cannot reach the orchestrator directly (it sits behind NAT).
     # Backups instead go through a reverse SSH tunnel opened on the orchestrator's
     # own outbound connection to the node. See backup_tasks.resolve_borg_target.

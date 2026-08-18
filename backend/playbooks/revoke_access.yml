@@ -11,10 +11,26 @@
 #   that may have nothing installed on it — no Python, therefore no Ansible
 #   modules. `raw` is the only thing guaranteed to work on a host that is on
 #   its way out.
-# * **Only our own keys are touched.** Entries are matched on the `edge-bro-`
-#   comment tag that `core/ssh_keys.py` writes. A node's authorized_keys
-#   belongs to the customer; removing an entry we did not add would lock
-#   someone out of a machine we are in the middle of walking away from.
+# * **Only our own key is touched.** Entries are matched on this
+#   orchestrator's own tag (core.ssh_keys.orchestrator_tag), passed in as
+#   `orchestrator_tag`, not a blanket `edge-bro-*` prefix — a node can be
+#   enrolled with more than one orchestrator, and decommissioning it from one
+#   must never remove another orchestrator's still-live grant. A node's
+#   authorized_keys otherwise belongs to the customer; removing an entry we
+#   did not add would lock someone out of a machine we are in the middle of
+#   walking away from.
+#
+#   Also matches the fixed, pre-per-orchestrator-tagging `edge-bro-orchestrator`
+#   tag every install used to write before bootstrap.yml started tagging per
+#   install (core.ssh_keys.ORCHESTRATOR_TAG). This is still safe to remove
+#   unconditionally: multi-orchestrator support did not exist before that
+#   change, so a node carrying that legacy tag was bootstrapped by exactly
+#   one orchestrator, which can only be the one now decommissioning it — a
+#   node re-bootstrapped since then already carries the new per-install tag
+#   instead. Without this fallback, deleting a node that was never
+#   re-bootstrapped after the upgrade would silently leave its key behind:
+#   `orchestrator_tag` would look for a tag the node's authorized_keys does
+#   not have, find nothing to remove, and still report REVOKE_RESULT: ok.
 # * **The file is never left half-written.** awk writes to a temporary file and
 #   the move only happens if awk exited cleanly. The alternative — editing in
 #   place — turns a parse error into a machine nobody can log into.
@@ -34,13 +50,19 @@
           exit 0
         fi
         cp "$AUTH" "$AUTH.bak.$(date +%s)" 2>/dev/null || true
+        TAG='{{ orchestrator_tag }}'
+        # The fixed tag every install wrote before per-orchestrator tagging
+        # existed — see the note above on why matching it unconditionally is
+        # still safe.
+        LEGACY_TAG='edge-bro-orchestrator'
         # Fields are split on whitespace; the tag is the last one, which is
-        # where ssh_keys.node_tag() puts it. Removed keys are reported on
-        # stderr so they end up in the task log without polluting the file
-        # being rewritten on stdout.
-        if awk '
+        # where orchestrator_tag() puts it. Exact match only — a prefix match
+        # here would also remove every other orchestrator enrolled on this
+        # node. Removed keys are reported on stderr so they end up in the
+        # task log without polluting the file being rewritten on stdout.
+        if awk -v tag="$TAG" -v legacy_tag="$LEGACY_TAG" '
              { n = split($0, f, /[ \t]+/)
-               if (n >= 2 && f[n] ~ /^edge-bro-/) {
+               if (n >= 2 && (f[n] == tag || f[n] == legacy_tag)) {
                  print "REVOKE_REMOVED: " f[n] > "/dev/stderr"
                  next
                }

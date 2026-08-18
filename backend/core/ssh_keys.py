@@ -81,6 +81,20 @@ def kiosk_tag(kiosk_id: str) -> str:
     return f"{TAG_PREFIX}-kiosk-{kiosk_id}"
 
 
+def orchestrator_tag(orchestrator_id: str) -> str:
+    """Tag written into a *node's* authorized_keys for this orchestrator's key.
+
+    Opposite direction from node_tag/kiosk_tag above: those tag the
+    orchestrator's own authorized_keys (nodes/kiosks connecting in); this
+    tags the node's authorized_keys (this orchestrator connecting out).
+    Before this existed, every orchestrator wrote the same fixed
+    `ORCHESTRATOR_TAG`, so bootstrapping a node from a second orchestrator
+    silently overwrote the first one's grant — see playbooks/bootstrap.yml
+    and playbooks/revoke_access.yml, which pass this in as an extra var.
+    """
+    return f"{ORCHESTRATOR_TAG}-{orchestrator_id[:8]}"
+
+
 @dataclass(frozen=True)
 class AuthorizedKey:
     """One parsed line of an authorized_keys file."""

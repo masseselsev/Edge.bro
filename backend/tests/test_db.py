@@ -384,9 +384,10 @@ def test_resource_limits_settings_and_group(db_session):
 
 def test_checkpoint_calculation_and_command_builder():
     """
-    Verify auto-calculation of Borg checkpoint interval and the generated systemd-run SSH CLI command.
+    Verify auto-calculation of Borg checkpoint interval and the generated
+    borg-create shell fragment.
     """
-    from backup_tasks import compute_checkpoint_interval, build_borg_create_cmd
+    from backup_tasks import compute_checkpoint_interval, build_borg_create_inner_cmd
 
     # 1. Test compute_checkpoint_interval helper
     assert compute_checkpoint_interval(None) == 1800
@@ -398,11 +399,13 @@ def test_checkpoint_calculation_and_command_builder():
     # Fast rate (> 5000 KiB/s)
     assert compute_checkpoint_interval(6000) == 1800
 
-    # 2. Test build_borg_create_cmd helper
+    # 2. Test build_borg_create_inner_cmd helper. This only builds the shell
+    # fragment now — the SSH argv it used to build itself (node_ip/port,
+    # extra_ssh_args) is assembled once, alongside cleanup and init, by
+    # core.node_lock.build_locked_remote_script + core.ssh.command. That
+    # combined-argv shape is covered in test_backup_nat_tunnel.py.
     # 2.1 Without CPU quota
-    cmd_no_cpu = build_borg_create_cmd(
-        node_ip="192.168.1.5",
-        node_ssh_port=22,
+    inner_bash_cmd = build_borg_create_inner_cmd(
         borg_repo_url="ssh://borg@192.168.1.1:12345/data/borg/fleet",
         archive_name="test-node-archive",
         exclude_str="--exclude '/proc/*'",
@@ -412,30 +415,19 @@ def test_checkpoint_calculation_and_command_builder():
         cpu_quota=None,
         borg_passphrase="my-secret-passphrase"
     )
-    # Ensure correct format and options. By content, not by index: core.ssh
-    # owns the option list and gaining one must not break this.
-    assert cmd_no_cpu[0] == "ssh"
-    assert cmd_no_cpu[cmd_no_cpu.index("-p") + 1] == "22"
-    assert cmd_no_cpu[cmd_no_cpu.index("-i") + 1] == "/root/.ssh/id_ed25519"
-
-    # Assert Keepalive options in ssh command list
-    assert "ServerAliveInterval=30" in cmd_no_cpu
-    assert "ServerAliveCountMax=3" in cmd_no_cpu
-
     # Ensure BORG_PASSPHRASE is in the script run on the host
-    inner_bash_cmd = cmd_no_cpu[-1]
     assert "BORG_PASSPHRASE='my-secret-passphrase'" in inner_bash_cmd
     assert "--remote-ratelimit 1000" in inner_bash_cmd
     assert "--checkpoint-interval 204" in inner_bash_cmd
     assert "--compression lz4" in inner_bash_cmd
     assert "systemd-run" not in inner_bash_cmd
+    # BORG_RSH embeds the keepalive options for the node's own connection
+    # back to the orchestrator — unrelated to this orchestrator's outer ssh.
     assert "ServerAliveInterval=30" in inner_bash_cmd
     assert "ServerAliveCountMax=3" in inner_bash_cmd
 
     # 2.2 With CPU quota
-    cmd_with_cpu = build_borg_create_cmd(
-        node_ip="192.168.1.5",
-        node_ssh_port=22,
+    inner_bash_cmd_cpu = build_borg_create_inner_cmd(
         borg_repo_url="ssh://borg@192.168.1.1:12345/data/borg/fleet",
         archive_name="test-node-archive",
         exclude_str="--exclude '/proc/*'",
@@ -445,7 +437,6 @@ def test_checkpoint_calculation_and_command_builder():
         cpu_quota=85,
         borg_passphrase="my-secret-passphrase"
     )
-    inner_bash_cmd_cpu = cmd_with_cpu[-1]
     assert "systemd-run --scope" in inner_bash_cmd_cpu
     assert "-p CPUQuota=85%" in inner_bash_cmd_cpu
     assert "--compression zstd,3" in inner_bash_cmd_cpu

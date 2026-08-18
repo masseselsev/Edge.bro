@@ -129,7 +129,13 @@ def _run_bootstrap(
         ))
 
         settings = db.query(Settings).first()
-        orchestrator_ip = settings.orchestrator_ip if settings else None
+        if not settings:
+            settings = Settings()
+            db.add(settings)
+            db.flush()
+        orchestrator_ip = settings.orchestrator_ip
+        orchestrator_borg_ssh_port = settings.borg_ssh_port
+        orchestrator_tag = ssh_keys.orchestrator_tag(settings.orchestrator_id)
 
     tasks.log_to_task(task_id, f"Starting bootstrap for {node_hostname} ({node_ip})")
 
@@ -178,6 +184,8 @@ def _run_bootstrap(
             "bootstrap_user": bootstrap_user,
             "orchestrator_ssh_pub_key": orchestrator_pub_key,
             "orchestrator_ip": orchestrator_ip,
+            "orchestrator_tag": orchestrator_tag,
+            "borg_ssh_port": orchestrator_borg_ssh_port,
             "force_orchestrator_proxy": force_orchestrator_proxy
         },
         ssh_password=ssh_password
@@ -378,6 +386,15 @@ def revoke_node_access_task(self, hostname: str, ip_address: str, ssh_port: int)
         db.add(TaskLog(
             id=task_id, task_type="REVOKE_ACCESS", status="RUNNING", log_output=""
         ))
+        settings = db.query(Settings).first()
+        # Falls back to the bare (suffix-less) tag if Settings somehow does not
+        # exist yet, which cannot match anything a real bootstrap wrote — a
+        # safe no-op rather than a guess that might match another
+        # orchestrator's entry.
+        orchestrator_tag = (
+            ssh_keys.orchestrator_tag(settings.orchestrator_id) if settings
+            else ssh_keys.ORCHESTRATOR_TAG
+        )
 
     tasks.log_to_task(task_id, f"Revoking orchestrator access from {hostname} ({ip_address})")
     try:
@@ -386,7 +403,7 @@ def revoke_node_access_task(self, hostname: str, ip_address: str, ssh_port: int)
             playbook_name="revoke_access.yml",
             host_ip=ip_address,
             ssh_port=ssh_port,
-            extra_vars={},
+            extra_vars={"orchestrator_tag": orchestrator_tag},
             ssh_key_path="/root/.ssh/id_ed25519",
         )
     except Exception as e:
