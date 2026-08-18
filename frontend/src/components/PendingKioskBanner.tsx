@@ -25,8 +25,8 @@ export default function PendingKioskBanner({ pending, onReview }: PendingKioskBa
   const contact = (first.contact || first.phone || '').trim();
   const name = (first.name || t('unnamedKiosk') || 'Unnamed').trim();
 
-  let message = t('pendingConnectionBanner') || '⚠️ Kiosk connection request from {name} ({contact})';
-  message = message.replace('{name}', name);
+  let message = t('pendingConnectionBanner') || 'Kiosk connection request from {name} ({contact})';
+  message = message.replace(/^⚠️\s*/, '').replace('{name}', name);
   if (contact) {
     message = message.replace('{contact}', contact).replace('{phone}', contact);
   } else {
@@ -46,7 +46,6 @@ export default function PendingKioskBanner({ pending, onReview }: PendingKioskBa
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
           </span>
-          <AlertCircle size={16} className="alert-icon shrink-0" />
           <span className="alert-text font-medium leading-snug">
             {message}
             {pending.length > 1 && (
