@@ -78,10 +78,12 @@ def test_update_kiosk_ip_endpoint(client, db_session):
     assert kiosk_db.target_ip == "192.168.1.150"
     assert kiosk_db.rebuild_required is True
 
+@patch("payload_hash.read_stored_hash", return_value="matching_hash")
+@patch("payload_hash.compute_payload_hash", return_value="matching_hash")
 @patch("iso_tasks.repack_kiosk_iso_task.delay")
-def test_recreate_kiosk_iso_endpoint(mock_repack_task, client, db_session):
+def test_recreate_kiosk_iso_endpoint(mock_repack_task, mock_compute_hash, mock_stored_hash, client, db_session):
     mock_repack_task.return_value = MagicMock(id="recreate-task-456")
-    
+
     # Create kiosk
     kiosk = models.Kiosk(
         name="Recreate Test Kiosk",
@@ -145,6 +147,8 @@ def test_repack_kiosk_iso_task_uses_target_ip(db_session):
          patch("os.path.exists") as mock_exists, \
          patch("os.listdir") as mock_listdir, \
          patch("os.makedirs") as mock_makedirs, \
+         patch("payload_hash.compute_payload_hash", return_value="matching_hash"), \
+         patch("payload_hash.read_stored_hash", return_value="matching_hash"), \
          patch("builtins.open", new=fake_open):
          
         mock_session.return_value = db_session

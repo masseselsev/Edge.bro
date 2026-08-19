@@ -668,7 +668,31 @@ def recreate_kiosk_iso(id: int, request: Request = None, db: Session = Depends(g
     kiosk = db.query(models.Kiosk).filter(models.Kiosk.id == id).first()
     if not kiosk:
         raise HTTPException(status_code=404, detail="Kiosk not found")
-        
+
+    from payload_hash import compute_payload_hash, read_stored_hash
+    try:
+        current_hash = compute_payload_hash()
+        stored_hash = read_stored_hash()
+        is_stale = (current_hash != (stored_hash or ""))
+    except Exception:
+        is_stale = False
+
+    active_base_task = db.query(models.TaskLog).filter(
+        models.TaskLog.task_type == "ISO_GEN",
+        models.TaskLog.status == "RUNNING"
+    ).first()
+
+    if is_stale or active_base_task:
+        kiosk.rebuild_required = True
+        db.commit()
+        if not active_base_task:
+            from iso_tasks import trigger_base_iso_rebuild
+            trigger_base_iso_rebuild(db)
+        from database import log_user_action
+        username = getattr(auth, "username", "test_admin")
+        log_user_action(db, username, "Recreate Kiosk ISO (Deferred)", f"Base template is outdated/rebuilding. Marked kiosk {kiosk.kiosk_id} for auto-repack upon base template completion.", request)
+        return {"message": "Base template is outdated. Base template rebuild initiated; kiosk will be automatically compiled upon completion."}
+
     from iso_tasks import repack_kiosk_iso_task
     task = repack_kiosk_iso_task.delay(kiosk.id)
     

@@ -541,7 +541,51 @@ def repack_kiosk_iso_task(self, kiosk_id: int) -> Dict[str, Any]:
 
         template_iso = os.path.join(CACHE_DIR, "technician_client_v1.iso")
         if not os.path.exists(template_iso):
-            raise Exception("Base template ISO not found. Compile generic Live-USB first.")
+            with session_scope() as db_trigger:
+                k = db_trigger.query(Kiosk).filter(Kiosk.id == kiosk_id).first()
+                if k:
+                    k.rebuild_required = True
+                trigger_base_iso_rebuild(db_trigger)
+            log_to_task(
+                task_id,
+                "[PROGRESS] 100:Base template ISO not found. Triggered base template build; kiosk will be automatically compiled upon completion.",
+                status="SUCCESS"
+            )
+            return {"status": "DEFERRED", "message": "Base template build triggered"}
+
+        # Check if the base template is stale or currently rebuilding
+        from payload_hash import compute_payload_hash, read_stored_hash
+        try:
+            current_hash = compute_payload_hash()
+            stored_hash = read_stored_hash()
+            is_stale = (current_hash != (stored_hash or ""))
+        except Exception:
+            is_stale = False
+
+        active_base_task = None
+        with session_scope() as db_check:
+            active_base_task = db_check.query(TaskLog).filter(
+                TaskLog.task_type == "ISO_GEN",
+                TaskLog.status == "RUNNING"
+            ).first()
+
+        if is_stale or active_base_task:
+            logger.info(
+                f"Base template ISO is {'rebuilding' if active_base_task else 'outdated'}. "
+                f"Deferring repack for kiosk {kiosk_id} until base template rebuild completes."
+            )
+            with session_scope() as db_stale:
+                k = db_stale.query(Kiosk).filter(Kiosk.id == kiosk_id).first()
+                if k:
+                    k.rebuild_required = True
+                if not active_base_task:
+                    trigger_base_iso_rebuild(db_stale)
+            log_to_task(
+                task_id,
+                "[PROGRESS] 100:Base template is outdated/rebuilding. Marked kiosk for auto-repack upon base template completion.",
+                status="SUCCESS"
+            )
+            return {"status": "DEFERRED", "message": "Base template rebuild in progress"}
 
         history_dir = os.path.join(CACHE_DIR, "history")
         os.makedirs(history_dir, exist_ok=True)

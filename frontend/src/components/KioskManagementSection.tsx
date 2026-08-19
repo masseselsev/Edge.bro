@@ -30,9 +30,10 @@ interface Kiosk {
 interface KioskManagementSectionProps {
   onViewLogs?: (taskId: string, title: string) => void;
   baseIsoCreatedAt?: string | null;
+  baseIsoStale?: boolean;
 }
 
-export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }: KioskManagementSectionProps) {
+export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt, baseIsoStale }: KioskManagementSectionProps) {
   const { t, language } = useTranslation();
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [loading, setLoading] = useState(true);
@@ -468,7 +469,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                               /[Zz]$|[+-]\d{2}:\d{2}$/.test(s) ? s : s + 'Z';
                             const builtMs = new Date(normalizeUTC(kiosk.iso_built_at!)).getTime();
                             const baseMs = new Date(normalizeUTC(baseIsoCreatedAt)).getTime();
-                            const isFresh = builtMs >= baseMs;
+                            const isFresh = !baseIsoStale && !kiosk.rebuild_required && (builtMs >= baseMs);
                             return isFresh ? (
                               <span
                                 className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 uppercase"
@@ -480,7 +481,7 @@ export default function KioskManagementSection({ onViewLogs, baseIsoCreatedAt }:
                             ) : (
                               <span
                                 className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-500/15 text-amber-400 border border-amber-500/25 uppercase"
-                                title={t('isoOldTooltip') || 'Built on an outdated base ISO — re-create recommended'}
+                                title={baseIsoStale ? (t('isoBaseOutdatedTooltip') || 'Base template ISO is outdated — waiting for base ISO rebuild') : (t('isoOldTooltip') || 'Built on an outdated base ISO — re-create recommended')}
                               >
                                 <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
                                 {t('isoOldLabel') || 'Outdated'}

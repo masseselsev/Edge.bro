@@ -475,6 +475,8 @@ def test_repack_kiosk_iso_task_updates_timestamp(db_session):
          patch("os.path.exists") as mock_exists, \
          patch("os.listdir") as mock_listdir, \
          patch("os.makedirs") as mock_makedirs, \
+         patch("payload_hash.compute_payload_hash", return_value="matching_hash"), \
+         patch("payload_hash.read_stored_hash", return_value="matching_hash"), \
          patch("builtins.open", mock_open(read_data="{}")):
         
         mock_session.return_value = db_session
@@ -497,6 +499,50 @@ def test_repack_kiosk_iso_task_updates_timestamp(db_session):
 
 
 
+
+
+def test_repack_kiosk_iso_task_defers_when_base_template_outdated(db_session):
+    from unittest.mock import mock_open
+
+    kiosk = models.Kiosk(
+        name="Test Deferred Kiosk",
+        kiosk_id="KS4444",
+        key="4444KS",
+        status="APPROVED",
+        auth_token="TEST44"
+    )
+    db_session.add(kiosk)
+    db_session.commit()
+    kiosk_id = kiosk.id
+
+    from iso_tasks import repack_kiosk_iso_task
+
+    mock_request = MagicMock()
+    mock_request.id = "test-defer-task-uuid"
+
+    with patch("database.SessionLocal") as mock_session, \
+         patch("core.task_log.run_command_with_logging") as mock_run, \
+         patch("tasks.log_to_task") as mock_log, \
+         patch("subprocess.run") as mock_sub, \
+         patch("os.path.exists") as mock_exists, \
+         patch("payload_hash.compute_payload_hash", return_value="new_hash"), \
+         patch("payload_hash.read_stored_hash", return_value="old_hash"), \
+         patch("iso_tasks.trigger_base_iso_rebuild") as mock_trigger:
+
+        mock_session.return_value = db_session
+        mock_exists.side_effect = lambda path: True
+
+        repack_kiosk_iso_task.request_stack.push(mock_request)
+        try:
+            res = repack_kiosk_iso_task.run(kiosk_id)
+        finally:
+            repack_kiosk_iso_task.request_stack.pop()
+
+    assert res["status"] == "DEFERRED"
+    assert mock_trigger.called
+    db_session.expire_all()
+    kiosk_db = db_session.query(models.Kiosk).filter(models.Kiosk.id == kiosk_id).first()
+    assert kiosk_db.rebuild_required is True
 
 
 def test_kiosk_key_is_tagged_and_revocable(tmp_path, monkeypatch):

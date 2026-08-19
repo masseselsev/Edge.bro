@@ -481,7 +481,11 @@ export default function ClientIsoTab({ onViewLogs }: ClientIsoTabProps) {
 
         {/* Right Column (70% / 7 cols) */}
         <div className="lg:col-span-7">
-          <KioskManagementSection onViewLogs={onViewLogs} baseIsoCreatedAt={status?.client_iso_created_at} />
+          <KioskManagementSection
+            onViewLogs={onViewLogs}
+            baseIsoCreatedAt={status?.client_iso_created_at}
+            baseIsoStale={status?.client_iso_stale}
+          />
         </div>
       </div>
 

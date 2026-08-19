@@ -520,6 +520,7 @@ const en: Record<string, string> = {
   isoOldLabel: 'Outdated',
   isoFreshTooltip: 'Built on current base ISO',
   isoOldTooltip: 'Built on an outdated base ISO — re-create recommended',
+  isoBaseOutdatedTooltip: 'Base template ISO is outdated — waiting for base ISO rebuild',
   kioskApprovedAtLabel: 'Approval Date',
   actionsLabel: 'Actions',
   unnamedKiosk: 'Unnamed Kiosk',
