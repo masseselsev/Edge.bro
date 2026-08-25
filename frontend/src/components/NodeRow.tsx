@@ -45,20 +45,25 @@ function NodeRowComponent({
   const [timeLeft, setTimeLeft] = React.useState<number>(0);
   const liveSpeed = node.is_backup_running ? formatLiveSpeed(node) : null;
 
-  // The archive marker on the Backup button. Absent when there is nothing to
-  // restore from; otherwise coloured by whether the schedule was kept.
+  // One judgement, shown twice: as the mark on the Backup button and as the
+  // colour of the Last Backup cell.
   //
-  // missed_window outranks "no schedule": the scheduler only ever sets it for
-  // a grouped, unpaused node, but it is cleared only by a successful backup,
-  // so pausing a node that missed its window leaves the flag standing. That
-  // is a recorded fact and greying it out would hide it.
-  const archiveMark = !node.last_backup
-    ? null
-    : node.missed_window
-      ? { className: 'text-amber-400', label: t('archiveMissedWindow') }
-      : (!node.group_id || node.backup_paused)
-        ? { className: 'text-zinc-500', label: t('archiveNoSchedule') }
-        : { className: 'text-emerald-400', label: t('archiveOnSchedule') };
+  // Deliberately not conditioned on an archive existing. A node that missed
+  // its window and has never backed up is the worst case there is, and
+  // colouring only nodes that have an archive would leave exactly that case
+  // silent — it has no mark to carry the warning.
+  //
+  // missed_window outranks "no schedule": the scheduler only sets it for a
+  // grouped, unpaused node, but only a successful backup clears it, so
+  // pausing a node that missed its window leaves the flag standing. That is a
+  // recorded fact and greying it out would hide it.
+  const backupState = node.missed_window
+    ? { tone: 'text-amber-400', label: t('backupMissedWindow') }
+    : (!node.group_id || node.backup_paused)
+      ? { tone: 'text-zinc-500', label: t('backupNoSchedule') }
+      : node.last_backup
+        ? { tone: 'text-emerald-400', label: t('backupOnSchedule') }
+        : { tone: 'text-zinc-500', label: t('backupNotDueYet') };
 
   React.useEffect(() => {
     if (node.status !== 'OFFLINE' || !node.next_retry_at) {
@@ -224,7 +229,7 @@ function NodeRowComponent({
         </div>
       </td>
       <td className="px-3.5 py-2.5 whitespace-nowrap">{renderStatusButton()}</td>
-      <td className="px-3.5 py-2.5 text-zinc-400 text-xs whitespace-nowrap">
+      <td className={`px-3.5 py-2.5 text-xs whitespace-nowrap ${backupState.tone}`} title={backupState.label}>
         {node.last_backup ? formatDate(node.last_backup, timezone) : t('never')}
       </td>
       <td className="px-3.5 py-2 text-right whitespace-nowrap">
@@ -241,7 +246,7 @@ function NodeRowComponent({
             <button
               onClick={() => onShowBackup(node)}
               disabled={node.status !== 'READY' && !node.is_backup_running}
-              title={liveSpeed ? t('currentSpeedLabel') : archiveMark?.label}
+              title={liveSpeed ? t('currentSpeedLabel') : backupState.label}
               className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs font-semibold rounded border transition-colors ${
                 node.is_backup_running
                   ? 'text-indigo-300 border-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 cursor-pointer font-bold animate-pulse'
@@ -253,11 +258,11 @@ function NodeRowComponent({
                   "is there something to restore from" without another query.
                   Retention never prunes a node's newest archive, so it does
                   not go stale behind our back. */}
-              {archiveMark && (
+              {node.last_backup && (
                 <CheckCircle
                   size={12}
-                  className={`shrink-0 ${archiveMark.className}`}
-                  aria-label={archiveMark.label}
+                  className={`shrink-0 ${backupState.tone}`}
+                  aria-label={backupState.label}
                 />
               )}
               {/* A measured rate, not a share of the whole: borg does not
