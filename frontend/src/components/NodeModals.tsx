@@ -385,9 +385,10 @@ interface BackupCommentModalProps {
   node: Node;
   onClose: () => void;
   onSubmit: (comment: string) => Promise<void>;
+  onStop: () => Promise<void>;
 }
 
-export function BackupCommentModal({ node, onClose, onSubmit }: BackupCommentModalProps) {
+export function BackupCommentModal({ node, onClose, onSubmit, onStop }: BackupCommentModalProps) {
   const { t } = useTranslation();
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -398,6 +399,47 @@ export function BackupCommentModal({ node, onClose, onSubmit }: BackupCommentMod
     await onSubmit(comment);
     setSubmitting(false);
   };
+
+  const handleStop = async () => {
+    setSubmitting(true);
+    await onStop();
+    setSubmitting(false);
+  };
+
+  // A run already in flight has nothing to start, so the modal offers the one
+  // action that applies. Reached the same way as starting one — through the
+  // fleet's Backup button — rather than by turning that button into Stop,
+  // which would make a stray click in a dense list abort a long transfer.
+  if (node.is_backup_running) {
+    return createPortal(
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div className="w-full max-w-md p-6 bg-zinc-900 border border-zinc-800 rounded-2xl shadow-xl space-y-4 animate-modal-in">
+          <div>
+            <h3 className="text-lg font-bold text-zinc-50">{t('backupInProgress')}</h3>
+            <p className="text-xs text-zinc-400">{t('stopBackupExplain').replace('{name}', node.hostname)}</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-semibold text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-lg transition-colors"
+            >
+              {t('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={handleStop}
+              disabled={submitting}
+              className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-lg disabled:opacity-50 transition-colors"
+            >
+              {submitting ? t('stoppingBackup') : t('stopBackup')}
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  }
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">

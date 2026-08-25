@@ -6,7 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from database import get_db
-from core import ssh, scheduler
+from core import ssh, scheduler, transfer_retry
 import models
 import schemas
 from tasks import run_bootstrap_task, run_prepare_task, run_backup_task, purge_node_archives
@@ -53,11 +53,64 @@ def trigger_backup(node_id: int, request: Request = None, payload: schemas.Backu
             detail=f"A backup is already running for '{node.hostname}'.",
         )
 
+    # A previous stop request naming a run that has since ended would abort
+    # this one the moment it looked. Spend it here rather than making the
+    # operator wonder why Backup does nothing.
+    transfer_retry.clear_cancel(redis_client, node.id)
+
     comment = payload.comment if payload else None
     task = run_backup_task.delay(node.id, comment=comment)
     from database import log_user_action
     log_user_action(db, current_user.username, "Backup Node", f"Triggered immediate remote backup for node '{node.hostname}' (comment: {comment})", request)
     return {"message": "Backup execution task triggered.", "task_id": task.id}
+
+
+@router.post("/{node_id}/backup/stop")
+def stop_backup(node_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    """
+    Stops the backup currently running or queued for this node.
+
+    A run waiting out a busy repository retries for hours by design, so there
+    has to be a way to call one off — queued by mistake, or the repository is
+    needed for something else.
+
+    The request names the task rather than the node, so a run that has already
+    ended cannot have its stop request applied to whatever the scheduler starts
+    next. The task acts on it: a queued run gives up before transferring, and
+    one already in flight closes its end of the SSH connection, which leaves
+    borg's checkpoints in place for the next attempt to resume from.
+    """
+    node = node_or_404(db, node_id)
+
+    raw = redis_client.get(f"backup_running:{node.id}")
+    if not raw:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"No backup is running for '{node.hostname}'.",
+        )
+
+    value = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw)
+    task_id = value.split(":", 1)[1] if ":" in value else None
+    if not task_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The running backup cannot be identified, so it cannot be stopped.",
+        )
+
+    transfer_retry.request_cancel(redis_client, node.id, task_id)
+
+    # Cleared here rather than left to the task. A queued run does not wake for
+    # up to ten minutes, and until then the fleet would go on showing a backup
+    # the operator has already stopped.
+    for key in (f"backup_running:{node.id}", f"backup_speed:{node.id}"):
+        try:
+            redis_client.delete(key)
+        except Exception:
+            pass
+
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Stop Backup", f"Stopped the backup running for node '{node.hostname}'", request)
+    return {"message": "Backup stop requested.", "task_id": task_id}
 
 
 @router.delete("/{node_id}/archives")

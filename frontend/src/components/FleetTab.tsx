@@ -258,6 +258,23 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     }
   }, []);
 
+  const stopBackup = async () => {
+    if (!showBackupModal) return;
+    const node = showBackupModal;
+    setShowBackupModal(null);
+    try {
+      const res = await fetch(`/api/nodes/${node.id}/backup/stop`, { method: 'POST' });
+      const data = await handleResponse(res);
+      if (!res.ok) {
+        throw new Error(data.detail || 'Failed to stop the backup.');
+      }
+      fetchNodes();
+    } catch (e: any) {
+      console.error(e);
+      alert(`Error: ${e.message}`);
+    }
+  };
+
   const runBackup = async (comment: string) => {
     if (!showBackupModal) return;
     const node = showBackupModal;
@@ -711,7 +728,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
       {showAddModal && <AddNodeModal onClose={() => setShowAddModal(false)} onSubmit={handleAddNode} submitting={submitting} error={error} />}
       {showProvisionModal && <ProvisionNodeModal node={showProvisionModal} onClose={() => setShowProvisionModal(null)} onSubmit={handleProvisionNode} submitting={provSubmitting} error={provError} />}
-      {showBackupModal && <BackupCommentModal node={showBackupModal} onClose={() => setShowBackupModal(null)} onSubmit={runBackup} />}
+      {showBackupModal && <BackupCommentModal node={showBackupModal} onClose={() => setShowBackupModal(null)} onSubmit={runBackup} onStop={stopBackup} />}
       {selectedNodeDetails !== null && (
         <NodeDetailsModal
           nodeId={selectedNodeDetails}

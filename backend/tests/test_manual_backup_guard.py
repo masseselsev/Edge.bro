@@ -97,3 +97,35 @@ def test_a_second_press_while_one_is_running_does_not_start_another(
 
     assert res.status_code == 409
     assert dispatched == [], "a duplicate run would only queue behind the first"
+
+
+# --- stopping a run ---
+
+def test_stopping_a_running_backup_asks_it_to_stop_and_frees_the_node(
+    client, node, monkeypatch
+):
+    """The flag names the task so it cannot abort whatever runs next, and the
+    keys go now rather than when the task notices: the operator pressed Stop
+    and the fleet list should stop showing a live backup."""
+    store = {"backup_running:%d" % node.id: b"1700000000:task-live"}
+    fake = nodes_actions.redis_client
+    monkeypatch.setattr(fake, "get", lambda k: store.get(k), raising=False)
+    setex_calls = {}
+    monkeypatch.setattr(fake, "setex", lambda k, ttl, v: setex_calls.__setitem__(k, v), raising=False)
+    deleted = []
+    monkeypatch.setattr(fake, "delete", lambda k: deleted.append(k), raising=False)
+
+    res = client.post(f"/api/nodes/{node.id}/backup/stop")
+
+    assert res.status_code == 200
+    assert setex_calls[f"backup_cancel:{node.id}"] == "task-live"
+    assert f"backup_running:{node.id}" in deleted
+    assert f"backup_speed:{node.id}" in deleted
+
+
+def test_stopping_a_node_that_is_not_backing_up_is_refused(client, node, monkeypatch):
+    monkeypatch.setattr(nodes_actions.redis_client, "get", lambda k: None, raising=False)
+
+    res = client.post(f"/api/nodes/{node.id}/backup/stop")
+
+    assert res.status_code == 409
