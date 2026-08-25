@@ -72,10 +72,21 @@ BORG_SHARD_COUNT=1                 # Independent Borg repositories. Borg locks a
                                    # so one repository = one node writing at a
                                    # time. Raise it later if you need more
                                    # parallel writers; it cannot be lowered.
-# BORG_LOCK_WAIT_SECONDS=600       # How long a borg command waits for the
+# BORG_LOCK_WAIT_SECONDS=600       # How long prune and delete wait for the
                                    # repository lock instead of failing
+# BORG_CREATE_LOCK_WAIT_SECONDS=60 # The same for a backup, kept short: one that
+                                   # cannot have the lock now is retried below
+                                   # rather than holding a worker to find out
 # BORG_WRITER_TTL=14400            # How long a running backup stays registered
                                    # as a writer without a heartbeat
+
+# ── Backup retries (optional, defaults shown) ──
+# BACKUP_REPO_BUSY_COUNTDOWN_SECONDS=600   # How long before asking a busy
+#                                          # repository again
+# BACKUP_REPO_BUSY_MAX_RETRIES=144         # ~24h of asking before giving up
+# BACKUP_RECONNECT_COUNTDOWN_SECONDS=60    # How long before retrying a
+#                                          # transfer whose link dropped
+# BACKUP_RECONNECT_MAX_RETRIES=3           # Attempts before reporting it
 
 # ── Storage paths ──
 BORG_HOST_DATA_PATH=borg-data     # Docker volume by default
@@ -221,6 +232,12 @@ If anything fails, the original fstab is auto-restored from backup.
 2. Click **View Logs** to watch real-time terminal output.
 3. The orchestrator SSHes into the node, runs `borg create`, and data streams back to the central Borg repository.
 4. Track results in the **Archive** tab (sizes, timestamps, deduplication stats).
+
+**If the repository is busy.** Borg allows one writer per repository and holds the lock for the whole of `borg create`, so backups bound for the same shard run one at a time. A run that arrives while another is writing waits its turn — checking back every ten minutes for up to a day — rather than failing. It is not recorded as a failed backup unless that budget runs out. Raise `BORG_SHARD_COUNT` if you need genuinely parallel writers.
+
+**Stopping a run.** Press **Backup** on a node that is already backing up and the dialog offers **Stop** instead of starting a second one. It ends a run that is waiting its turn as well as one already transferring, and what has been transferred so far is kept: the next run resumes from borg's last checkpoint rather than starting over.
+
+Pressing **Backup** twice on the same node does not start a second backup — the duplicate could only queue behind the first.
 
 ### 4.2 Scheduled backups (Backup Groups)
 
