@@ -239,7 +239,18 @@ A backup group defines:
 | **Upload Rate Limit** (KiB/s) | Caps network throughput per backup stream |
 | **CPU Quota** (%) | Limits CPU on the target node (0–400% of one core). Enforced via `systemd-run --scope -p CPUQuota=...` |
 | **Compression** | Algorithm selection: `lz4` (fast), `zstd:1`–`zstd:9` (better ratio) |
-| **Checkpoint Interval** | Auto-calculated from upload speed by default. Manual override available (seconds). |
+| **Checkpoint Interval** | Auto-calculated from upload speed by default, and capped so a dropped link can never lose more than a few minutes of transfer. Manual override available (seconds). |
+
+#### Per-node overrides
+
+A single node can differ from the rest of its group. Open **Node Details** and
+set any of these; each falls back to the group, then to the global default:
+
+| Override | Values |
+|---------|--------|
+| **NAT tunnel** | Inherit / Behind NAT / Direct |
+| **Upload limit** (Mbit/s) | Empty inherits the group limit |
+| **CPU quota override** | Inherit / No limit / a custom percentage of one core |
 
 #### Smart queue behavior
 
@@ -446,7 +457,24 @@ Failed entries accumulate from controlled test runs and known outages, and they 
 - **One record** — the **Delete record** button on any failed row.
 - **All failures on a node** — **Clear failures** in the node's header, shown only when the node has some.
 
-Successful archives cannot be deleted here; they hold restorable data, and removing them belongs to retention or to **Purge Archives**. If the failed run left a checkpoint archive in the repository it is removed with the record, and an unreachable repository does not block the deletion. Every removal is written to the audit log.
+Successful archives cannot be deleted here; they hold restorable data, and removing them belongs to retention or to **Purge Archives**. An unreachable repository does not block the deletion. Every removal is written to the audit log.
+
+A checkpoint archive left by the failed run is **kept**, not deleted with the record: it holds the data already transferred, which is what lets the node's next attempt resume instead of starting over. It is cleared once a later backup of that node has succeeded.
+
+### 4.7 Reading the Fleet list
+
+The **Backup** button carries a mark when the node has an archive to restore from, and the **Last Backup** date is coloured to match, so a row reads the same way twice:
+
+| Colour | Meaning |
+|--------|---------|
+| **Green** | Backed up, and the schedule is being kept |
+| **Amber** | The last scheduled backup did not run |
+| **Grey** | No schedule applies — the node is in no group, or is paused |
+| **No mark** | Nothing to restore from yet |
+
+A node that has never backed up *and* missed its window shows an amber **Never** — the case worth catching first.
+
+While a backup runs, the button shows the speed borg is actually achieving, against the upload limit in force for that run (`42.3 / 50 Mbit/s`, or just the measured figure when uncapped). Hovering a hostname shows that node's notes; hostnames with a note are underlined.
 
 ## 5. Bare-Metal Restore (Flasher)
 
