@@ -167,6 +167,13 @@ class Node(Base):
     # for the odd site whose link differs from the rest of its group.
     upload_rate_limit = Column(Integer, nullable=True)
 
+    # Percent of one core. NULL = inherit the node's group, then the global
+    # default (settings.default_cpu_quota). 0 = explicit override to no
+    # limit — deliberately terminal, unlike upload_rate_limit's 0-falls-
+    # through-to-group behavior, so an operator can free one node from a
+    # group-wide cap. Set per node for the odd node that needs to differ.
+    cpu_quota = Column(Integer, nullable=True)
+
     # availability fields
     last_ping_status = Column(Boolean, nullable=True)
     last_available_at = Column(DateTime, nullable=True)

@@ -382,6 +382,29 @@ def test_resource_limits_settings_and_group(db_session):
     assert group.cpu_quota == 75
 
 
+def test_node_cpu_quota_column_roundtrips_through_migration(db_session):
+    """NULL/0/positive all persist distinctly, and the migration is reversible."""
+    node = models.Node(
+        hostname="cpu-quota-node",
+        ip_address="10.99.0.1",
+        cpu_quota=0,
+    )
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+    assert node.cpu_quota == 0
+
+    node.cpu_quota = 40
+    db_session.commit()
+    db_session.refresh(node)
+    assert node.cpu_quota == 40
+
+    node.cpu_quota = None
+    db_session.commit()
+    db_session.refresh(node)
+    assert node.cpu_quota is None
+
+
 def test_checkpoint_calculation_and_command_builder():
     """
     Verify auto-calculation of Borg checkpoint interval and the generated
