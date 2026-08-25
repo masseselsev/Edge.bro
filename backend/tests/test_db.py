@@ -405,24 +405,47 @@ def test_node_cpu_quota_column_roundtrips_through_migration(db_session):
     assert node.cpu_quota is None
 
 
+def test_checkpoint_interval_is_capped_for_fast_and_unlimited_links():
+    """A dropped connection throws away everything since the last checkpoint.
+
+    An unlimited link used to checkpoint every 1800s, so a link lost 20 minutes
+    into a transfer discarded all 20 minutes of it — observed in production on
+    a node whose IPsec tunnel drops at irregular intervals. The cap bounds that
+    loss regardless of how fast the link is.
+    """
+    from backup_tasks import compute_checkpoint_interval, MAX_CHECKPOINT_INTERVAL_SECONDS
+
+    assert MAX_CHECKPOINT_INTERVAL_SECONDS == 300
+    assert compute_checkpoint_interval(None) == 300
+    assert compute_checkpoint_interval(0) == 300
+    assert compute_checkpoint_interval(6000) == 300
+
+
+def test_checkpoint_interval_is_capped_for_very_slow_links_too():
+    """A 60 KiB/s link targets ~50 MB per checkpoint, which is ~14 minutes of
+    transfer. The cap applies to it for the same reason."""
+    from backup_tasks import compute_checkpoint_interval
+
+    # Uncapped this would be (50 * 1024) // 60 == 853.
+    assert compute_checkpoint_interval(60) == 300
+
+
+def test_checkpoint_interval_leaves_rates_under_the_cap_alone():
+    """The cap is a ceiling, not a replacement for the size-based targets."""
+    from backup_tasks import compute_checkpoint_interval
+
+    assert compute_checkpoint_interval(250) == 204  # (50 * 1024) // 250
+    assert compute_checkpoint_interval(1000) == 204  # (200 * 1024) // 1000
+
+
 def test_checkpoint_calculation_and_command_builder():
     """
-    Verify auto-calculation of Borg checkpoint interval and the generated
-    borg-create shell fragment.
+    Verify the generated borg-create shell fragment. The checkpoint interval
+    itself is covered by the three focused tests above.
     """
-    from backup_tasks import compute_checkpoint_interval, build_borg_create_inner_cmd
+    from backup_tasks import build_borg_create_inner_cmd
 
-    # 1. Test compute_checkpoint_interval helper
-    assert compute_checkpoint_interval(None) == 1800
-    assert compute_checkpoint_interval(0) == 1800
-    # Slow rate (<= 500 KiB/s)
-    assert compute_checkpoint_interval(250) == 204  # (50 * 1024) // 250
-    # Medium rate (<= 5000 KiB/s)
-    assert compute_checkpoint_interval(1000) == 204  # (200 * 1024) // 1000
-    # Fast rate (> 5000 KiB/s)
-    assert compute_checkpoint_interval(6000) == 1800
-
-    # 2. Test build_borg_create_inner_cmd helper. This only builds the shell
+    # Test build_borg_create_inner_cmd helper. This only builds the shell
     # fragment now — the SSH argv it used to build itself (node_ip/port,
     # extra_ssh_args) is assembled once, alongside cleanup and init, by
     # core.node_lock.build_locked_remote_script + core.ssh.command. That

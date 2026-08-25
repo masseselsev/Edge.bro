@@ -106,6 +106,15 @@ def test_nothing_in_the_repository_means_nothing_to_delete():
     assert archive_cleanup.matching_archives({"WS-1"}, "") == []
 
 
+def test_checkpoints_can_be_excluded_from_the_match():
+    """A checkpoint left by a failed run holds the chunks the next attempt
+    would otherwise have to transfer again, so it is not always leftovers."""
+    present = {"WS-20260623124040", "WS-20260623124040.checkpoint"}
+    assert archive_cleanup.matching_archives(
+        present, "WS-20260623124040", include_checkpoints=False
+    ) == ["WS-20260623124040"]
+
+
 # --- single deletion --------------------------------------------------------
 
 def test_a_failed_record_can_be_deleted(client, db_session):
@@ -214,9 +223,14 @@ def test_an_unexpectedly_large_purge_is_refused(client, db_session, monkeypatch)
 
 # --- repository leftovers ---------------------------------------------------
 
-def test_leftover_checkpoints_are_removed_with_the_record(client, db_session, monkeypatch):
+def test_leftover_checkpoints_are_removed_once_a_later_backup_has_succeeded(
+    client, db_session, monkeypatch
+):
+    """With a newer success on the node, the checkpoint's chunks are already
+    referenced by a real archive and it is genuinely dead weight."""
     node = make_node(db_session)
-    row = make_history(db_session, node, "WS-1")
+    row = make_history(db_session, node, "WS-1", days_ago=2)
+    make_history(db_session, node, "WS-2", status="SUCCESS", days_ago=1)
 
     deleted = []
     monkeypatch.setattr(archive_cleanup, "list_repo_archives",
@@ -228,6 +242,28 @@ def test_leftover_checkpoints_are_removed_with_the_record(client, db_session, mo
 
     assert deleted == ["WS-1.checkpoint"]
     assert res.json()["checkpoints_removed"] == 1
+
+
+def test_a_checkpoint_survives_the_purge_while_it_can_still_resume_a_backup(
+    client, db_session, monkeypatch
+):
+    """The natural reaction to a run of failures is to clear them, and that
+    used to delete the very chunks the next attempt would have skipped —
+    turning a resumable transfer back into a full one."""
+    node = make_node(db_session)
+    row = make_history(db_session, node, "WS-1")
+
+    deleted = []
+    monkeypatch.setattr(archive_cleanup, "list_repo_archives",
+                        lambda *a, **k: {"WS-1.checkpoint", "WS-2"})
+    monkeypatch.setattr(archive_cleanup, "delete_archives",
+                        lambda names, *a, **k: deleted.extend(names) or len(names))
+
+    res = client.delete(f"/api/nodes/history/{row.id}")
+
+    assert deleted == [], "the checkpoint is the next attempt's head start"
+    assert res.json() == {"deleted": 1, "checkpoints_removed": 0}
+    assert db_session.query(models.BackupHistory).count() == 0, "the record still goes"
 
 
 def test_an_unreachable_repository_still_lets_the_record_go(client, db_session, monkeypatch):

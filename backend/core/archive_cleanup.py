@@ -27,19 +27,31 @@ _LIST_TIMEOUT_SECONDS = 60
 _DELETE_TIMEOUT_SECONDS = 120
 
 
-def matching_archives(repo_archives: Iterable[str], archive_name: str) -> list[str]:
+def matching_archives(
+    repo_archives: Iterable[str],
+    archive_name: str,
+    include_checkpoints: bool = True,
+) -> list[str]:
     """Names in the repository that belong to `archive_name`.
 
     That is the archive itself plus anything suffixed onto it with a dot —
     borg's checkpoint naming. A shared prefix is not enough: two archives one
     second apart differ only in their final character.
+
+    `include_checkpoints=False` returns only the archive itself. A checkpoint
+    left behind by a failed run is not purely leftovers: it keeps the chunks
+    already transferred referenced in the repository, which is what lets the
+    node's next attempt skip them instead of sending them again. Deleting it
+    turns a resumable transfer back into a full one, so callers that cannot
+    tell whether it is still needed leave it alone.
     """
     if not archive_name:
         return []
     prefix = archive_name + "."
     return sorted(
         name for name in repo_archives
-        if name == archive_name or name.startswith(prefix)
+        if name == archive_name
+        or (include_checkpoints and name.startswith(prefix))
     )
 
 

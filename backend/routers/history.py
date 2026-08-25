@@ -15,6 +15,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import models
@@ -150,14 +151,31 @@ def _remove_leftovers(db, records: list) -> int:
     several nodes can span several shards, and listing one repository tells us
     nothing about archives in another.
     """
+    # Newest successful backup per node, in one query rather than one per
+    # record. A checkpoint is only dead weight once a later run has succeeded:
+    # until then it holds the chunks that let the next attempt resume instead
+    # of re-sending everything, so purging the record leaves it in place.
+    node_ids = {r.node_id for r in records}
+    latest_success = dict(
+        db.query(models.BackupHistory.node_id, func.max(models.BackupHistory.timestamp))
+        .filter(
+            models.BackupHistory.node_id.in_(node_ids),
+            models.BackupHistory.status == "SUCCESS",
+        )
+        .group_by(models.BackupHistory.node_id)
+        .all()
+    )
+
     by_repo: dict[str, list] = {}
     for record in records:
         node = db.query(models.Node).filter(models.Node.id == record.node_id).first()
         repo = repo_paths.repo_path_for_node(node) if node else repo_paths.shard_path(0)
-        by_repo.setdefault(repo, []).append(record.archive_name)
+        succeeded_at = latest_success.get(record.node_id)
+        superseded = succeeded_at is not None and succeeded_at > record.timestamp
+        by_repo.setdefault(repo, []).append((record.archive_name, superseded))
 
     removed = 0
-    for repo, archive_names in by_repo.items():
+    for repo, archive_entries in by_repo.items():
         try:
             present = archive_cleanup.list_repo_archives(repo)
         except Exception:
@@ -168,8 +186,10 @@ def _remove_leftovers(db, records: list) -> int:
             continue
 
         doomed = []
-        for name in archive_names:
-            doomed.extend(archive_cleanup.matching_archives(present, name))
+        for name, superseded in archive_entries:
+            doomed.extend(archive_cleanup.matching_archives(
+                present, name, include_checkpoints=superseded
+            ))
 
         if not doomed:
             continue

@@ -26,6 +26,8 @@ from core.repo_lock import (
 )
 from core import node_lock
 from core.node_lock import NodeLockBusy
+from core import transfer_retry
+from core.transfer_retry import BackupConnectionLost
 from core.task_log import log_to_task
 from core.redis_client import make_client as make_redis_client
 
@@ -39,18 +41,32 @@ logger = logging.getLogger(__name__)
 WRITER_HEARTBEAT_SECONDS = 60
 
 
+#: Longest gap between checkpoints, whatever the link speed says.
+#:
+#: A connection lost mid-transfer discards everything since the last
+#: checkpoint, and the size-based targets below say nothing about how long
+#: that is in wall-clock terms: an unlimited link checkpointed every 1800s,
+#: so a tunnel that dropped 20 minutes in threw away all 20 minutes. Seen in
+#: production on a node whose IPsec tunnel drops at irregular intervals.
+#: Checkpoints are cheap — borg replaces the previous one rather than
+#: accumulating them — so the ceiling costs little and bounds the loss.
+MAX_CHECKPOINT_INTERVAL_SECONDS = 300
+
+
 def compute_checkpoint_interval(rate_kib: Optional[int]) -> int:
     """
     Auto-calculate Borg checkpoint interval in seconds from upload rate limit.
-    Targets: ~50 MB at slow (<= 500 KiB/s), ~200 MB at medium, 1800s at fast/unlimited.
+    Targets: ~50 MB at slow (<= 500 KiB/s), ~200 MB at medium, capped at
+    MAX_CHECKPOINT_INTERVAL_SECONDS so a dropped link cannot lose more than
+    that much transfer time.
     """
     if rate_kib is None or rate_kib == 0:
-        return 1800  # Borg default (~500 MB at fast speeds)
+        return MAX_CHECKPOINT_INTERVAL_SECONDS
     if rate_kib <= 500:
-        return max(60, (50 * 1024) // rate_kib)
+        return min(MAX_CHECKPOINT_INTERVAL_SECONDS, max(60, (50 * 1024) // rate_kib))
     if rate_kib <= 5000:
-        return max(120, (200 * 1024) // rate_kib)
-    return 1800
+        return min(MAX_CHECKPOINT_INTERVAL_SECONDS, max(120, (200 * 1024) // rate_kib))
+    return MAX_CHECKPOINT_INTERVAL_SECONDS
 
 
 def resolve_behind_nat(node, group, settings) -> bool:
@@ -493,6 +509,48 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
                 status="FAILED",
             )
             return {"status": "FAILED", "error": str(e)}
+    except BackupConnectionLost as e:
+        log_to_task(
+            task_id,
+            "[RECONNECTING] Lost the connection to the node mid-transfer. "
+            "borg checkpointed what it had sent, so the next attempt resumes "
+            "from there rather than starting over.",
+        )
+        retrying = True
+        try:
+            # Celery counts retries per task, not per exception, so a task that
+            # already spent attempts waiting on the node lock has fewer left
+            # here. Rare enough to accept: the two only meet when a node shared
+            # with another orchestrator is also behind a failing link.
+            self.retry(
+                exc=e,
+                countdown=transfer_retry.CONNECTION_LOST_RETRY_COUNTDOWN_SECONDS,
+                max_retries=transfer_retry.CONNECTION_LOST_MAX_RETRIES,
+            )
+        except MaxRetriesExceededError:
+            retrying = False
+            # Only now is this a failed backup rather than a dropped link, so
+            # only now does it reach BackupHistory and the reliability panel.
+            with session_scope() as db:
+                db.add(BackupHistory(
+                    node_id=plan.node_id,
+                    archive_name=e.archive_name,
+                    original_size=0,
+                    deduplicated_size=0,
+                    status="FAILED",
+                    log_output=e.log_output,
+                    comment=comment,
+                    duration_seconds=e.duration_seconds,
+                    error_category=backup_stats.FailureCategory.TIMEOUT,
+                ))
+            log_to_task(
+                task_id,
+                f"The connection to the node dropped on every attempt "
+                f"({transfer_retry.CONNECTION_LOST_MAX_RETRIES} retries). "
+                f"Backup execution failed.",
+                status="FAILED",
+            )
+            return {"status": "FAILED", "error": str(e)}
     except Exception as e:
         log_to_task(task_id, f"Exception occurred during backup task: {str(e)}", status="FAILED")
         return {"status": "FAILED", "error": str(e)}
@@ -854,6 +912,18 @@ def _transfer_and_record(
         combined_log = stdout + "\n" + stderr
         category = backup_stats.classify_failure(combined_log)
         log_to_task(task_id, f"Failure category: {category}")
+
+        if category == backup_stats.FailureCategory.TIMEOUT:
+            # The link died, not the backup. borg's checkpoints mean the next
+            # attempt resumes where this one stopped, so hand this to
+            # run_backup_task to retry and record nothing yet — see
+            # core.transfer_retry.
+            raise BackupConnectionLost(
+                f"Connection to {plan.hostname} lost during transfer.",
+                archive_name=archive_name,
+                log_output=combined_log,
+                duration_seconds=wall_seconds,
+            )
 
         with session_scope() as db:
             db.add(BackupHistory(
