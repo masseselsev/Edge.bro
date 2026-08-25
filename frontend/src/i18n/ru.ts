@@ -235,6 +235,7 @@ const ru: Record<string, string> = {
   cpuQuotaOverrideCustom: 'Своё значение',
   cpuQuotaOverrideCustomLabel: 'CPU-квота (%)',
   currentSpeedLabel: 'Текущая скорость бэкапа',
+  hasRestorableArchive: 'Есть архив для восстановления',
   backupSpeedAvg: 'Средняя скорость',
   backupSpeedMax: 'Пиковая скорость',
   transferSpeedColumn: 'Скорость (сред. / пик)',

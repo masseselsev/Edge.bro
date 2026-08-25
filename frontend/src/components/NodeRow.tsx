@@ -222,18 +222,32 @@ function NodeRowComponent({
               onClick={() => onShowBackup(node)}
               disabled={node.status !== 'READY' && !node.is_backup_running}
               title={liveSpeed ? t('currentSpeedLabel') : undefined}
-              className={`flex-1 px-2 py-1 text-xs font-semibold rounded border transition-colors text-center truncate ${
+              className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs font-semibold rounded border transition-colors ${
                 node.is_backup_running
                   ? 'text-indigo-300 border-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 cursor-pointer font-bold animate-pulse'
                   : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border-indigo-500/20 disabled:opacity-30 cursor-pointer'
               }`}
             >
+              {/* last_backup is set only alongside a SUCCESS archive and
+                  cleared when the node's archives are purged, so it answers
+                  "is there something to restore from" without another query.
+                  Retention never prunes a node's newest archive, so it does
+                  not go stale behind our back. */}
+              {node.last_backup && (
+                <CheckCircle
+                  size={12}
+                  className="shrink-0 text-emerald-400"
+                  aria-label={t('hasRestorableArchive')}
+                />
+              )}
               {/* A measured rate, not a share of the whole: borg does not
                   report how much is left, so there is no honest percentage
                   to draw. The pulse carries "still going" instead. */}
-              {node.is_backup_running && liveSpeed
-                ? `${t('backupAction')} (${liveSpeed})`
-                : t('backupAction')}
+              <span className="truncate">
+                {node.is_backup_running && liveSpeed
+                  ? `${t('backupAction')} (${liveSpeed})`
+                  : t('backupAction')}
+              </span>
             </button>
             <button
               onClick={() => onDeleteNode(node.id, node.hostname)}

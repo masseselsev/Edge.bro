@@ -235,6 +235,7 @@ const uk: Record<string, string> = {
   cpuQuotaOverrideCustom: 'Своє значення',
   cpuQuotaOverrideCustomLabel: 'CPU-квота (%)',
   currentSpeedLabel: 'Поточна швидкість бекапу',
+  hasRestorableArchive: 'Є архів для відновлення',
   backupSpeedAvg: 'Середня швидкість',
   backupSpeedMax: 'Пікова швидкість',
   transferSpeedColumn: 'Швидкість (сер. / пік)',
