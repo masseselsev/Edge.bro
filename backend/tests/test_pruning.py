@@ -643,3 +643,28 @@ def test_a_failed_run_does_not_resurrect_a_backup_date(
     assert db.query(models.Node).one().last_backup is None
     assert db.query(models.BackupHistory).count() == 1, "failures are not reconciled"
     db.close()
+
+
+@patch('database.SessionLocal')
+def test_a_marker_left_over_from_an_earlier_run_is_healed(
+    mock_session, session_factory
+):
+    """The damage predates the fix: these nodes' history rows were already
+    removed by an earlier reconciliation, so there is nothing stale left to
+    notice them by. Every node is checked against what it actually has, not
+    only the ones touched this run, or the fleet keeps its wrong dates for
+    good."""
+    from backup_tasks import _reconcile_history_with_repo
+
+    mock_session.side_effect = session_factory
+    db = session_factory()
+    db.add(models.Node(hostname="alpha", ip_address="192.168.1.10", last_backup=NOW))
+    db.commit()
+    db.close()
+
+    removed = _reconcile_history_with_repo(set())
+
+    db = session_factory()
+    assert removed == 0, "there was no history row to remove"
+    assert db.query(models.Node).one().last_backup is None
+    db.close()

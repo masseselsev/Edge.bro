@@ -1197,32 +1197,38 @@ def _reconcile_history_with_repo(active_archives: set) -> int:
             row for row in db.query(BackupHistory).filter(BackupHistory.status == "SUCCESS").all()
             if row.archive_name not in active_archives
         ]
-        affected = {row.node_id for row in stale if row.node_id is not None}
         for row in stale:
             logger.info(f"Removing stale database backup history record: {row.archive_name}")
             db.delete(row)
 
-        if affected:
-            # Flushed first so the survivor lookup below cannot count rows this
-            # same session has just deleted.
-            db.flush()
-            survivors = dict(
-                db.query(BackupHistory.node_id, func.max(BackupHistory.timestamp))
-                .filter(
-                    BackupHistory.node_id.in_(affected),
-                    BackupHistory.status == "SUCCESS",
+        # Flushed first so the survivor lookup cannot count rows this same
+        # session has just deleted.
+        db.flush()
+
+        # Every node, not only the ones with a row removed just now. A node
+        # whose history an earlier run already cleared has nothing stale left
+        # to notice it by, so scoping this to this run's casualties would
+        # leave the fleet's existing wrong dates wrong for good.
+        #
+        # Safe as a blanket rule because a SUCCESS row only ever disappears
+        # with its archive: the other two paths that remove one — purging a
+        # node's archives and deleting the node — clear or take the marker
+        # with them. So "a marker with no SUCCESS row behind it" always means
+        # the archive is gone, whichever run removed the row.
+        survivors = dict(
+            db.query(BackupHistory.node_id, func.max(BackupHistory.timestamp))
+            .filter(BackupHistory.status == "SUCCESS")
+            .group_by(BackupHistory.node_id)
+            .all()
+        )
+        for node in db.query(Node).filter(Node.last_backup.isnot(None)).all():
+            newest = survivors.get(node.id)
+            if node.last_backup != newest:
+                logger.info(
+                    f"Node {node.hostname}: last backup marker "
+                    f"{node.last_backup} -> {newest}"
                 )
-                .group_by(BackupHistory.node_id)
-                .all()
-            )
-            for node in db.query(Node).filter(Node.id.in_(affected)).all():
-                newest = survivors.get(node.id)
-                if node.last_backup != newest:
-                    logger.info(
-                        f"Node {node.hostname}: last backup marker "
-                        f"{node.last_backup} -> {newest}"
-                    )
-                    node.last_backup = newest
+                node.last_backup = newest
 
         return len(stale)
 
