@@ -45,6 +45,21 @@ function NodeRowComponent({
   const [timeLeft, setTimeLeft] = React.useState<number>(0);
   const liveSpeed = node.is_backup_running ? formatLiveSpeed(node) : null;
 
+  // The archive marker on the Backup button. Absent when there is nothing to
+  // restore from; otherwise coloured by whether the schedule was kept.
+  //
+  // missed_window outranks "no schedule": the scheduler only ever sets it for
+  // a grouped, unpaused node, but it is cleared only by a successful backup,
+  // so pausing a node that missed its window leaves the flag standing. That
+  // is a recorded fact and greying it out would hide it.
+  const archiveMark = !node.last_backup
+    ? null
+    : node.missed_window
+      ? { className: 'text-amber-400', label: t('archiveMissedWindow') }
+      : (!node.group_id || node.backup_paused)
+        ? { className: 'text-zinc-500', label: t('archiveNoSchedule') }
+        : { className: 'text-emerald-400', label: t('archiveOnSchedule') };
+
   React.useEffect(() => {
     if (node.status !== 'OFFLINE' || !node.next_retry_at) {
       setTimeLeft(0);
@@ -164,7 +179,16 @@ function NodeRowComponent({
       <td className="px-3.5 py-2.5 font-semibold text-zinc-50 flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 20}px` }}>
         <Cpu size={14} className="text-zinc-500 shrink-0" />
         <div className="flex flex-col min-w-0">
-          <span className="truncate" title={node.hostname}>{node.hostname}</span>
+          {/* The note rides on the hostname's existing tooltip, which is
+              already there so a truncated name can be read in full. The
+              dotted underline is the only hint a note exists at all —
+              without it nobody would think to hover. */}
+          <span
+            className={`truncate ${node.notes ? 'decoration-dotted decoration-zinc-600 underline underline-offset-4' : ''}`}
+            title={node.notes ? `${node.hostname}\n\n${node.notes}` : node.hostname}
+          >
+            {node.hostname}
+          </span>
           <div className="text-[11px] text-zinc-400 flex items-center gap-1.5 font-normal leading-none mt-1 whitespace-nowrap">
             <span className="text-indigo-400/90 font-semibold">
               {t('groupLabel') || 'Group'}: {groupName || '—'}
@@ -174,18 +198,14 @@ function NodeRowComponent({
               {effectiveLimitStr}
             </span>
           </div>
-          {(node.backup_paused || node.missed_window) && (
+          {/* A missed window used to get its own badge here too. The amber
+              mark on the Backup button carries it now — two indicators of one
+              fact were working against the row's legibility. */}
+          {node.backup_paused && (
             <div className="flex gap-1 mt-1">
-              {node.backup_paused && (
-                <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold">
-                  {t('paused')}
-                </span>
-              )}
-              {node.missed_window && (
-                <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded text-[9px] font-bold">
-                  {t('missedWindow')}
-                </span>
-              )}
+              <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9px] font-bold">
+                {t('paused')}
+              </span>
             </div>
           )}
         </div>
@@ -221,7 +241,7 @@ function NodeRowComponent({
             <button
               onClick={() => onShowBackup(node)}
               disabled={node.status !== 'READY' && !node.is_backup_running}
-              title={liveSpeed ? t('currentSpeedLabel') : undefined}
+              title={liveSpeed ? t('currentSpeedLabel') : archiveMark?.label}
               className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs font-semibold rounded border transition-colors ${
                 node.is_backup_running
                   ? 'text-indigo-300 border-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 cursor-pointer font-bold animate-pulse'
@@ -233,11 +253,11 @@ function NodeRowComponent({
                   "is there something to restore from" without another query.
                   Retention never prunes a node's newest archive, so it does
                   not go stale behind our back. */}
-              {node.last_backup && (
+              {archiveMark && (
                 <CheckCircle
                   size={12}
-                  className="shrink-0 text-emerald-400"
-                  aria-label={t('hasRestorableArchive')}
+                  className={`shrink-0 ${archiveMark.className}`}
+                  aria-label={archiveMark.label}
                 />
               )}
               {/* A measured rate, not a share of the whole: borg does not
