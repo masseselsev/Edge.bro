@@ -140,8 +140,15 @@ def test_build_borg_create_inner_cmd_with_cpu_quota_wraps_in_systemd_run():
 
 def test_build_borg_create_inner_cmd_waits_for_the_repository_lock():
     """Borg's own default is a one-second wait, which fails the backup instead
-    of queueing it. Two nodes sharing a repository must queue, not race."""
+    of queueing it. Two nodes sharing a repository must queue, not race.
+
+    Create waits on its own, shorter budget than prune and delete: a backup
+    that cannot have the lock now is retried on a schedule, and holding a
+    Celery worker for the full BORG_LOCK_WAIT_SECONDS to discover that
+    occupies a slot that could be backing up another shard.
+    """
     from backup_tasks import build_borg_create_inner_cmd, LOCK_WAIT_SECONDS
+    from core.transfer_retry import CREATE_LOCK_WAIT_SECONDS
 
     cmd = build_borg_create_inner_cmd(
         borg_repo_url="ssh://borg@192.168.1.1:12345/data/borg/fleet",
@@ -153,8 +160,13 @@ def test_build_borg_create_inner_cmd_waits_for_the_repository_lock():
         cpu_quota=None,
         borg_passphrase="secret",
     )
-    assert f"--lock-wait {LOCK_WAIT_SECONDS}" in cmd
-    assert LOCK_WAIT_SECONDS > 1
+    # Tokenised, not a substring match: "--lock-wait 60" is a substring of
+    # "--lock-wait 600", so the obvious assertion passes against the very
+    # value it is meant to reject.
+    flags = cmd.split()
+    assert flags[flags.index("--lock-wait") + 1] == str(CREATE_LOCK_WAIT_SECONDS)
+    assert CREATE_LOCK_WAIT_SECONDS > 1
+    assert CREATE_LOCK_WAIT_SECONDS < LOCK_WAIT_SECONDS
 
 
 # --- cleanup_locks_and_resolve_ip: NAT mode must skip the reachability probe ---

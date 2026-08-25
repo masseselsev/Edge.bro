@@ -27,7 +27,7 @@ from core.repo_lock import (
 from core import node_lock
 from core.node_lock import NodeLockBusy
 from core import transfer_retry
-from core.transfer_retry import BackupConnectionLost
+from core.transfer_retry import BackupConnectionLost, RepositoryBusy
 from core.task_log import log_to_task
 from core.redis_client import make_client as make_redis_client
 
@@ -45,6 +45,11 @@ WRITER_HEARTBEAT_SECONDS = 60
 #: blank the figure, and short enough that a worker killed mid-transfer stops
 #: showing a speed almost immediately.
 LIVE_SPEED_TTL_SECONDS = 30
+
+#: How often a running transfer asks whether it has been stopped. Frequent
+#: enough that Stop feels immediate, rare enough not to add a Redis read per
+#: progress line — borg emits several a second.
+CANCEL_POLL_SECONDS = 5
 
 
 #: Longest gap between checkpoints, whatever the link speed says.
@@ -189,7 +194,7 @@ def build_borg_create_inner_cmd(
 
     borg_create = (
         f"borg create --json --stats --log-json --progress "
-        f"--lock-wait {LOCK_WAIT_SECONDS} "
+        f"--lock-wait {transfer_retry.CREATE_LOCK_WAIT_SECONDS} "
         f"--compression {borg_compression} "
         f"--checkpoint-interval {checkpoint_secs} "
         f"{rate_limit_str}"
@@ -474,6 +479,19 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
     # second backup for the same node during the countdown.
     retrying = False
     try:
+        # Asked before anything is started, so a run stopped while it waited
+        # out a busy repository gives up its place instead of beginning a
+        # transfer the operator has already called off. Celery keeps the task
+        # id across retries, which is what lets the flag name this run in
+        # particular — see core.transfer_retry.cancel_requested.
+        if transfer_retry.cancel_requested(redis_client, plan.node_id, task_id):
+            log_to_task(
+                task_id,
+                "[STOPPED] Backup cancelled before it started transferring.",
+                status="FAILED",
+            )
+            return {"status": "CANCELLED"}
+
         # Check Sentinel HASP license for READY nodes
         if plan.status == "READY":
             refusal = _refuse_unlicensed_node(plan, task_id, redis_client, log_to_task)
@@ -514,6 +532,54 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
                 task_id,
                 f"Gave up waiting for the node to become free after "
                 f"{node_lock.NODE_LOCK_MAX_RETRIES} attempts.",
+                status="FAILED",
+            )
+            return {"status": "FAILED", "error": str(e)}
+    except transfer_retry.BackupCancelled as e:
+        # Not a failed backup: an operator called it off. Recording it as a
+        # failure would put the node into the scheduler's retry cooldown and
+        # count against the fleet's reliability figures for a decision someone
+        # made deliberately.
+        log_to_task(
+            task_id,
+            "[STOPPED] Backup stopped by an operator. Checkpoints are kept, so "
+            "the next run resumes rather than starting over.",
+            status="FAILED",
+        )
+        return {"status": "CANCELLED", "error": str(e)}
+    except RepositoryBusy as e:
+        log_to_task(
+            task_id,
+            "[QUEUED] Another backup is writing to this node's repository. "
+            "Borg allows one writer at a time, so this run waits its turn "
+            "rather than competing for the lock.",
+        )
+        retrying = True
+        try:
+            self.retry(
+                exc=e,
+                countdown=transfer_retry.REPO_BUSY_RETRY_COUNTDOWN_SECONDS,
+                max_retries=transfer_retry.REPO_BUSY_MAX_RETRIES,
+            )
+        except MaxRetriesExceededError:
+            retrying = False
+            with session_scope() as db:
+                db.add(BackupHistory(
+                    node_id=plan.node_id,
+                    archive_name=e.archive_name,
+                    original_size=0,
+                    deduplicated_size=0,
+                    status="FAILED",
+                    log_output=e.log_output,
+                    comment=comment,
+                    duration_seconds=e.duration_seconds,
+                    error_category=backup_stats.FailureCategory.REPO_LOCKED,
+                ))
+            log_to_task(
+                task_id,
+                f"The repository stayed busy across "
+                f"{transfer_retry.REPO_BUSY_MAX_RETRIES} attempts. "
+                f"Backup execution failed.",
                 status="FAILED",
             )
             return {"status": "FAILED", "error": str(e)}
@@ -574,6 +640,10 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
                 redis_client.delete(f"backup_speed:{plan.node_id}")
             except Exception:
                 pass
+            # A stop request is spent once the run it named has ended. Left
+            # behind, it would sit out its TTL waiting to abort a backup that
+            # nobody asked to stop.
+            transfer_retry.clear_cancel(redis_client, plan.node_id)
 
 
 @dataclass
@@ -885,6 +955,8 @@ def _transfer_and_record(
         # registration on every one would be thousands of pointless Redis
         # writes, so it is refreshed on a wall-clock interval instead.
         last_beat = started_at
+        last_cancel_check = started_at
+        cancelled = False
 
         for raw_line in process.stderr:
             stripped = raw_line.strip()
@@ -900,6 +972,20 @@ def _transfer_and_record(
             if now - last_beat >= WRITER_HEARTBEAT_SECONDS:
                 writer_beat()
                 last_beat = now
+
+            # Stopping a transfer already in flight. Closing our end of the SSH
+            # connection is what actually ends it: borg is running on the node,
+            # not here, and it sees the connection go the same way it sees the
+            # link drop — with its checkpoints intact, so whatever is
+            # transferred so far is not wasted.
+            if now - last_cancel_check >= CANCEL_POLL_SECONDS:
+                last_cancel_check = now
+                if redis_client is not None and transfer_retry.cancel_requested(
+                    redis_client, plan.node_id, task_id
+                ):
+                    cancelled = True
+                    process.terminate()
+                    break
 
             kind, payload = transfer_speed.parse_borg_log_line(raw_line)
             if kind is transfer_speed.LineKind.PROGRESS:
@@ -920,6 +1006,10 @@ def _transfer_and_record(
                 stderr_lines.append(payload["message"])
 
         process.wait()
+        if cancelled:
+            raise transfer_retry.BackupCancelled(
+                f"Backup of {plan.hostname} stopped by an operator."
+            )
         stdout_reader.join(timeout=30)
         stdout = "".join(stdout_chunks)
         stderr = "\n".join(stderr_lines)
@@ -945,6 +1035,18 @@ def _transfer_and_record(
         combined_log = stdout + "\n" + stderr
         category = backup_stats.classify_failure(combined_log)
         log_to_task(task_id, f"Failure category: {category}")
+
+        if category == backup_stats.FailureCategory.REPO_LOCKED:
+            # Another backup is writing to this shard. Borg holds a
+            # repository's lock for the whole of `borg create`, so this one
+            # simply arrived while the repository was in use — queue it rather
+            # than record a failure. See core.transfer_retry.
+            raise RepositoryBusy(
+                f"Repository {plan.repo_path} is busy with another backup.",
+                archive_name=archive_name,
+                log_output=combined_log,
+                duration_seconds=wall_seconds,
+            )
 
         if category == backup_stats.FailureCategory.TIMEOUT:
             # The link died, not the backup. borg's checkpoints mean the next

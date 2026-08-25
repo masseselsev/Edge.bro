@@ -102,4 +102,4 @@ def test_node_lock_busy_gives_up_after_max_retries(mock_plan, mock_transfer, moc
     assert any(status == "FAILED" for _msg, status in logged)
     # The final, terminal outcome must release the node lock.
     deleted = {c.args[0] for c in fake_redis.delete.call_args_list}
-    assert deleted == {"backup_running:1", "backup_speed:1"}
+    assert deleted == {"backup_running:1", "backup_speed:1", "backup_cancel:1"}

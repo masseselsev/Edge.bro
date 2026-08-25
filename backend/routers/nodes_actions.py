@@ -6,7 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from database import get_db
-from core import ssh
+from core import ssh, scheduler
 import models
 import schemas
 from tasks import run_bootstrap_task, run_prepare_task, run_backup_task, purge_node_archives
@@ -41,6 +41,17 @@ def trigger_backup(node_id: int, request: Request = None, payload: schemas.Backu
     Triggers immediate remote backup execution.
     """
     node = node_or_404(db, node_id)
+
+    # A second press cannot make the first run go faster. Backups bound for one
+    # repository serialise on borg's lock, so the duplicate would sit out
+    # `--lock-wait` behind the transfer it just duplicated and then be recorded
+    # as a failure. The scheduler has always counted running backups before
+    # dispatching; this button used to bypass that.
+    if scheduler.is_backup_lock_live(node.id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A backup is already running for '{node.hostname}'.",
+        )
 
     comment = payload.comment if payload else None
     task = run_backup_task.delay(node.id, comment=comment)
