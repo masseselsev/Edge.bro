@@ -26,7 +26,7 @@ from schemas.groups import (
 )
 from schemas.nodes import (
     NodeCreate, NodeResponse, PaginatedNodesResponse, NodeNotesUpdate,
-    NodeNatOverrideUpdate, NodeRateLimitUpdate, NodeProvisionRequest,
+    NodeNatOverrideUpdate, NodeRateLimitUpdate, NodeCpuQuotaOverrideUpdate, NodeProvisionRequest,
     DeviceResponse, NodeCheckinRequest, HaspFeatureResponse, HaspStatusResponse,
 )
 from schemas.backups import (

@@ -158,6 +158,30 @@ def update_node_rate_limit(node_id: int, payload: schemas.NodeRateLimitUpdate, r
     return {"message": "Node rate limit updated successfully."}
 
 
+@router.post("/{node_id}/cpu-quota-override")
+def update_node_cpu_quota_override(node_id: int, payload: schemas.NodeCpuQuotaOverrideUpdate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    """
+    Overrides the CPU quota (percent of one core) for this specific node.
+    None clears the override so the node inherits its group's value, then
+    the global default. 0 is a distinct, valid value meaning explicit no
+    limit for this node only.
+    """
+    node = node_or_404(db, node_id)
+
+    node.cpu_quota = payload.cpu_quota
+    db.commit()
+
+    if payload.cpu_quota is None:
+        described = "inherit"
+    elif payload.cpu_quota == 0:
+        described = "no limit"
+    else:
+        described = f"{payload.cpu_quota}%"
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Update Node CPU Quota Override", f"Set CPU quota for node '{node.hostname}' to {described}", request)
+    return {"message": "Node CPU quota override updated successfully."}
+
+
 @router.post("/{node_id}/backup-today")
 def trigger_backup_today(node_id: int, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """

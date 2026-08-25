@@ -58,6 +58,8 @@ export interface Node {
   orchestrator_behind_nat?: boolean | null;
   /** KiB/s. null = inherit the group limit, then unlimited. */
   upload_rate_limit?: number | null;
+  /** null = inherit from the node's group, then the global default. 0 = explicit no limit. */
+  cpu_quota?: number | null;
   /**
    * Absolute path of the borg repository holding this node's archives,
    * resolved from its shard. Read by the restore kiosk, which builds its own

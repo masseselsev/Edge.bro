@@ -1,7 +1,7 @@
 """Managed nodes, their hardware, and the licence runtime on them."""
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class NodeCreate(BaseModel):
@@ -49,6 +49,9 @@ class NodeResponse(BaseModel):
     orchestrator_behind_nat: Optional[bool] = None
     # KiB/s. None = inherit the group limit, then unlimited.
     upload_rate_limit: Optional[int] = None
+    # None = inherit from the node's group, then the global default. 0 =
+    # explicit override to no limit.
+    cpu_quota: Optional[int] = None
     # Which repository holds this node's archives, resolved from its shard (see
     # models.Node.borg_repo_path). Carried in the response because the restore
     # kiosk builds its own borg URL and has no way to derive the shard layout —
@@ -75,6 +78,12 @@ class NodeNatOverrideUpdate(BaseModel):
 class NodeRateLimitUpdate(BaseModel):
     # KiB/s. None clears the override -> inherit the group limit, then unlimited.
     upload_rate_limit: Optional[int] = None
+
+class NodeCpuQuotaOverrideUpdate(BaseModel):
+    # Percent of one core. None clears the override -> inherit the group's
+    # value, then the global default. 0 is a distinct, valid value meaning
+    # "explicit no limit" for this node — see models.Node.cpu_quota.
+    cpu_quota: Optional[int] = Field(default=None, ge=0, le=400)
 
 class NodeProvisionRequest(BaseModel):
     bootstrap_user: str = "root"
