@@ -230,6 +230,13 @@ def run_ansible_playbook(
         env = os.environ.copy()
         # Prevent SSH strict host checking prompts
         env["ANSIBLE_HOST_KEY_CHECKING"] = "False"
+        # Ansible's own default SSH connect timeout is 10s with no retry,
+        # which a freshly-imaged node (sshd still coming up) or a flaky WAN
+        # link to the node can miss, surfacing as "Connection timed out
+        # during banner exchange". setdefault so an operator can still
+        # override either via the environment (e.g. docker-compose).
+        env.setdefault("ANSIBLE_TIMEOUT", "30")
+        env.setdefault("ANSIBLE_SSH_RETRIES", "3")
 
         process = subprocess.Popen(
             cmd,
