@@ -22,7 +22,10 @@ interface BackupGroup {
   name: string;
   orchestrator_behind_nat?: boolean | null;
   upload_rate_limit?: number | null;
+  cpu_quota?: number | null;
 }
+
+type CpuQuotaChoice = 'inherit' | 'unlimited' | 'custom';
 
 interface NodeDetailsModalProps {
   nodeId: number;
@@ -45,7 +48,10 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const [groupId, setGroupId] = useState<number>(0);
   const [natChoice, setNatChoice] = useState<NatChoice>('inherit');
   const [rateLimit, setRateLimit] = useState<string>('');
+  const [cpuQuotaChoice, setCpuQuotaChoice] = useState<CpuQuotaChoice>('inherit');
+  const [cpuQuotaCustom, setCpuQuotaCustom] = useState<string>('');
   const [globalBehindNat, setGlobalBehindNat] = useState<boolean | null>(null);
+  const [globalCpuQuota, setGlobalCpuQuota] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
 
@@ -85,6 +91,16 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
         setGroupId(found.group_id || 0);
         setNatChoice(natChoiceFrom(found.orchestrator_behind_nat));
         setRateLimit(found.upload_rate_limit == null ? '' : formatMbit(kibToMbit(found.upload_rate_limit)));
+        if (found.cpu_quota == null) {
+          setCpuQuotaChoice('inherit');
+          setCpuQuotaCustom('');
+        } else if (found.cpu_quota === 0) {
+          setCpuQuotaChoice('unlimited');
+          setCpuQuotaCustom('');
+        } else {
+          setCpuQuotaChoice('custom');
+          setCpuQuotaCustom(String(found.cpu_quota));
+        }
         if (found.status === 'RESTORED') {
           setSentinelExpanded(true);
           setTimeout(() => {
@@ -139,6 +155,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
       if (sRes.ok) {
         const sData = await sRes.json();
         setGlobalBehindNat(!!sData.orchestrator_behind_nat);
+        setGlobalCpuQuota(sData.default_cpu_quota ?? null);
       }
     } catch (err) {
       console.error("Failed to load node details:", err);
@@ -263,6 +280,38 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
     // through without editing.
     if ((node?.upload_rate_limit ?? null) === parsed) return;
     await mutation.run(`/api/nodes/${nodeId}/rate-limit`, { upload_rate_limit: parsed });
+  };
+
+  const handleCpuQuotaChoice = async (choice: CpuQuotaChoice) => {
+    const previousChoice = cpuQuotaChoice;
+    const previousCustom = cpuQuotaCustom;
+    setCpuQuotaChoice(choice);
+    if (choice === 'custom') {
+      // Nothing to send until the operator types a number into the
+      // revealed input; the select change alone isn't a full value yet.
+      return;
+    }
+    const value = choice === 'inherit' ? null : 0;
+    const ok = await mutation.run(`/api/nodes/${nodeId}/cpu-quota-override`, { cpu_quota: value });
+    if (!ok) {
+      setCpuQuotaChoice(previousChoice);
+      setCpuQuotaCustom(previousCustom);
+    }
+  };
+
+  const handleCpuQuotaCustomBlur = async () => {
+    if (cpuQuotaChoice !== 'custom') return;
+    const trimmed = cpuQuotaCustom.trim();
+    if (trimmed === '') return; // Wait for an actual value before sending.
+    const num = Number(trimmed);
+    if (!Number.isFinite(num) || num < 1 || num > 400) {
+      // Unparseable or out of range: put the field back rather than send
+      // something the operator did not mean.
+      setCpuQuotaCustom(node?.cpu_quota && node.cpu_quota > 0 ? String(node.cpu_quota) : '');
+      return;
+    }
+    if ((node?.cpu_quota ?? null) === num) return;
+    await mutation.run(`/api/nodes/${nodeId}/cpu-quota-override`, { cpu_quota: num });
   };
 
   const handleGroupAssign = async (gid: number) => {
@@ -539,6 +588,54 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                       className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-indigo-500/50"
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <InfoLabel
+                      label={t('cpuQuotaOverrideLabel')}
+                      hint={t('cpuQuotaOverrideNodeHint')}
+                      className="block text-xs font-semibold text-zinc-400 mb-1.5"
+                    />
+                    <SearchableSelect
+                      options={[
+                        {
+                          value: 'inherit',
+                          label: (() => {
+                            const groupQuota = groups.find(g => g.id === groupId)?.cpu_quota;
+                            const inherited = groupQuota ?? globalCpuQuota;
+                            if (inherited === null || inherited === undefined) {
+                              return `${t('cpuQuotaOverrideInherit')} (${t('cpuQuotaOverrideUnlimited')})`;
+                            }
+                            return `${t('cpuQuotaOverrideInherit')} (${inherited}%)`;
+                          })()
+                        },
+                        { value: 'unlimited', label: t('cpuQuotaOverrideUnlimited') },
+                        { value: 'custom', label: t('cpuQuotaOverrideCustom') }
+                      ]}
+                      value={cpuQuotaChoice}
+                      onChange={(val) => handleCpuQuotaChoice(val as CpuQuotaChoice)}
+                      placeholder={t('cpuQuotaOverrideInherit')}
+                    />
+                  </div>
+                  {cpuQuotaChoice === 'custom' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-400 mb-1.5">
+                        {t('cpuQuotaOverrideCustomLabel')}
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={400}
+                        value={cpuQuotaCustom}
+                        onChange={(e) => setCpuQuotaCustom(e.target.value)}
+                        onBlur={handleCpuQuotaCustomBlur}
+                        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        placeholder="e.g. 50"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-indigo-500/50"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Scheduler Commands bar */}
