@@ -529,3 +529,117 @@ def test_an_unreadable_shard_suppresses_reconciliation_entirely(
     assert still_there == 1, (
         "history was reconciled despite a shard that could not be listed"
     )
+
+
+# --- the node's own last-backup marker ---
+#
+# Node.last_backup is written once, when a backup succeeds, and read by the
+# fleet list. Reconciliation removes the history rows of archives that have
+# left the repository, but used to leave that marker untouched — so a node
+# whose archives were deleted outside the app went on advertising a backup
+# date for an archive nobody could restore from, and the fleet and the archive
+# list disagreed about the same node. Seen in production.
+
+def _history(db, node, name, when, status="SUCCESS"):
+    db.add(models.BackupHistory(
+        node_id=node.id, archive_name=name, timestamp=when,
+        original_size=0, deduplicated_size=0, status=status,
+    ))
+
+
+@patch('database.SessionLocal')
+def test_a_node_that_lost_every_archive_stops_advertising_a_backup(
+    mock_session, session_factory
+):
+    from backup_tasks import _reconcile_history_with_repo
+
+    mock_session.side_effect = session_factory
+    db = session_factory()
+    node = models.Node(hostname="alpha", ip_address="192.168.1.10", last_backup=NOW)
+    db.add(node)
+    db.commit()
+    _history(db, node, "alpha-1", NOW - timedelta(days=2))
+    _history(db, node, "alpha-2", NOW)
+    db.commit()
+    db.close()
+
+    _reconcile_history_with_repo(set())
+
+    db = session_factory()
+    assert db.query(models.Node).one().last_backup is None
+    db.close()
+
+
+@patch('database.SessionLocal')
+def test_a_node_that_kept_an_archive_reports_the_newest_survivor(
+    mock_session, session_factory
+):
+    """Not a blanket clear: pruning three of five archives leaves the node
+    with a real backup, and the date must follow it rather than vanish."""
+    from backup_tasks import _reconcile_history_with_repo
+
+    mock_session.side_effect = session_factory
+    db = session_factory()
+    node = models.Node(hostname="alpha", ip_address="192.168.1.10", last_backup=NOW)
+    db.add(node)
+    db.commit()
+    survivor_ts = NOW - timedelta(days=2)
+    _history(db, node, "alpha-old", NOW - timedelta(days=9))
+    _history(db, node, "alpha-mid", survivor_ts)
+    _history(db, node, "alpha-new", NOW)
+    db.commit()
+    db.close()
+
+    _reconcile_history_with_repo({"alpha-mid"})
+
+    db = session_factory()
+    assert db.query(models.Node).one().last_backup == survivor_ts
+    db.close()
+
+
+@patch('database.SessionLocal')
+def test_a_node_whose_archives_are_all_present_is_left_alone(
+    mock_session, session_factory
+):
+    from backup_tasks import _reconcile_history_with_repo
+
+    mock_session.side_effect = session_factory
+    db = session_factory()
+    node = models.Node(hostname="alpha", ip_address="192.168.1.10", last_backup=NOW)
+    db.add(node)
+    db.commit()
+    _history(db, node, "alpha-1", NOW)
+    db.commit()
+    db.close()
+
+    _reconcile_history_with_repo({"alpha-1"})
+
+    db = session_factory()
+    assert db.query(models.Node).one().last_backup == NOW
+    db.close()
+
+
+@patch('database.SessionLocal')
+def test_a_failed_run_does_not_resurrect_a_backup_date(
+    mock_session, session_factory
+):
+    """Only successes ever set last_backup, so only successes may restore it —
+    a node left with nothing but failures has no backup to point at."""
+    from backup_tasks import _reconcile_history_with_repo
+
+    mock_session.side_effect = session_factory
+    db = session_factory()
+    node = models.Node(hostname="alpha", ip_address="192.168.1.10", last_backup=NOW)
+    db.add(node)
+    db.commit()
+    _history(db, node, "alpha-1", NOW)
+    _history(db, node, "alpha-bad", NOW, status="FAILED")
+    db.commit()
+    db.close()
+
+    _reconcile_history_with_repo(set())
+
+    db = session_factory()
+    assert db.query(models.Node).one().last_backup is None
+    assert db.query(models.BackupHistory).count() == 1, "failures are not reconciled"
+    db.close()
