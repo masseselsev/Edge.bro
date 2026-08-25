@@ -49,7 +49,10 @@ export interface Node {
   hasp_runtime_version: string | null;
 
   is_backup_running?: boolean;
-  backup_progress?: number;
+  /** Measured Mbit/s while the backup runs. null until borg can state a rate. */
+  current_speed_mbps?: number | null;
+  /** The upload limit applying to the running backup, if any. */
+  current_speed_limit_mbps?: number | null;
   backup_task_id?: string | null;
   last_ping_status?: boolean | null;
   last_available_at?: string | null;

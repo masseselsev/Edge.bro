@@ -16,7 +16,7 @@ import models
 import schemas
 from tasks import run_bootstrap_task, purge_node_archives
 from tasks.bootstrap import revoke_node_access_task
-from core import repo_paths, repo_usage, ssh_keys
+from core import repo_paths, repo_usage, ssh_keys, transfer_speed
 from core.repo_lock import LOCK_WAIT_SECONDS
 from core.borg_local import borg_kwargs, grant_workdir
 from auth import require_admin, require_kiosk_or_admin
@@ -42,35 +42,33 @@ def _mget(keys):
     return dict(zip(keys, values))
 
 
-def _backup_run_state(node_id: int, raw=None, _prefetched: bool = False):
-    """Whether a backup is in flight for this node, and how far along it looks.
+def _backup_run_state(node_id: int, raw=None, speed_raw=None, _prefetched: bool = False):
+    """Whether a backup is in flight for this node, and how fast it is going.
+
+    Returns (is_running, current_speed_mbps, current_speed_limit_mbps, task_id).
 
     Reads the `backup_running:` key, then confirms against Celery, because the
     key outlives a worker that died mid-backup. Stale keys are deleted on
     sight so the next caller does not pay for the same check.
 
-    `raw` lets a caller that already fetched the key in a batch pass it in,
-    so listing a page of nodes costs one MGET instead of one GET per node.
+    `raw` and `speed_raw` let a caller that already fetched the keys in a batch
+    pass them in, so listing a page of nodes costs one MGET instead of two GETs
+    per node.
 
-    The progress figure is a fabrication and is labelled as one here so nobody
-    mistakes it for a byte count: borg does not report percentage-complete over
-    this path, so we render an exponential curve that approaches but never
-    reaches 100% over roughly a 45-second time constant. It exists to show
-    that something is happening, not how much is left.
+    The speed is measured, not estimated: the backup task publishes what borg
+    reports as it transfers (see `core.transfer_speed.LiveSpeedFeed`). This
+    replaced an invented percentage drawn from elapsed time through a
+    saturating curve — a spinner with numbers on it, which read as progress
+    and was not.
     """
-    import math
     import time
 
-    is_running = False
-    progress = 0
-    running_task_id = None
     try:
         val = raw if _prefetched else redis_client.get(f"backup_running:{node_id}")
         if not val:
-            return False, 0, None
+            return False, None, None, None
 
         val_str = val.decode('utf-8') if isinstance(val, bytes) else str(val)
-        is_running = True
         if ":" in val_str:
             parts = val_str.split(":", 1)
             try:
@@ -88,34 +86,21 @@ def _backup_run_state(node_id: int, raw=None, _prefetched: bool = False):
         # Auto-clear legacy placeholder "1" keys or old keys lacking task IDs (older than 10 mins)
         if start_time == 1 or (not running_task_id and (int(time.time()) - start_time > 600)):
             redis_client.delete(f"backup_running:{node_id}")
-            return False, 0, None
+            return False, None, None, None
 
         if running_task_id:
             from celery_app import celery_app
             if celery_app.AsyncResult(running_task_id).ready():
                 redis_client.delete(f"backup_running:{node_id}")
-                return False, 0, None
+                return False, None, None, None
 
-        # This progress figure is invented, not measured.
-        #
-        # borg reports its byte counters on the node's stderr, which the backup
-        # task consumes but does not publish anywhere the fleet list can read.
-        # Rather than show nothing next to a running backup, the bar is drawn
-        # from elapsed time through a saturating curve: fast at first, then
-        # asymptotic, capped at 99 so it never claims to be finished. 45.0 is
-        # the time constant in seconds — after ~45s it reads 63%, after ~2min
-        # about 93% — chosen to feel right for a typical incremental, and
-        # meaning nothing at all for a first full backup that runs for hours.
-        #
-        # It is a spinner with numbers on it. Do not use it for anything that
-        # needs to be true: BackupHistory.duration_seconds is the real figure,
-        # recorded once the transfer ends.
-        elapsed = max(0, int(time.time()) - start_time)
-        progress = max(0, min(99, int(100 * (1 - math.exp(-elapsed / 45.0)))))
+        if not _prefetched:
+            speed_raw = redis_client.get(f"backup_speed:{node_id}")
+        speed, limit = transfer_speed.parse_live_sample(speed_raw)
     except Exception:
-        return False, 0, None
+        return False, None, None, None
 
-    return is_running, progress, running_task_id
+    return True, speed, limit, running_task_id
 
 
 def _serialize_node(
@@ -123,6 +108,7 @@ def _serialize_node(
     repo_size: int,
     running_raw=None,
     retry_raw=None,
+    speed_raw=None,
     prefetched: bool = False,
 ) -> dict:
     """Shape a Node row the way the API returns it.
@@ -130,11 +116,11 @@ def _serialize_node(
     Shared by the list endpoint and the single-node endpoint so the two cannot
     drift into describing the same node differently.
 
-    When `prefetched` is set, the two Redis values have already been fetched in
+    When `prefetched` is set, the Redis values have already been fetched in
     bulk by the caller and no per-node round trip is made.
     """
-    is_running, progress, running_task_id = _backup_run_state(
-        node.id, raw=running_raw, _prefetched=prefetched
+    is_running, current_speed, speed_limit, running_task_id = _backup_run_state(
+        node.id, raw=running_raw, speed_raw=speed_raw, _prefetched=prefetched
     )
 
     node_dict = {
@@ -163,7 +149,8 @@ def _serialize_node(
         "orchestrator_behind_nat": node.orchestrator_behind_nat,
         "upload_rate_limit": node.upload_rate_limit,
         "is_backup_running": is_running,
-        "backup_progress": progress,
+        "current_speed_mbps": current_speed,
+        "current_speed_limit_mbps": speed_limit,
         "backup_task_id": running_task_id,
         "last_ping_status": node.last_ping_status,
         "last_available_at": node.last_available_at,
@@ -312,8 +299,9 @@ def get_nodes(
     # once enough of them piled up.
     shared_repo_size = repo_usage.fleet_repo_size_bytes() or 0
 
-    # Two MGETs for the whole page instead of one or two GETs per node.
+    # A few MGETs for the whole page instead of that many GETs per node.
     running_raw = _mget([f"backup_running:{n.id}" for n in nodes])
+    speed_raw = _mget([f"backup_speed:{n.id}" for n in nodes])
     retry_raw = _mget([
         f"node_next_retry:{n.id}" for n in nodes if n.status == "OFFLINE"
     ])
@@ -324,6 +312,7 @@ def get_nodes(
             shared_repo_size if node.last_backup else 0,
             running_raw=running_raw.get(f"backup_running:{node.id}"),
             retry_raw=retry_raw.get(f"node_next_retry:{node.id}"),
+            speed_raw=speed_raw.get(f"backup_speed:{node.id}"),
             prefetched=True,
         )
         for node in nodes

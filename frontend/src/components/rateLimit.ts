@@ -28,3 +28,17 @@ export function parseMbitInput(raw: string): number | null {
 export function formatMbit(mbit: number): string {
   return String(Math.round(mbit * 100) / 100);
 }
+
+// What a running backup is actually achieving, against the limit it is
+// allowed — "42.3 / 50 Mbit/s", or just "42.3 Mbit/s" when uncapped. Returns
+// null for the first seconds of a transfer, before borg's rolling window can
+// state a rate: the caller shows its plain label rather than a zero.
+export function formatLiveSpeed(node: {
+  current_speed_mbps?: number | null;
+  current_speed_limit_mbps?: number | null;
+}): string | null {
+  if (node.current_speed_mbps == null) return null;
+  const current = formatMbit(node.current_speed_mbps);
+  if (node.current_speed_limit_mbps == null) return `${current} Mbit/s`;
+  return `${current} / ${formatMbit(node.current_speed_limit_mbps)} Mbit/s`;
+}

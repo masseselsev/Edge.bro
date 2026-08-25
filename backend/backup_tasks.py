@@ -40,6 +40,12 @@ logger = logging.getLogger(__name__)
 #: leaving its lock exposed to the next node's pre-flight.
 WRITER_HEARTBEAT_SECONDS = 60
 
+#: How long a published live speed stays readable. Comfortably longer than
+#: LiveSpeedFeed's publish interval so a couple of delayed readings do not
+#: blank the figure, and short enough that a worker killed mid-transfer stops
+#: showing a speed almost immediately.
+LIVE_SPEED_TTL_SECONDS = 30
+
 
 #: Longest gap between checkpoints, whatever the link speed says.
 #:
@@ -486,7 +492,9 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
             else:
                 task.status = "RUNNING"
 
-        return _transfer_and_record(plan, task_id, comment, log_to_task, fix_repo_permissions)
+        return _transfer_and_record(
+            plan, task_id, comment, log_to_task, fix_repo_permissions, redis_client
+        )
     except NodeLockBusy as e:
         log_to_task(
             task_id,
@@ -558,6 +566,12 @@ def run_backup_task(self, node_id: int, comment: Optional[str] = None) -> Dict[s
         if not retrying:
             try:
                 redis_client.delete(f"backup_running:{plan.node_id}")
+            except Exception:
+                pass
+            # The last reading would otherwise linger for its TTL, showing a
+            # speed for a node that has stopped transferring.
+            try:
+                redis_client.delete(f"backup_speed:{plan.node_id}")
             except Exception:
                 pass
 
@@ -712,12 +726,16 @@ def _refuse_unlicensed_node(
 
 
 def _transfer_and_record(
-    plan: BackupPlan, task_id: str, comment: Optional[str], log_to_task, fix_repo_permissions
+    plan: BackupPlan, task_id: str, comment: Optional[str], log_to_task,
+    fix_repo_permissions, redis_client=None
 ) -> Dict[str, Any]:
     """Run `borg create` against the node and record the outcome.
 
     Holds no database session for the duration — the only writes are the two
     short scopes at the end. Everything it needs is already in `plan`.
+
+    `redis_client` is the caller's, reused rather than reopened, and is where
+    the running transfer's speed is published for the fleet list to read.
     """
     log_to_task(task_id, f"Initiating Borg backup for {plan.hostname}...")
 
@@ -845,6 +863,11 @@ def _transfer_and_record(
         )
 
         tracker = transfer_speed.SpeedTracker()
+        speed_feed = transfer_speed.LiveSpeedFeed()
+        # The limit that applies to this run, resolved once. Published beside
+        # the measured speed so the fleet list can say "42.3 / 50" without
+        # re-resolving a node's group on every poll.
+        live_limit_mbps = transfer_speed.kib_s_to_mbps(plan.rate_limit_kib) if plan.rate_limit_kib else None
         stdout_chunks: list = []
         stderr_lines: list = []
         started_at = time_module.monotonic()
@@ -881,6 +904,16 @@ def _transfer_and_record(
             kind, payload = transfer_speed.parse_borg_log_line(raw_line)
             if kind is transfer_speed.LineKind.PROGRESS:
                 tracker.sample(payload.get("time"), payload.get("deduplicated_size"))
+                live = speed_feed.sample(now, tracker.current_mbps, live_limit_mbps)
+                if live is not None and redis_client is not None:
+                    # Best effort: a Redis that is away costs the fleet list a
+                    # speed reading, and must not take the backup down with it.
+                    try:
+                        redis_client.setex(
+                            f"backup_speed:{plan.node_id}", LIVE_SPEED_TTL_SECONDS, live
+                        )
+                    except Exception:
+                        pass
             elif kind is transfer_speed.LineKind.MESSAGE:
                 stderr_lines.append(transfer_speed.render_message(payload))
             elif kind is transfer_speed.LineKind.PLAIN:

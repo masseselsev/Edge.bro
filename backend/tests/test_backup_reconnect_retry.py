@@ -153,6 +153,8 @@ def test_the_failure_is_recorded_once_the_retries_are_spent(
     assert history[0].error_category == "TIMEOUT"
     assert history[0].duration_seconds == 1234.0
 
-    # The node lock goes now: no further attempt is pending.
-    fake_redis.delete.assert_called_once_with("backup_running:1")
+    # The node lock goes now: no further attempt is pending. So does the live
+    # speed, which would otherwise sit there until its TTL.
+    deleted = {c.args[0] for c in fake_redis.delete.call_args_list}
+    assert deleted == {"backup_running:1", "backup_speed:1"}
     assert any(status == "FAILED" for _msg, status in logged)

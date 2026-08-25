@@ -1,7 +1,7 @@
 import React from 'react';
 import { Cpu, CheckCircle, AlertTriangle, Settings as Gear, ShieldAlert, Trash2 } from 'lucide-react';
 import { formatDate } from './dateUtils';
-import { kibToMbit, formatMbit } from './rateLimit';
+import { kibToMbit, formatMbit, formatLiveSpeed } from './rateLimit';
 import { useTranslation } from '../context/TranslationContext';
 import type { Node } from '../types';
 
@@ -43,6 +43,7 @@ function NodeRowComponent({
 }: NodeRowProps) {
   const { t } = useTranslation();
   const [timeLeft, setTimeLeft] = React.useState<number>(0);
+  const liveSpeed = node.is_backup_running ? formatLiveSpeed(node) : null;
 
   React.useEffect(() => {
     if (node.status !== 'OFFLINE' || !node.next_retry_at) {
@@ -220,17 +221,18 @@ function NodeRowComponent({
             <button
               onClick={() => onShowBackup(node)}
               disabled={node.status !== 'READY' && !node.is_backup_running}
-              style={node.is_backup_running ? {
-                background: `linear-gradient(to right, rgba(99, 102, 241, 0.25) ${node.backup_progress}%, transparent ${node.backup_progress}%)`
-              } : undefined}
+              title={liveSpeed ? t('currentSpeedLabel') : undefined}
               className={`flex-1 px-2 py-1 text-xs font-semibold rounded border transition-colors text-center truncate ${
                 node.is_backup_running
-                  ? 'text-indigo-300 border-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 cursor-pointer font-bold'
+                  ? 'text-indigo-300 border-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 cursor-pointer font-bold animate-pulse'
                   : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border-indigo-500/20 disabled:opacity-30 cursor-pointer'
               }`}
             >
-              {node.is_backup_running
-                ? `${t('backupAction')} (${node.backup_progress}%)`
+              {/* A measured rate, not a share of the whole: borg does not
+                  report how much is left, so there is no honest percentage
+                  to draw. The pulse carries "still going" instead. */}
+              {node.is_backup_running && liveSpeed
+                ? `${t('backupAction')} (${liveSpeed})`
                 : t('backupAction')}
             </button>
             <button

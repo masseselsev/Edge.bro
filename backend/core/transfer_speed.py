@@ -53,6 +53,70 @@ def format_mbps(value: Optional[float]) -> str:
     return f"{value:.2f} Mbit/s"
 
 
+def format_live_sample(current_mbps: float, limit_mbps: Optional[float]) -> str:
+    """One reading of a running backup, for the worker to publish.
+
+    Colon-separated rather than JSON, matching the `backup_running:` key it
+    sits beside. The limit travels with the speed instead of being resolved
+    when the fleet list is rendered: it is the limit that applied when this
+    backup started, so it cannot disagree with what is actually holding the
+    transfer back — even if someone edits the group's limit mid-run.
+    """
+    limit_part = f"{limit_mbps:.1f}" if limit_mbps else ""
+    return f"{current_mbps:.1f}:{limit_part}"
+
+
+def parse_live_sample(raw) -> tuple[Optional[float], Optional[float]]:
+    """Read back `format_live_sample`, as (current Mbit/s, limit Mbit/s).
+
+    Anything unreadable is (None, None) — "no speed yet" rather than an error.
+    The fleet list is polled every few seconds and a node whose sample has not
+    landed yet is the normal case for the first seconds of every backup.
+    """
+    if not raw:
+        return None, None
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8", "replace")
+    current_part, _, limit_part = raw.partition(":")
+    try:
+        current = float(current_part)
+    except ValueError:
+        return None, None
+    try:
+        limit = float(limit_part) if limit_part else None
+    except ValueError:
+        limit = None
+    return current, limit
+
+
+class LiveSpeedFeed:
+    """Decides when a running backup's speed is worth republishing.
+
+    borg reports progress several times a second and each publish is a Redis
+    write, so readings are thinned to one per interval. The first real reading
+    goes out immediately: the fleet list is polled every few seconds and a
+    node showing nothing for a whole interval of every backup looks stalled.
+    """
+
+    def __init__(self, interval_seconds: float = 5.0):
+        self.interval_seconds = interval_seconds
+        self._published_at: Optional[float] = None
+
+    def sample(
+        self, now: float, current_mbps: Optional[float], limit_mbps: Optional[float]
+    ) -> Optional[str]:
+        """The value to publish, or None if it is not due or not yet known."""
+        if current_mbps is None:
+            return None
+        if (
+            self._published_at is not None
+            and now - self._published_at < self.interval_seconds
+        ):
+            return None
+        self._published_at = now
+        return format_live_sample(current_mbps, limit_mbps)
+
+
 def limit_is_binding(
     measured_mbps: Optional[float],
     limit_mbps: Optional[float],
@@ -117,6 +181,7 @@ class SpeedTracker:
         self.min_span_seconds = min_span_seconds
         self._samples: list[tuple[float, int]] = []
         self._max_bytes_per_second = 0.0
+        self._current_bytes_per_second = 0.0
         self._first: Optional[tuple[float, int]] = None
         self._last: Optional[tuple[float, int]] = None
         self._baseline = 0
@@ -157,6 +222,7 @@ class SpeedTracker:
         if span < self.min_span_seconds:
             return
         rate = (absolute - oldest_bytes) / span
+        self._current_bytes_per_second = rate
         if rate > self._max_bytes_per_second:
             self._max_bytes_per_second = rate
 
@@ -165,6 +231,15 @@ class SpeedTracker:
         if self._last is None:
             return 0
         return self._baseline + self._last[1]
+
+    @property
+    def current_mbps(self) -> Optional[float]:
+        """Throughput over the most recent window, for showing a backup that
+        is still running. `max_mbps` remembers the best the link ever did;
+        this follows it down when the link slows."""
+        if self._current_bytes_per_second <= 0:
+            return None
+        return (self._current_bytes_per_second * _BITS_PER_BYTE) / _MEGA
 
     @property
     def max_mbps(self) -> Optional[float]:

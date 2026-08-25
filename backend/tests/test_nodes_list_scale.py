@@ -115,5 +115,8 @@ def test_batched_and_unbatched_paths_agree(client, db_session):
         if n["id"] == node.id
     )
     detail = client.get(f"/api/nodes/{node.id}").json()
-    for key in ("is_backup_running", "backup_progress", "backup_task_id", "next_retry_at"):
+    for key in (
+        "is_backup_running", "current_speed_mbps", "current_speed_limit_mbps",
+        "backup_task_id", "next_retry_at",
+    ):
         assert listed[key] == detail[key], f"'{key}' differs between batched and single"

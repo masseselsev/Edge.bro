@@ -79,6 +79,92 @@ def test_no_samples_yields_nothing():
     assert tracker.max_mbps is None
     assert tracker.observed_average_mbps is None
     assert tracker.total_bytes == 0
+    assert tracker.current_mbps is None
+
+
+def test_current_speed_reports_the_rate_right_now():
+    """What the fleet list shows while a backup runs: the rolling window, not
+    the average since the start."""
+    tracker = ts.SpeedTracker(window_seconds=5.0, min_span_seconds=1.0)
+    transferred = 0
+    for second in range(0, 11):
+        tracker.sample(float(second), transferred)
+        transferred += 1_250_000  # 1.25 MB/s == 10 Mbit/s
+
+    assert tracker.current_mbps == pytest.approx(10.0)
+
+
+def test_a_live_sample_survives_the_round_trip():
+    """The worker writes this to Redis and the API reads it back; the pair is
+    defined together so the two cannot drift apart."""
+    assert ts.parse_live_sample(ts.format_live_sample(42.3, 50.0)) == (42.3, 50.0)
+
+
+def test_a_live_sample_carries_an_absent_limit():
+    """An unlimited node has a speed but no limit to compare it against."""
+    assert ts.parse_live_sample(ts.format_live_sample(42.3, None)) == (42.3, None)
+
+
+def test_a_live_sample_reads_back_from_bytes():
+    """redis-py hands back bytes unless a decoding client is configured."""
+    assert ts.parse_live_sample(b"42.3:50.0") == (42.3, 50.0)
+
+
+@pytest.mark.parametrize("raw", [None, "", "not-a-number:50.0", b"", ":"])
+def test_an_unusable_live_sample_reads_as_no_data(raw):
+    """Nothing here is worth a 500 on the fleet list: a node with no readable
+    sample simply shows no speed yet."""
+    assert ts.parse_live_sample(raw) == (None, None)
+
+
+def test_the_feed_publishes_on_its_interval_not_on_every_sample():
+    """borg reports several times a second and every publish is a Redis
+    write, so the feed thins them out."""
+    feed = ts.LiveSpeedFeed(interval_seconds=5.0)
+
+    # 101 readings spanning 10 seconds — ten a second, as borg reports them.
+    published = [feed.sample(t / 10.0, 10.0, None) for t in range(0, 101)]
+
+    assert sum(1 for p in published if p is not None) == 3  # t=0, t=5, t=10
+
+
+def test_the_feed_publishes_the_first_reading_immediately():
+    """Otherwise the fleet list shows nothing for the first interval of
+    every backup."""
+    feed = ts.LiveSpeedFeed(interval_seconds=5.0)
+    assert feed.sample(0.0, 10.0, 50.0) == ts.format_live_sample(10.0, 50.0)
+
+
+def test_the_feed_says_nothing_before_a_speed_is_known():
+    """The window needs a span before it can state a rate, and 'no reading
+    yet' must not be published as a reading."""
+    feed = ts.LiveSpeedFeed(interval_seconds=5.0)
+    assert feed.sample(0.0, None, 50.0) is None
+    # Still due, so the first real reading goes out as soon as there is one.
+    assert feed.sample(0.5, 10.0, 50.0) == ts.format_live_sample(10.0, 50.0)
+
+
+def test_a_sample_missing_its_separator_still_yields_the_speed():
+    """Read leniently, the way the `backup_running:` key beside it already
+    accepts both its old and current shapes. A reading we can still use is
+    better than discarding it over a separator."""
+    assert ts.parse_live_sample("42.3") == (42.3, None)
+
+
+def test_current_speed_follows_a_slowdown_while_the_peak_remembers_it():
+    """The distinction that makes it worth publishing: a transfer that has
+    slowed to a crawl must read as slow now, even though it once ran fast."""
+    tracker = ts.SpeedTracker(window_seconds=5.0, min_span_seconds=1.0)
+    transferred = 0
+    for second in range(0, 11):          # 10 Mbit/s
+        tracker.sample(float(second), transferred)
+        transferred += 1_250_000
+    for second in range(11, 22):         # then a tenth of that
+        tracker.sample(float(second), transferred)
+        transferred += 125_000
+
+    assert tracker.current_mbps == pytest.approx(1.0)
+    assert tracker.max_mbps == pytest.approx(10.0)
 
 
 def test_parse_progress_line():

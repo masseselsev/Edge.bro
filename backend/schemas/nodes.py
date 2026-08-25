@@ -41,7 +41,12 @@ class NodeResponse(BaseModel):
     notes: Optional[str] = None
     hasp_runtime_version: Optional[str] = None
     is_backup_running: Optional[bool] = False
-    backup_progress: Optional[int] = 0
+    # Measured while the backup runs, in Mbit/s. None until borg's rolling
+    # window can state a rate — the first seconds of every transfer.
+    current_speed_mbps: Optional[float] = None
+    # The upload limit that applies to the running backup, for context next to
+    # the measured figure. None when the node is transferring uncapped.
+    current_speed_limit_mbps: Optional[float] = None
     backup_task_id: Optional[str] = None
     last_ping_status: Optional[bool] = None
     last_available_at: Optional[datetime] = None

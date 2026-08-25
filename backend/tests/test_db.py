@@ -1,4 +1,6 @@
 import os
+from unittest.mock import patch
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -563,13 +565,58 @@ def test_node_response_backup_fields():
         "edge_version": None,
         "notes": None,
         "is_backup_running": True,
-        "backup_progress": 45,
+        "current_speed_mbps": 42.3,
+        "current_speed_limit_mbps": 50.0,
         "backup_task_id": "test-task-id-123"
     }
     resp = NodeResponse(**data)
     assert resp.is_backup_running is True
-    assert resp.backup_progress == 45
+    assert resp.current_speed_mbps == 42.3
+    assert resp.current_speed_limit_mbps == 50.0
     assert resp.backup_task_id == "test-task-id-123"
+
+
+def test_a_running_backup_reports_the_speed_it_published():
+    """What the fleet list shows in place of the progress percentage it used
+    to invent: the rate borg is actually achieving right now."""
+    import time
+    from routers.nodes_crud import _backup_run_state
+
+    running = f"{int(time.time())}:some-task-id"
+    with patch("celery_app.celery_app") as celery:
+        celery.AsyncResult.return_value.ready.return_value = False
+        is_running, speed, limit, task_id = _backup_run_state(
+            1, raw=running, speed_raw="42.3:50.0", _prefetched=True
+        )
+
+    assert is_running is True
+    assert speed == 42.3
+    assert limit == 50.0
+    assert task_id == "some-task-id"
+
+
+def test_a_backup_that_has_not_published_a_speed_yet_reports_none():
+    """The first seconds of every backup, before the rolling window can state
+    a rate. Showing nothing beats showing a made-up number."""
+    import time
+    from routers.nodes_crud import _backup_run_state
+
+    running = f"{int(time.time())}:some-task-id"
+    with patch("celery_app.celery_app") as celery:
+        celery.AsyncResult.return_value.ready.return_value = False
+        is_running, speed, limit, _task_id = _backup_run_state(
+            1, raw=running, speed_raw=None, _prefetched=True
+        )
+
+    assert is_running is True
+    assert speed is None
+    assert limit is None
+
+
+def test_a_node_with_no_backup_running_reports_no_speed():
+    from routers.nodes_crud import _backup_run_state
+
+    assert _backup_run_state(1, raw=None, _prefetched=True) == (False, None, None, None)
 
 
 def test_upgrade_settings_cpu_quota():

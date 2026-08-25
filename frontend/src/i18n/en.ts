@@ -234,6 +234,7 @@ const en: Record<string, string> = {
   cpuQuotaOverrideUnlimited: 'No limit',
   cpuQuotaOverrideCustom: 'Custom',
   cpuQuotaOverrideCustomLabel: 'CPU quota (%)',
+  currentSpeedLabel: 'Current backup speed',
   backupSpeedAvg: 'Avg speed',
   backupSpeedMax: 'Peak speed',
   transferSpeedColumn: 'Speed (avg / peak)',

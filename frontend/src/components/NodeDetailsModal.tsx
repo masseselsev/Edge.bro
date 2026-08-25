@@ -12,7 +12,7 @@ import { SmartBadge, ThermalBadge } from './NodeHealthBadges';
 import type { NodeHealth } from './NodeHealthBadges';
 import NodeHealthModal from './NodeHealthModal';
 import type { NatChoice } from './BackupGroupModal';
-import { kibToMbit, mbitToKib, parseMbitInput, formatMbit } from './rateLimit';
+import { kibToMbit, mbitToKib, parseMbitInput, formatMbit, formatLiveSpeed } from './rateLimit';
 import type { BackupHistory, Node, TaskLog } from '../types';
 import { useNodeMutation } from '../hooks/useNodeMutation';
 import { api } from '../api';
@@ -495,6 +495,14 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                     Scheduler Configurations
                   </span>
                   <div className="flex gap-2.5">
+                    {node.is_backup_running && formatLiveSpeed(node) && (
+                      <span
+                        title={t('currentSpeedLabel')}
+                        className="px-2 py-1 bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 rounded-md text-xs font-semibold animate-pulse"
+                      >
+                        {formatLiveSpeed(node)}
+                      </span>
+                    )}
                     {node.backup_paused ? (
                       <span className="px-2 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-md text-xs font-semibold">
                         {t('backupPaused')}
