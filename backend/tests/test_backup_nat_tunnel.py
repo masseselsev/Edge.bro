@@ -360,3 +360,53 @@ def test_resolve_behind_nat_without_group():
     from backup_tasks import resolve_behind_nat
     assert resolve_behind_nat(_Obj(None), None, _Obj(True)) is True
     assert resolve_behind_nat(_Obj(False), None, _Obj(True)) is False
+
+
+# --- CPU quota override: node > group > default ---
+
+class _CpuObj:
+    """Minimal stand-in exposing only cpu_quota / default_cpu_quota."""
+    def __init__(self, cpu_quota=None, default_cpu_quota=None):
+        self.cpu_quota = cpu_quota
+        self.default_cpu_quota = default_cpu_quota
+
+
+def test_resolve_cpu_quota_inherits_when_node_unset():
+    from backup_tasks import resolve_cpu_quota
+    node = _CpuObj(cpu_quota=None)
+    group = _CpuObj(cpu_quota=60)
+    settings = _CpuObj(default_cpu_quota=30)
+    assert resolve_cpu_quota(node, group, settings) == (60, "group")
+
+
+def test_resolve_cpu_quota_falls_through_to_default_with_no_group():
+    from backup_tasks import resolve_cpu_quota
+    node = _CpuObj(cpu_quota=None)
+    settings = _CpuObj(default_cpu_quota=30)
+    assert resolve_cpu_quota(node, None, settings) == (30, "default")
+
+
+def test_resolve_cpu_quota_falls_through_when_group_unset_too():
+    from backup_tasks import resolve_cpu_quota
+    node = _CpuObj(cpu_quota=None)
+    group = _CpuObj(cpu_quota=None)
+    settings = _CpuObj(default_cpu_quota=30)
+    assert resolve_cpu_quota(node, group, settings) == (30, "default")
+
+
+def test_resolve_cpu_quota_node_custom_value_wins():
+    from backup_tasks import resolve_cpu_quota
+    node = _CpuObj(cpu_quota=85)
+    group = _CpuObj(cpu_quota=60)
+    settings = _CpuObj(default_cpu_quota=30)
+    assert resolve_cpu_quota(node, group, settings) == (85, "node")
+
+
+def test_resolve_cpu_quota_node_zero_means_explicit_unlimited():
+    """0 on the node is terminal — unlike upload_rate_limit, it must NOT
+    fall through to the group's value."""
+    from backup_tasks import resolve_cpu_quota
+    node = _CpuObj(cpu_quota=0)
+    group = _CpuObj(cpu_quota=60)
+    settings = _CpuObj(default_cpu_quota=30)
+    assert resolve_cpu_quota(node, group, settings) == (None, "node")

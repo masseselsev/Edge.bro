@@ -78,6 +78,30 @@ def resolve_behind_nat(node, group, settings) -> bool:
     return bool(getattr(settings, "orchestrator_behind_nat", False))
 
 
+def resolve_cpu_quota(node, group, settings) -> tuple[Optional[int], str]:
+    """Resolves the effective CPU quota (percent of one core) for one node.
+
+    NULL means "inherit" and keeps falling through; 0 is a distinct,
+    terminal value meaning "explicit no limit" — deliberately different
+    from core.transfer_speed.resolve_rate_limit, where a node value of 0
+    falls through to the group. Here 0 must stop the chain so an operator
+    can free one node from a group-wide cap.
+
+        node.cpu_quota            (per node, 0 = explicit unlimited)
+        -> group.cpu_quota        (per schedule group)
+        -> settings.default_cpu_quota (global default)
+    """
+    node_val = getattr(node, "cpu_quota", None)
+    if node_val is not None:
+        return (node_val if node_val > 0 else None), "node"
+
+    group_val = getattr(group, "cpu_quota", None) if group else None
+    if group_val is not None:
+        return group_val, "group"
+
+    return getattr(settings, "default_cpu_quota", None), "default"
+
+
 def resolve_borg_target(
     orchestrator_behind_nat: bool,
     direct_ip: Optional[str],
@@ -506,6 +530,7 @@ class BackupPlan:
     compression: str
     checkpoint_secs: int
     cpu_quota: Optional[int]
+    cpu_quota_source: str
     lock_ttl: int
     repo_path: str
 
@@ -533,6 +558,7 @@ def _plan_backup(node_id: int) -> Optional[BackupPlan]:
         rate_limit_kib, rate_limit_source = transfer_speed.resolve_rate_limit(
             node.upload_rate_limit, group.upload_rate_limit if group else None
         )
+        cpu_quota, cpu_quota_source = resolve_cpu_quota(node, group, settings)
 
         return BackupPlan(
             node_id=node.id,
@@ -559,11 +585,8 @@ def _plan_backup(node_id: int) -> Optional[BackupPlan]:
                 if group and group.checkpoint_interval is not None
                 else compute_checkpoint_interval(rate_limit_kib)
             ),
-            cpu_quota=(
-                group.cpu_quota
-                if group and group.cpu_quota is not None
-                else getattr(settings, 'default_cpu_quota', None)
-            ),
+            cpu_quota=cpu_quota,
+            cpu_quota_source=cpu_quota_source,
             # Sized from this node's history rather than a flat 4h: on slow
             # links a backup that outlives its lock gets killed by the next
             # scheduler tick. Sized from the limit that will actually apply,
@@ -696,11 +719,17 @@ def _transfer_and_record(
         else:
             rate_text = "unlimited"
 
+        cpu_quota_text = (
+            f"{plan.cpu_quota}% (from the {plan.cpu_quota_source})"
+            if plan.cpu_quota
+            else f"unlimited (from the {plan.cpu_quota_source})"
+        )
+
         log_to_task(task_id, (
             f"Resource limits — compression: {plan.compression}, "
             f"upload rate: {rate_text}, "
             f"checkpoint: {plan.checkpoint_secs}s, "
-            f"cpu_quota: {plan.cpu_quota}%"
+            f"cpu_quota: {cpu_quota_text}"
         ))
 
         # Pkill/cache-lock cleanup, `borg init` and `borg create` all run as one
