@@ -1,69 +1,7 @@
 services:
-  # ── PostgreSQL major-version upgrade, in two one-shot steps ──────────────
-  #
-  # The official image cannot upgrade its own data directory: point a newer
-  # one at an older directory and it refuses to start, which on an appliance
-  # that upgrades itself with `docker compose up -d --build` means the whole
-  # orchestrator stops. So the upgrade has to be part of the deployment, not a
-  # runbook step somebody performs.
-  #
-  # Both services exit immediately once the data directory is already on the
-  # target version, so they cost a second per restart and nothing else.
-
-  # Step 1: a restorable copy, taken with the old version's binaries while the
-  # old cluster is still intact. Step 2 upgrades with `pg_upgrade --link`,
-  # which consumes the old cluster - after it succeeds, going back is a
-  # restore, not a downgrade. This is what makes that restore possible.
-  db-predump:
-    image: postgres:15-alpine
-    restart: "no"
-    entrypoint: ["/bin/sh", "/opt/upgrade/pre-upgrade-dump.sh"]
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      PG_TARGET_MAJOR: "18"
-      # Pinned, not left to the image default. PostgreSQL 18's official image
-      # moved its default PGDATA to /var/lib/postgresql/18/docker; every
-      # existing deployment has its cluster at the old path, and an unpinned
-      # 18 would initialise an empty one beside it and start up looking fine.
-      PGDATA: /var/lib/postgresql/data
-    volumes:
-      - pg-data:/var/lib/postgresql/data
-      - pg-upgrade-backup:/upgrade-backup
-      - ./docker/postgres:/opt/upgrade:ro
-
-  # Step 2: the upgrade. PGAUTO_ONESHOT makes it exit when it is done instead
-  # of staying up as the database, so the image below serves normally and this
-  # third-party image touches the data exactly once, during the transition.
-  # It exits cleanly when there is no upgrade to do, which is what lets the db
-  # service depend on its completion on every ordinary start.
-  #
-  # No healthcheck here on purpose: pgautoupgrade implements its own and its
-  # documentation asks that none be added.
-  db-upgrade:
-    image: pgautoupgrade/pgautoupgrade:18-alpine
-    restart: "no"
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      PGAUTO_ONESHOT: "yes"
-      # Pinned, not left to the image default. PostgreSQL 18's official image
-      # moved its default PGDATA to /var/lib/postgresql/18/docker; every
-      # existing deployment has its cluster at the old path, and an unpinned
-      # 18 would initialise an empty one beside it and start up looking fine.
-      PGDATA: /var/lib/postgresql/data
-    volumes:
-      - pg-data:/var/lib/postgresql/data
-    depends_on:
-      db-predump:
-        condition: service_completed_successfully
-
   db:
     image: postgres:18-alpine
     restart: always
-    depends_on:
-      db-upgrade:
-        condition: service_completed_successfully
     # The default max_connections of 100 is tight once Celery prefork is in
     # play: every worker child carries its own SQLAlchemy pool, and long tasks
     # hold a connection for the duration of a borg transfer.
@@ -368,12 +306,6 @@ services:
 volumes:
   pg-data:
     name: edge-bro_pg-data
-    external: false
-  # Holds the pre-upgrade dump. Separate from pg-data so that recovery means
-  # emptying the data volume and replaying this one -- if they shared a volume,
-  # the backup would go with the thing it protects against.
-  pg-upgrade-backup:
-    name: edge-bro_pg-upgrade-backup
     external: false
   borg-data:
     name: edge-bro_borg-data

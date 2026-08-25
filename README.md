@@ -61,7 +61,6 @@ Nine long-running containers in `docker-compose.yml`, plus two one-shot jobs tha
 | **db** | PostgreSQL 18. Stores inventory, backup history, groups, settings, user accounts. |
 | **redis** | Redis 7. Task broker + result backend for Celery. |
 | **apt-proxy** | APT caching proxy on port 3142. Bootstrapping a fleet fetches the same packages repeatedly; this serves them from disk after the first node. |
-| **db-predump**, **db-upgrade** | One-shot. Take a restorable dump with the old engine's binaries, then upgrade the data directory in place. Both exit immediately when the cluster is already on the target version. |
 
 ---
 
