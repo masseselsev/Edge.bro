@@ -3,6 +3,7 @@ import { Plus, Settings as Gear, ShieldAlert, CheckCircle, RefreshCw, AlertTrian
 import { AddNodeModal, ProvisionNodeModal, BackupCommentModal } from './NodeModals';
 import { NodeRow } from './NodeRow';
 import NodeDetailsModal from './NodeDetailsModal';
+import TerminalModal from './TerminalModal';
 import { useTranslation } from '../context/TranslationContext';
 import { api } from '../api';
 import type { Node } from '../types';
@@ -44,6 +45,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
   const [showProvisionModal, setShowProvisionModal] = useState<Node | null>(null);
   const [showBackupModal, setShowBackupModal] = useState<Node | null>(null);
   const [selectedNodeDetails, setSelectedNodeDetails] = useState<number | null>(null);
+  const [terminalNode, setTerminalNode] = useState<Node | null>(null);
 
   // Search & Grouping State
   const [searchQuery, setSearchQuery] = useState('');
@@ -450,6 +452,15 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     }
   }, [t, fetchNodes]);
 
+  const handleSaveSshLogin = useCallback(async (nodeId: number, hostname: string, login: string) => {
+    try {
+      await api.post(`/api/nodes/${nodeId}/ssh-login`, { ssh_login: login });
+      fetchNodes();
+    } catch (e: any) {
+      alert(e.message || `Failed to save the SSH login for '${hostname}'`);
+    }
+  }, [fetchNodes]);
+
   // Every callback below is stable across renders so that React.memo on
   // NodeRow can actually skip work. A closure rebuilt each render looks like a
   // changed prop, and the memo silently does nothing.
@@ -462,6 +473,8 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
   }, []);
 
   const handleShowDetails = useCallback((nodeId: number) => setSelectedNodeDetails(nodeId), []);
+
+  const handleOpenTerminal = useCallback((node: Node) => setTerminalNode(node), []);
 
   const handleShowBackup = useCallback((node: Node) => {
     // A backup already in flight has a log to watch; otherwise ask for a
@@ -478,13 +491,12 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     [groups],
   );
 
-  const renderNodeRow = (node: Node, depth = 0) => {
+  const renderNodeRow = (node: Node) => {
     const group = node.group_id === null ? null : groupsById.get(node.group_id) ?? null;
     return (
       <NodeRow
         key={node.id}
         node={node}
-        depth={depth}
         bulkDeleteMode={bulkDeleteMode}
         isSelected={!!selectedNodeIds[node.id]}
         onSelectNode={handleSelectNode}
@@ -494,6 +506,8 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
         onShowBackup={handleShowBackup}
         onDeleteNode={handleDeleteNode}
         onShowDetails={handleShowDetails}
+        onSaveSshLogin={handleSaveSshLogin}
+        onOpenTerminal={handleOpenTerminal}
         groupName={group ? group.name : null}
         groupRateLimit={group ? group.upload_rate_limit : null}
         timezone={timezone}
@@ -529,7 +543,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                 </div>
               </td>
             </tr>
-            {isExpanded && groupNodes.map(node => renderNodeRow(node, 1))}
+            {isExpanded && groupNodes.map(node => renderNodeRow(node))}
           </React.Fragment>
         );
       });
@@ -602,7 +616,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
                 if (isO3Expanded) {
                   subnetNodes.forEach((node: Node) => {
-                    rows.push(renderNodeRow(node, 3));
+                    rows.push(renderNodeRow(node));
                   });
                 }
               });
@@ -859,6 +873,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
       {showAddModal && <AddNodeModal onClose={() => setShowAddModal(false)} onSubmit={handleAddNode} submitting={submitting} error={error} />}
       {showProvisionModal && <ProvisionNodeModal node={showProvisionModal} onClose={() => setShowProvisionModal(null)} onSubmit={handleProvisionNode} submitting={provSubmitting} error={provError} />}
       {showBackupModal && <BackupCommentModal node={showBackupModal} onClose={() => setShowBackupModal(null)} onSubmit={runBackup} onStop={stopBackup} />}
+      {terminalNode && <TerminalModal node={terminalNode} onClose={() => setTerminalNode(null)} />}
       {selectedNodeDetails !== null && (
         <NodeDetailsModal
           nodeId={selectedNodeDetails}

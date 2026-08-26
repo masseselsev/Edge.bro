@@ -48,6 +48,8 @@ export interface Node {
   memory_info: string | null;
   edge_version: string | null;
   notes: string | null;
+  /** Login for the fleet table's quick-connect ssh:// link. */
+  ssh_login?: string | null;
   hasp_runtime_version: string | null;
 
   is_backup_running?: boolean;

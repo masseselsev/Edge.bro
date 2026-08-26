@@ -34,6 +34,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [newExclusionComment, setNewExclusionComment] = useState('');
   const [orchestratorIp, setOrchestratorIp] = useState('');
   const [orchestratorBehindNat, setOrchestratorBehindNat] = useState(false);
+  const [allowAdminKeyTerminalAccess, setAllowAdminKeyTerminalAccess] = useState(false);
   const [availableIps, setAvailableIps] = useState<string[]>([]);
   const [manualIps, setManualIps] = useState<string[]>([]);
   const [newIpInput, setNewIpInput] = useState('');
@@ -142,6 +143,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         setGlobalExclusions([...(data.global_exclusions || [])].sort((a, b) => a.pattern.localeCompare(b.pattern)));
         setOrchestratorIp(data.orchestrator_ip || '');
         setOrchestratorBehindNat(!!data.orchestrator_behind_nat);
+        setAllowAdminKeyTerminalAccess(!!data.allow_admin_key_terminal_access);
         setAvailableIps(data.available_ips || []);
         setLanguageState(data.language || 'en');
         setDefaultCompression(data.default_compression || 'zstd:3');
@@ -218,6 +220,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
     global_exclusions: globalExclusions,
     orchestrator_ip: orchestratorIp,
     orchestrator_behind_nat: orchestratorBehindNat,
+    allow_admin_key_terminal_access: allowAdminKeyTerminalAccess,
     // 'Browser Local' is stored as a literal so the server knows the
     // operator wants whatever the viewing browser says, not a fixed zone.
     timezone: useLocalTime ? 'Browser Local' : timezone,
@@ -301,6 +304,23 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
           </h2>
           <p className="text-sm text-zinc-400 mt-1">{t('orchestratorSettingsSub')}</p>
         </div>
+        {activeSubTab === 'general' && (
+          <div className="flex items-center gap-3 shrink-0">
+            {success && (
+              <span className="text-emerald-400 text-xs flex items-center gap-1.5">
+                <CheckCircle size={14} /> {t('settingsSuccess')}
+              </span>
+            )}
+            <button
+              type="submit"
+              form="settings-form"
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm tracking-wide shadow transition-colors disabled:opacity-50 shrink-0"
+            >
+              <Save size={16} /> {saving ? t('saving') : t('saveSettings')}
+            </button>
+          </div>
+        )}
       </div>
 
       {(currentUser?.is_superadmin || currentUser?.is_admin_plus) && (
@@ -372,7 +392,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
       ) : activeSubTab === 'kiosk_logs' && (currentUser?.is_superadmin || currentUser?.is_admin_plus) ? (
         <AuditLogsTab timezone={timezone} type="kiosk" />
       ) : (
-        <form onSubmit={handleSave} className="space-y-6">
+        <form id="settings-form" onSubmit={handleSave} className="space-y-6">
           {warnings.length > 0 && (
             <div className="p-4 bg-red-950/40 border border-red-900/60 rounded-xl space-y-2 animate-fade-in">
               <div className="flex items-center gap-2 text-red-400 font-bold text-sm">
@@ -440,7 +460,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
 
                   <div>
                     <div className="flex items-center justify-between min-h-[20px] mb-1.5">
-                      <label className="block text-xs font-semibold text-zinc-400">{t('compressionMode')}</label>
+                      <InfoLabel label={t('compressionMode')} hint={t('compressionModeHint')} className="block text-xs font-semibold text-zinc-400" />
                     </div>
                     <SearchableSelect
                       options={compressionOptions}
@@ -652,6 +672,25 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                       </span>
                     </span>
                   </label>
+
+                  {currentUser?.is_superadmin && (
+                    <label className="flex items-start gap-2.5 pt-3 border-t border-zinc-800/60 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={allowAdminKeyTerminalAccess}
+                        onChange={(e) => setAllowAdminKeyTerminalAccess(e.target.checked)}
+                        className="mt-0.5 rounded border-zinc-700 bg-zinc-950 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-3.5 w-3.5 shrink-0"
+                      />
+                      <span>
+                        <span className="text-xs font-semibold text-zinc-300 block">
+                          {t('allowAdminKeyTerminalAccessLabel')}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 leading-relaxed block mt-0.5">
+                          {t('allowAdminKeyTerminalAccessHint')}
+                        </span>
+                      </span>
+                    </label>
+                  )}
                 </div>
 
                 {/* Bootstrap Credentials management sub-card */}
@@ -716,123 +755,12 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                   />
                 </div>
               </div>
-
-              {/* Global Pruning (Retention Policies) */}
-              <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
-                <div className="border-b border-zinc-850 pb-2">
-                  <InfoLabel
-                    label={t('globalPruning')}
-                    hint={t('globalPruningHint')}
-                    className="text-sm font-bold text-zinc-50"
-                  />
-                </div>
-                <p className="text-xs text-zinc-400 leading-relaxed">
-                  {t('globalPruningDesc') || 'Configure rules for automatic deletion of older snapshots in the archive.'}
-                </p>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('retentionType')}</label>
-                    <SearchableSelect
-                      options={policyTypeOptions}
-                      value={policyType}
-                      onChange={setPolicyType}
-                      placeholder={t('selectPolicyTypePlaceholder')}
-                    />
-                  </div>
-
-                  {policyType === 'interval' && (
-                    <div className="space-y-3 animate-fade-in">
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="flex items-center justify-center w-4 h-4 rounded-full bg-indigo-500/20 text-indigo-300 text-[9px] font-bold shrink-0">1</span>
-                            <InfoLabel label={t('keepDaily')} hint={t('keepDailyHint')} className="text-[10px] font-semibold text-zinc-400" />
-                          </div>
-                          <input
-                            type="number"
-                            required
-                            min={0}
-                            value={policyKeepDaily}
-                            onChange={(e) => setPolicyKeepDaily(parseInt(e.target.value) || 0)}
-                            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="flex items-center justify-center w-4 h-4 rounded-full bg-indigo-500/20 text-indigo-300 text-[9px] font-bold shrink-0">2</span>
-                            <InfoLabel label={t('keepWeekly')} hint={t('keepWeeklyHint')} className="text-[10px] font-semibold text-zinc-400" />
-                          </div>
-                          <input
-                            type="number"
-                            required
-                            min={0}
-                            value={policyKeepWeekly}
-                            onChange={(e) => setPolicyKeepWeekly(parseInt(e.target.value) || 0)}
-                            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="flex items-center justify-center w-4 h-4 rounded-full bg-indigo-500/20 text-indigo-300 text-[9px] font-bold shrink-0">3</span>
-                            <InfoLabel label={t('keepMonthly')} hint={t('keepMonthlyHint')} className="text-[10px] font-semibold text-zinc-400" />
-                          </div>
-                          <input
-                            type="number"
-                            required
-                            min={0}
-                            value={policyKeepMonthly}
-                            onChange={(e) => setPolicyKeepMonthly(parseInt(e.target.value) || 0)}
-                            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {policyType === 'count' && (
-                    <div className="animate-fade-in">
-                      <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('keepLastLabel')}</label>
-                      <input
-                        type="number"
-                        required
-                        min={1}
-                        value={policyKeepLast}
-                        onChange={(e) => setPolicyKeepLast(parseInt(e.target.value) || 1)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                      />
-                    </div>
-                  )}
-
-                  {policyType === 'timeframe' && (
-                    <div className="grid grid-cols-3 gap-3 animate-fade-in">
-                      <div className="col-span-2">
-                        <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('keepWithinLabel')}</label>
-                        <input
-                          type="number"
-                          required
-                          min={1}
-                          value={policyWithinValue}
-                          onChange={(e) => setPolicyWithinValue(parseInt(e.target.value) || 1)}
-                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-zinc-400 mb-1.5">&nbsp;</label>
-                        <SearchableSelect
-                          options={unitOptions}
-                          value={policyWithinUnit}
-                          onChange={setPolicyWithinUnit}
-                          placeholder={t('selectUnitPlaceholder')}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
 
-            {/* Right Column: Global File Exclusion Paths */}
+            {/* Right Column: Global File Exclusion Paths + Retention Policies
+                (moved below the exclusions list so it reads as a follow-on
+                section rather than competing with it side-by-side). */}
+            <div className="space-y-6">
             <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
               <div className="flex items-center justify-between border-b border-zinc-850 pb-2">
                 <InfoLabel
@@ -914,23 +842,123 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                 </button>
               </div>
             </div>
+
+            {/* Global Pruning (Retention Policies) */}
+            <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
+              <div className="border-b border-zinc-850 pb-2">
+                <InfoLabel
+                  label={t('globalPruning')}
+                  hint={t('globalPruningHint')}
+                  className="text-sm font-bold text-zinc-50"
+                />
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                {t('globalPruningDesc') || 'Configure rules for automatic deletion of older snapshots in the archive.'}
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('retentionType')}</label>
+                  <SearchableSelect
+                    options={policyTypeOptions}
+                    value={policyType}
+                    onChange={setPolicyType}
+                    placeholder={t('selectPolicyTypePlaceholder')}
+                  />
+                </div>
+
+                {policyType === 'interval' && (
+                  <div className="space-y-3 animate-fade-in">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="flex items-center justify-center w-4 h-4 rounded-full bg-indigo-500/20 text-indigo-300 text-[9px] font-bold shrink-0">1</span>
+                          <InfoLabel label={t('keepDaily')} hint={t('keepDailyHint')} className="text-[10px] font-semibold text-zinc-400" />
+                        </div>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={policyKeepDaily}
+                          onChange={(e) => setPolicyKeepDaily(parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="flex items-center justify-center w-4 h-4 rounded-full bg-indigo-500/20 text-indigo-300 text-[9px] font-bold shrink-0">2</span>
+                          <InfoLabel label={t('keepWeekly')} hint={t('keepWeeklyHint')} className="text-[10px] font-semibold text-zinc-400" />
+                        </div>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={policyKeepWeekly}
+                          onChange={(e) => setPolicyKeepWeekly(parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="flex items-center justify-center w-4 h-4 rounded-full bg-indigo-500/20 text-indigo-300 text-[9px] font-bold shrink-0">3</span>
+                          <InfoLabel label={t('keepMonthly')} hint={t('keepMonthlyHint')} className="text-[10px] font-semibold text-zinc-400" />
+                        </div>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={policyKeepMonthly}
+                          onChange={(e) => setPolicyKeepMonthly(parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {policyType === 'count' && (
+                  <div className="animate-fade-in">
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('keepLastLabel')}</label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      value={policyKeepLast}
+                      onChange={(e) => setPolicyKeepLast(parseInt(e.target.value) || 1)}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                    />
+                  </div>
+                )}
+
+                {policyType === 'timeframe' && (
+                  <div className="grid grid-cols-3 gap-3 animate-fade-in">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-semibold text-zinc-400 mb-1.5">{t('keepWithinLabel')}</label>
+                      <input
+                        type="number"
+                        required
+                        min={1}
+                        value={policyWithinValue}
+                        onChange={(e) => setPolicyWithinValue(parseInt(e.target.value) || 1)}
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-400 mb-1.5">&nbsp;</label>
+                      <SearchableSelect
+                        options={unitOptions}
+                        value={policyWithinUnit}
+                        onChange={setPolicyWithinUnit}
+                        placeholder={t('selectUnitPlaceholder')}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            </div>
           </div>
 
-          <div className="border-t border-zinc-800 pt-4 flex items-center justify-between">
-            {success && (
-              <span className="text-emerald-400 text-xs flex items-center gap-1.5">
-                <CheckCircle size={14} /> {t('settingsSuccess')}
-              </span>
-            )}
-            {!success && <div />}
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm tracking-wide shadow transition-colors disabled:opacity-50"
-            >
-              <Save size={16} /> {saving ? t('saving') : t('saveSettings')}
-            </button>
-          </div>
         </form>
       )}
 

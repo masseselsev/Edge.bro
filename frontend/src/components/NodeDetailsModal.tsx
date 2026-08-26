@@ -45,6 +45,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
   const [history, setHistory] = useState<BackupHistory[]>([]);
   const [groups, setGroups] = useState<BackupGroup[]>([]);
   const [notes, setNotes] = useState('');
+  const [sshLogin, setSshLogin] = useState('');
   const [groupId, setGroupId] = useState<number>(0);
   const [natChoice, setNatChoice] = useState<NatChoice>('inherit');
   const [rateLimit, setRateLimit] = useState<string>('');
@@ -88,6 +89,7 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
         const found: Node = await nRes.json();
         setNode(found);
         setNotes(found.notes || '');
+        setSshLogin(found.ssh_login || '');
         setGroupId(found.group_id || 0);
         setNatChoice(natChoiceFrom(found.orchestrator_behind_nat));
         setRateLimit(found.upload_rate_limit == null ? '' : formatMbit(kibToMbit(found.upload_rate_limit)));
@@ -248,6 +250,8 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
       setSavingNotes(false);
     }
   };
+
+  const handleSaveSshLogin = () => mutation.run(`/api/nodes/${nodeId}/ssh-login`, { ssh_login: sshLogin.trim() || null });
 
   const handleNatOverride = async (choice: NatChoice) => {
     // Applied immediately and rolled back if the server refuses: this is a
@@ -685,6 +689,32 @@ export default function NodeDetailsModal({ nodeId, onClose, onRefreshList }: Nod
                   <Edit className="h-4.5 w-4.5 text-indigo-400" />
                   {t('notes')}
                 </h4>
+
+                <div className="space-y-1.5">
+                  <InfoLabel
+                    label={t('sshLoginLabel')}
+                    hint={t('sshLoginHint')}
+                    className="block text-xs font-semibold text-zinc-400"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={sshLogin}
+                      onChange={(e) => setSshLogin(e.target.value)}
+                      placeholder={t('sshLoginPlaceholder')}
+                      className="flex-1 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-indigo-500 text-sm font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveSshLogin}
+                      disabled={mutation.pending}
+                      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
+                    >
+                      {t('sshLoginSaveButton')}
+                    </button>
+                  </div>
+                </div>
+
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}

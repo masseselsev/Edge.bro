@@ -20,6 +20,10 @@ AUTH_DEPENDENCIES = {
     "require_kiosk_or_admin",
     "get_current_auth",
     "verify_kiosk",
+    # WebSocket-route equivalents — see auth.get_current_auth_ws's docstring
+    # for why they are separate functions rather than the same ones above.
+    "require_admin_ws",
+    "get_current_auth_ws",
 }
 
 # (method, path) pairs that are unauthenticated on purpose.
@@ -91,7 +95,15 @@ def _unauthenticated_routes():
     for route in _api_routes():
         if _auth_guards(route):
             continue
-        for method in route.methods - {"HEAD", "OPTIONS"}:
+        # A websocket route has no .methods (there is no HTTP verb to a
+        # handshake) — "WS" is a synthetic label so an unauthenticated one
+        # still shows up here instead of crashing the scan or being silently
+        # skipped, either of which would defeat the point of this file.
+        methods = getattr(route, "methods", None)
+        if methods is None:
+            out.add(("WS", route.path))
+            continue
+        for method in methods - {"HEAD", "OPTIONS"}:
             out.add((method, route.path))
     return out
 

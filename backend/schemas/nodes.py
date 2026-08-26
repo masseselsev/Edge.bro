@@ -41,6 +41,9 @@ class NodeResponse(BaseModel):
     memory_info: Optional[str] = None
     edge_version: Optional[str] = None
     notes: Optional[str] = None
+    # Login for the fleet table's quick-connect ssh:// link. See
+    # models.Node.ssh_login.
+    ssh_login: Optional[str] = None
     hasp_runtime_version: Optional[str] = None
     is_backup_running: Optional[bool] = False
     # Measured while the backup runs, in Mbit/s. None until borg's rolling
@@ -77,6 +80,9 @@ class PaginatedNodesResponse(BaseModel):
 
 class NodeNotesUpdate(BaseModel):
     notes: Optional[str] = None
+
+class NodeSshLoginUpdate(BaseModel):
+    ssh_login: Optional[str] = None
 
 class NodeNatOverrideUpdate(BaseModel):
     # None clears the override -> inherit from group, then global settings

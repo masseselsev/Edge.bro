@@ -8,7 +8,6 @@ import type { Node } from '../types';
 
 interface NodeRowProps {
   node: Node;
-  depth?: number;
   bulkDeleteMode: boolean;
   /** Just this row's state. Passing the whole selection map would change
    *  identity on every click and defeat the memo below. */
@@ -21,6 +20,11 @@ interface NodeRowProps {
   onDeleteNode: (nodeId: number, hostname: string) => void;
   /** Takes the id so FleetTab can hold one stable callback for every row. */
   onShowDetails: (nodeId: number) => void;
+  /** Persists the login typed the first time this node's terminal is
+   *  opened, so later clicks reuse it without asking again. */
+  onSaveSshLogin: (nodeId: number, hostname: string, login: string) => void;
+  /** Opens the web terminal modal for this node. */
+  onOpenTerminal: (node: Node) => void;
   groupName: string | null;
   groupRateLimit?: number | null;
   timezone?: string;
@@ -28,7 +32,6 @@ interface NodeRowProps {
 
 function NodeRowComponent({
   node,
-  depth = 0,
   bulkDeleteMode,
   isSelected,
   onSelectNode,
@@ -38,6 +41,8 @@ function NodeRowComponent({
   onShowBackup,
   onDeleteNode,
   onShowDetails,
+  onSaveSshLogin,
+  onOpenTerminal,
   groupName,
   groupRateLimit,
   timezone,
@@ -108,14 +113,32 @@ function NodeRowComponent({
   };
 
   const getIpTooltip = () => {
-    if (node.last_ping_status === true) {
-      return t('nodeOnline') || 'Online';
+    const statusLine = node.last_ping_status === true
+      ? (t('nodeOnline') || 'Online')
+      : node.last_available_at
+        ? (t('nodeOfflineLastSeen') || 'Offline (Last seen: {time})').replace('{time}', formatDate(node.last_available_at, timezone))
+        : (t('nodeNeverOnline') || 'Never online');
+    return `${statusLine}\n${t('sshQuickConnectHint')}`;
+  };
+
+  // Ctrl/Cmd-click only: a plain click on IP:PORT text should not risk
+  // opening a terminal by accident. First use for a node prompts for the
+  // login and persists it via onSaveSshLogin; every click after that reuses
+  // the saved value straight away. Editing an already-saved login happens in
+  // the node details modal, not by re-prompting here. The login itself is
+  // only ever read by the backend (from the node's own saved value, by node
+  // id) — it does not need to reach onOpenTerminal at all.
+  const handleIpPortClick = (e: React.MouseEvent) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    if (node.ssh_login) {
+      onOpenTerminal(node);
+      return;
     }
-    if (node.last_available_at) {
-      const formattedTime = formatDate(node.last_available_at, timezone);
-      return (t('nodeOfflineLastSeen') || 'Offline (Last seen: {time})').replace('{time}', formattedTime);
-    }
-    return t('nodeNeverOnline') || 'Never online';
+    const entered = window.prompt(t('sshLoginPrompt'))?.trim();
+    if (!entered) return;
+    onSaveSshLogin(node.id, node.hostname, entered);
+    onOpenTerminal(node);
   };
 
   const effectiveLimitStr = (() => {
@@ -177,7 +200,7 @@ function NodeRowComponent({
   };
 
   return (
-    <tr className="divide-x divide-zinc-800/70 hover:bg-zinc-800/30 transition-colors">
+    <tr className="hover:bg-zinc-800/30 transition-colors">
       {bulkDeleteMode && (
         <td className="px-3.5 py-2.5 w-10 text-center">
           <input
@@ -188,15 +211,16 @@ function NodeRowComponent({
           />
         </td>
       )}
-      <td className="px-3.5 py-2.5 font-semibold text-zinc-50 flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 20}px` }}>
+      <td className="px-3.5 py-2.5 font-semibold text-zinc-50 flex items-center gap-2">
         <Cpu size={14} className="text-zinc-500 shrink-0" />
         {/* overflow-hidden: the column's own width never changes (it's a
-            fixed pixel value, measured once and persisted), but grouped
-            views add paddingLeft per nesting depth above, which eats into
-            the space available here. Without a clip boundary, the "Group:
-            X • rate limit" line (whitespace-nowrap, no truncate of its own)
-            would render past this box and visually spill into the next
-            column instead of the column itself ever moving. */}
+            fixed pixel value, measured once and persisted). The "Group: X •
+            rate limit" line (whitespace-nowrap, no truncate of its own)
+            would otherwise render past this box and visually spill into the
+            next column instead of the column itself ever moving. Node rows
+            no longer indent by nesting depth — that's what used to make the
+            first column appear to slide right as subnet groups expanded;
+            the fold/unfold tree above already conveys the hierarchy. */}
         <div className="flex flex-col min-w-0 overflow-hidden">
           {/* The note rides on the hostname's existing tooltip, which is
               already there so a truncated name can be read in full. The
@@ -229,8 +253,12 @@ function NodeRowComponent({
           )}
         </div>
       </td>
-      <td className="px-3.5 py-2.5 text-zinc-400 whitespace-nowrap text-xs">
-        <span className={getIpColorClass()} title={getIpTooltip()}>
+      <td
+        className="px-3.5 py-2.5 text-zinc-400 whitespace-nowrap text-xs cursor-pointer"
+        title={getIpTooltip()}
+        onClick={handleIpPortClick}
+      >
+        <span className={getIpColorClass()}>
           {node.ip_address}
         </span>
         :{node.ssh_port}

@@ -153,3 +153,38 @@ def test_borg_rsh_never_prompts_and_keeps_the_link_alive():
         assert "BatchMode=yes" in rsh
         assert "StrictHostKeyChecking=no" in rsh
         assert "ServerAliveInterval=" in rsh
+
+
+# --- interactive mode: core/terminal_bridge.py's web terminal ---
+
+def test_command_omits_remote_when_none():
+    argv = ssh.command("10.0.0.5", 22, None, user="root", interactive=True)
+    assert "root@10.0.0.5" == argv[-1]
+
+
+def test_command_includes_remote_when_given():
+    argv = ssh.command("10.0.0.5", 22, "borg serve", user="root")
+    assert argv[-2:] == ["root@10.0.0.5", "borg serve"]
+
+
+def test_command_interactive_omits_batch_mode_and_forces_tty():
+    argv = ssh.command("10.0.0.5", 22, None, interactive=True)
+    assert "-tt" in argv
+    assert "BatchMode=yes" not in argv
+
+
+def test_command_non_interactive_still_sets_batch_mode():
+    argv = ssh.command("10.0.0.5", 22, "true")
+    assert "BatchMode=yes" in argv
+    assert "-tt" not in argv
+
+
+def test_command_key_path_none_omits_dash_i():
+    argv = ssh.command("10.0.0.5", 22, None, key_path=None, user="alice", interactive=True)
+    assert "-i" not in argv
+
+
+def test_command_default_key_path_still_included():
+    argv = ssh.command("10.0.0.5", 22, "true")
+    assert "-i" in argv
+    assert ssh.DEFAULT_KEY in argv

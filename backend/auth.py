@@ -21,7 +21,7 @@ from typing import Union
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, WebSocket, WebSocketException, status
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -77,6 +77,66 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
 
 # --- Dependency Guards ---
 
+def resolve_auth_token(token: str, db: Session) -> Union[models.User, models.Kiosk]:
+    """Everything `get_current_auth` does once it has a token string, in a form
+    that does not care whether that string came off a Request or a WebSocket.
+    See `get_current_auth`'s docstring for the token-resolution rules this
+    implements — this function starts after the token has already been found.
+    """
+    try:
+        # Check if it's a valid JWT admin token
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+        user = db.query(models.User).filter(models.User.username == username).first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        return user
+    except jwt.PyJWTError:
+        # Check if it's an approved kiosk token (simple hex key)
+        kiosk = db.query(models.Kiosk).filter(
+            models.Kiosk.auth_token == token,
+            models.Kiosk.status == "APPROVED"
+        ).first()
+        if kiosk:
+            return kiosk
+
+        # Check if it matches the offline restore token.
+        #
+        # No file means no offline client has been issued, so nothing
+        # authenticates here. This used to fall back to a hardcoded literal,
+        # which made that literal a fleet-wide password: it is accepted from a
+        # `?token=` query parameter, and the Kiosk it returns can read and
+        # download the contents of any node's archives.
+        try:
+            from iso_tasks import CACHE_DIR, TEMPLATE_BUILD
+            token_path = os.path.join(CACHE_DIR, "auth_token.txt")
+            if os.path.exists(token_path):
+                with open(token_path, "r") as f:
+                    expected_token = f.read().strip()
+                # Upgrades inherit a poisoned file: every version before this
+                # one wrote the template sentinel here on each base-image
+                # rebuild, so the word "TEMPLATE" is sitting in it on existing
+                # installs and would keep working as a password. Refused
+                # outright rather than left to a cleanup step someone has to
+                # remember.
+                if expected_token.upper() == TEMPLATE_BUILD.upper():
+                    expected_token = ""
+                # Compared without regard to case because the operator types it
+                # off a printed label, and in constant time because this is a
+                # bare secret comparison reachable before authentication.
+                if expected_token and secrets.compare_digest(
+                    token.strip().upper(), expected_token.upper()
+                ):
+                    return models.Kiosk(name="Offline Restore Client", status="APPROVED", auth_token=token)
+        except Exception:
+            pass
+
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session or token")
+
+
 def get_current_auth(request: Request = None, db: Session = Depends(get_db)) -> Union[models.User, models.Kiosk]:
     """Resolve the caller to a User or a Kiosk, or raise 401.
 
@@ -108,6 +168,9 @@ def get_current_auth(request: Request = None, db: Session = Depends(get_db)) -> 
     module docstring on colliding User and Kiosk keys — unless they went
     through `require_user`, `require_admin` or another guard that pins the
     type.
+
+    See `get_current_auth_ws` for the WebSocket-route equivalent — same rules,
+    a different place to find the token.
     """
     token = None
     if request:
@@ -126,58 +189,53 @@ def get_current_auth(request: Request = None, db: Session = Depends(get_db)) -> 
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    return resolve_auth_token(token, db)
+
+
+def get_current_auth_ws(websocket: WebSocket, db: Session = Depends(get_db)) -> Union[models.User, models.Kiosk]:
+    """`get_current_auth`'s WebSocket-route equivalent.
+
+    A `WebSocket` exposes `.headers`, `.cookies` and `.query_params` the same
+    way a `Request` does (both are Starlette `HTTPConnection`s), so the same
+    three-source precedence applies — in practice this always resolves via
+    the `admin_session` cookie, since the browser attaches it automatically
+    on a same-origin WS handshake and the orchestrator's own UI never sends a
+    `?token=`.
+
+    Raises `WebSocketException`, not `HTTPException`. FastAPI 0.141's
+    websocket routes do not translate an `HTTPException` raised from a
+    dependency into a handshake rejection at all — the connection hangs
+    forever instead, confirmed empirically before writing this. A
+    `WebSocketException` is what actually closes the handshake with a
+    code the client sees as `WebSocketDisconnect`.
+    """
+    token = None
+    auth_header = websocket.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    else:
+        token = websocket.cookies.get("admin_session")
+        if not token:
+            token = websocket.query_params.get("token")
+
+    if not token:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="Not authenticated")
+
     try:
-        # Check if it's a valid JWT admin token
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-        
-        user = db.query(models.User).filter(models.User.username == username).first()
-        if not user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-        return user
-    except jwt.PyJWTError:
-        # Check if it's an approved kiosk token (simple hex key)
-        kiosk = db.query(models.Kiosk).filter(
-            models.Kiosk.auth_token == token,
-            models.Kiosk.status == "APPROVED"
-        ).first()
-        if kiosk:
-            return kiosk
-        
-        # Check if it matches the offline restore token.
-        #
-        # No file means no offline client has been issued, so nothing
-        # authenticates here. This used to fall back to a hardcoded literal,
-        # which made that literal a fleet-wide password: it is accepted from a
-        # `?token=` query parameter, and the Kiosk it returns can read and
-        # download the contents of any node's archives.
-        try:
-            from iso_tasks import CACHE_DIR, TEMPLATE_BUILD
-            token_path = os.path.join(CACHE_DIR, "auth_token.txt")
-            if os.path.exists(token_path):
-                with open(token_path, "r") as f:
-                    expected_token = f.read().strip()
-                # Upgrades inherit a poisoned file: every version before this
-                # one wrote the template sentinel here on each base-image
-                # rebuild, so the word "TEMPLATE" is sitting in it on existing
-                # installs and would keep working as a password. Refused
-                # outright rather than left to a cleanup step someone has to
-                # remember.
-                if expected_token.upper() == TEMPLATE_BUILD.upper():
-                    expected_token = ""
-                # Compared without regard to case because the operator types it
-                # off a printed label, and in constant time because this is a
-                # bare secret comparison reachable before authentication.
-                if expected_token and secrets.compare_digest(
-                    token.strip().upper(), expected_token.upper()
-                ):
-                    return models.Kiosk(name="Offline Restore Client", status="APPROVED", auth_token=token)
-        except Exception:
-            pass
-        
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session or token")
+        return resolve_auth_token(token, db)
+    except HTTPException as exc:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason=str(exc.detail))
+
+
+def require_admin_ws(auth = Depends(get_current_auth_ws)) -> models.User:
+    """`require_admin`'s WebSocket-route equivalent. See `get_current_auth_ws`
+    for why this raises `WebSocketException` rather than `HTTPException`."""
+    if not isinstance(auth, models.User):
+        raise WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="Administrator permissions required",
+        )
+    return auth
 
 
 def require_admin(auth = Depends(get_current_auth)) -> models.User:

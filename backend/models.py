@@ -68,6 +68,14 @@ class Settings(Base):
     # an operator wants a hard ceiling anyway.
     thermal_fit_retention_days = Column(Integer, nullable=True)
 
+    # Credential path for the fleet table's web terminal (see
+    # core/terminal_bridge.py). Superadmin always connects with the
+    # orchestrator's own key; everyone else gets ssh's own password prompt
+    # unless this is on, in which case other admins get the key path too.
+    # Off by default, and only a superadmin can change it — see
+    # routers/settings.py's update_settings.
+    allow_admin_key_terminal_access = Column(Boolean, default=False, nullable=False)
+
 
 
 
@@ -112,6 +120,11 @@ class Node(Base):
     hostname = Column(String, unique=True, index=True, nullable=False)
     ip_address = Column(String, unique=True, index=True, nullable=False)
     ssh_port = Column(Integer, default=22, nullable=False)
+    # Login for the fleet table's quick-connect ssh:// link. Distinct from
+    # bootstrap_credentials (those are for Ansible provisioning): this is
+    # whatever an operator manually types the first time they ctrl/cmd-click
+    # the node's IP, and is reused after that without asking again.
+    ssh_login = Column(String, nullable=True)
     # Indexed: the scheduler filters on it every 60s, the bootstrap retry
     # every 5 minutes, and the node list filters on it per request.
     status = Column(String, default='NEEDS_BOOTSTRAP', nullable=False, index=True) # OFFLINE, NEEDS_BOOTSTRAP, NEEDS_FIX, READY

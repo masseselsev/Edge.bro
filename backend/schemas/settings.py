@@ -58,6 +58,11 @@ class SettingsBase(BaseModel):
     # recommendation — see monitoring_retention_task). Set only if an operator
     # wants a hard ceiling on the table's growth.
     thermal_fit_retention_days: Optional[int] = Field(default=None, ge=1)
+    # Off by default. Only a superadmin's POST /api/settings is honoured for
+    # this field — see routers/settings.py's update_settings — so a plain
+    # admin submitting a settings form that happens to carry a different
+    # value here cannot change it.
+    allow_admin_key_terminal_access: bool = Field(default=False)
 
 
     @field_validator('server_name')

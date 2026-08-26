@@ -50,6 +50,14 @@ def test_create_settings(db_session):
     assert retrieved.borg_ssh_port == 12345
     assert retrieved.keep_daily == 7
 
+
+def test_new_settings_row_defaults_admin_key_terminal_access_to_false(db_session):
+    settings = models.Settings()
+    db_session.add(settings)
+    db_session.commit()
+    db_session.refresh(settings)
+    assert settings.allow_admin_key_terminal_access is False
+
 def test_create_node_with_uuid(db_session):
     """
     Verify that nodes with EFI partition UUID can be saved and retrieved.
@@ -673,6 +681,42 @@ def test_serialize_node_includes_smart_percent_used(db_session):
 
     result_absent = _serialize_node(node, 0)
     assert result_absent["smart_percent_used"] is None
+
+
+def test_serialize_node_includes_ssh_login(db_session):
+    """_serialize_node builds the response dict by hand — the exact class of
+    bug that shipped os_arch without it (see test_serialize_node_includes_os_arch
+    above)."""
+    from routers.nodes_crud import _serialize_node
+
+    node = models.Node(
+        hostname="serialize-ssh-login-node",
+        ip_address="10.99.0.7",
+        ssh_login="root",
+    )
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+
+    result = _serialize_node(node, 0)
+    assert result["ssh_login"] == "root"
+
+
+def test_node_ssh_login_column_roundtrips(db_session):
+    node = models.Node(
+        hostname="ssh-login-node",
+        ip_address="10.99.0.8",
+        ssh_login="admin",
+    )
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+    assert node.ssh_login == "admin"
+
+    node.ssh_login = None
+    db_session.commit()
+    db_session.refresh(node)
+    assert node.ssh_login is None
 
 
 def test_node_os_arch_column_roundtrips(db_session):

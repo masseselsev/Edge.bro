@@ -196,6 +196,7 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
         ("default_credentials_id", "Default Credentials ID"),
         ("server_net_capacity_mbps", "Server Net Capacity Mbps"),
         ("thermal_fit_retention_days", "Thermal Fit Retention Days"),
+        ("allow_admin_key_terminal_access", "Allow Admin Key Terminal Access"),
     ]
     for attr, label in fields:
         old_val = getattr(settings, attr, None)
@@ -251,6 +252,9 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     settings.default_credentials_id = payload.default_credentials_id
     settings.server_net_capacity_mbps = payload.server_net_capacity_mbps
     settings.thermal_fit_retention_days = payload.thermal_fit_retention_days
+    # Superadmin-only: see SettingsBase.allow_admin_key_terminal_access.
+    if current_user.is_superadmin:
+        settings.allow_admin_key_terminal_access = payload.allow_admin_key_terminal_access
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(settings, "bootstrap_credentials")
     flag_modified(settings, "global_exclusions")

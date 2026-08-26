@@ -182,6 +182,7 @@ def _serialize_node(
         "edge_version": node.edge_version,
         "hasp_runtime_version": node.hasp_runtime_version,
         "notes": node.notes,
+        "ssh_login": node.ssh_login,
         "orchestrator_behind_nat": node.orchestrator_behind_nat,
         "upload_rate_limit": node.upload_rate_limit,
         "is_backup_running": is_running,

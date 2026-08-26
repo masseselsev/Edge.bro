@@ -33,14 +33,15 @@ DEFAULT_CONNECT_TIMEOUT_S = 10
 def command(
     host: str,
     port: int,
-    remote: str,
+    remote: Optional[str] = None,
     *,
-    key_path: str = DEFAULT_KEY,
+    key_path: Optional[str] = DEFAULT_KEY,
     user: str = "root",
     connect_timeout: Optional[int] = DEFAULT_CONNECT_TIMEOUT_S,
     keepalive: bool = False,
     discard_host_key: bool = False,
     extra_args: Optional[List[str]] = None,
+    interactive: bool = False,
 ) -> List[str]:
     """Build the argv for one SSH call to a node.
 
@@ -61,6 +62,24 @@ def command(
     `connect_timeout=None` leaves the system default in place. Only the backup
     transfer wants that: capping the initial connect at ten seconds would fail
     backups on links that are merely slow rather than down.
+
+    `remote=None` omits the trailing remote command entirely, giving an
+    interactive login shell instead of running one command and exiting — what
+    `core/terminal_bridge.py` wants. Every other caller passes a real command
+    string.
+
+    `key_path=None` omits `-i` entirely, so authentication falls through to
+    whatever ssh would otherwise try (an agent, or — combined with
+    `interactive=True` — a password prompt on the attached pty). Every
+    existing caller keeps passing a real path, so this is opt-in.
+
+    `interactive=True` is for a real pty attached locally (see
+    core/terminal_bridge.py): it forces `-tt` (ssh's own heuristic for
+    whether to allocate a remote pty can guess wrong when stdin is a pty it
+    did not open itself) and, critically, skips `BatchMode=yes` — a hung
+    password prompt is a bug everywhere else in this codebase, but it is
+    exactly what the password credential path needs to reach the human
+    sitting at the other end of the pty.
     """
     argv = ["ssh", "-o", "StrictHostKeyChecking=no"]
 
@@ -76,11 +95,19 @@ def command(
             "-o", f"ServerAliveCountMax={keepalive_count()}",
         ]
 
-    # Never prompt. There is no terminal to prompt on, so a prompt is a hang.
-    argv += ["-o", "BatchMode=yes"]
-    argv += ["-p", str(port), "-i", key_path]
+    if interactive:
+        argv += ["-tt"]
+    else:
+        # Never prompt. There is no terminal to prompt on, so a prompt is a hang.
+        argv += ["-o", "BatchMode=yes"]
+
+    argv += ["-p", str(port)]
+    if key_path is not None:
+        argv += ["-i", key_path]
     argv += list(extra_args or [])
-    argv += [f"{user}@{host}", remote]
+    argv += [f"{user}@{host}"]
+    if remote:
+        argv += [remote]
     return argv
 
 

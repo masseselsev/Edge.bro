@@ -25,7 +25,7 @@ from schemas.groups import (
     GroupWindowFitResponse, SchedulerLoadResponse,
 )
 from schemas.nodes import (
-    NodeCreate, NodeResponse, PaginatedNodesResponse, NodeNotesUpdate,
+    NodeCreate, NodeResponse, PaginatedNodesResponse, NodeNotesUpdate, NodeSshLoginUpdate,
     NodeNatOverrideUpdate, NodeRateLimitUpdate, NodeCpuQuotaOverrideUpdate, NodeProvisionRequest,
     DeviceResponse, NodeCheckinRequest, HaspFeatureResponse, HaspStatusResponse,
 )

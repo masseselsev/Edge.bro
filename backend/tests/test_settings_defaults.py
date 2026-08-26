@@ -107,4 +107,64 @@ def test_new_settings_row_gets_the_curated_default_exclusions(db_session):
     assert "/var/opt/edge/trainer/*" in patterns
     assert "/var/opt/edge/*.iso" in patterns
     assert "/tmp/*" in patterns
-    assert len(settings.global_exclusions) == 18
+    assert "/home/*" in patterns
+    assert len(settings.global_exclusions) == 19
+
+
+def test_only_superadmin_can_change_admin_key_terminal_access():
+    """Not the module's `db_session` fixture: that engine is a bare
+    `sqlite:///:memory:` with no `poolclass=StaticPool`, so SQLAlchemy's
+    default `SingletonThreadPool` hands each *thread* its own separate,
+    unmigrated in-memory database — and `TestClient` runs requests on a
+    background thread. The symptom was `OperationalError: no such table:
+    settings` even though the row had just been inserted moments earlier.
+    A dedicated `StaticPool` engine shares one real connection across
+    threads, which is what a `TestClient`-driven test actually needs."""
+    from fastapi.testclient import TestClient
+    from sqlalchemy.pool import StaticPool
+    from database import get_db
+    from main import app
+    from auth import require_admin
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(bind=engine)
+    db_session = sessionmaker(autocommit=False, autoflush=False, bind=engine)()
+
+    settings = models.Settings()
+    db_session.add(settings)
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[require_admin] = lambda: models.User(username="plain-admin", is_superadmin=False)
+
+    base_payload = {
+        "borg_ssh_port": 12345, "keep_daily": 7, "keep_weekly": 4, "keep_monthly": 6,
+        "global_exclusions": [], "orchestrator_ip": "", "orchestrator_behind_nat": False,
+        "timezone": "Browser Local", "language": "en", "default_compression": "zstd:3",
+        "default_cpu_quota": 30, "default_rate_limit": None, "server_ips": [],
+        "max_kiosk_isos": 5, "server_name": "edge-bro", "bootstrap_credentials": [],
+        "default_credentials_id": "", "server_net_capacity_mbps": 1000,
+        "thermal_fit_retention_days": None, "allow_admin_key_terminal_access": True,
+    }
+
+    try:
+        with TestClient(app) as c:
+            resp = c.post("/api/settings", json=base_payload)
+        assert resp.status_code == 200
+
+        db_session.expire_all()
+        settings = db_session.query(models.Settings).first()
+        assert settings.allow_admin_key_terminal_access is False  # a plain admin's attempt is ignored
+
+        app.dependency_overrides[require_admin] = lambda: models.User(username="root-admin", is_superadmin=True)
+        with TestClient(app) as c:
+            resp = c.post("/api/settings", json=base_payload)
+        assert resp.status_code == 200
+
+        db_session.expire_all()
+        settings = db_session.query(models.Settings).first()
+        assert settings.allow_admin_key_terminal_access is True  # a superadmin's attempt applies
+    finally:
+        app.dependency_overrides.clear()
+        db_session.close()
+        Base.metadata.drop_all(bind=engine)

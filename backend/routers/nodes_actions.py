@@ -182,6 +182,20 @@ def update_node_notes(node_id: int, payload: schemas.NodeNotesUpdate, request: R
     return {"message": "Node notes updated successfully."}
 
 
+@router.post("/{node_id}/ssh-login")
+def update_node_ssh_login(node_id: int, payload: schemas.NodeSshLoginUpdate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
+    """
+    Updates the saved ssh:// login for a specific node's quick-connect link.
+    """
+    node = node_or_404(db, node_id)
+
+    node.ssh_login = payload.ssh_login
+    db.commit()
+    from database import log_user_action
+    log_user_action(db, current_user.username, "Update Node SSH Login", f"Updated the saved SSH login for node '{node.hostname}'", request)
+    return {"message": "Node SSH login updated successfully."}
+
+
 @router.post("/{node_id}/nat-override")
 def update_node_nat_override(node_id: int, payload: schemas.NodeNatOverrideUpdate, request: Request = None, db: Session = Depends(get_db), current_user = Depends(require_admin)):
     """
