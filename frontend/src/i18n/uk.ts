@@ -200,6 +200,7 @@ const uk: Record<string, string> = {
   keepWeekly: 'Утримувати тижнів',
   keepMonthly: 'Утримувати місяців',
   globalExclusionsLabel: 'Винятки файлів',
+  resetExclusionsToDefaults: 'Скинути за замовчуванням',
   globalExclusionsDesc: 'Налаштуйте шаблони файлів та директорій, які мають бути виключені з усіх резервних копій.',
   exclusionPatternPlaceholder: 'Шаблон (наприклад, /var/tmp/*)',
   exclusionCommentPlaceholder: 'Коментар (наприклад, Тимчасові файли)',

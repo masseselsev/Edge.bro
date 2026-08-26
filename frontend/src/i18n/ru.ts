@@ -200,6 +200,7 @@ const ru: Record<string, string> = {
   keepWeekly: 'Удерживать недель',
   keepMonthly: 'Удерживать месяцев',
   globalExclusionsLabel: 'Исключения файлов',
+  resetExclusionsToDefaults: 'Сбросить по умолчанию',
   globalExclusionsDesc: 'Настройте шаблоны файлов и директорий, которые должны быть исключены из всех резервных копий.',
   exclusionPatternPlaceholder: 'Шаблон (например, /var/tmp/*)',
   exclusionCommentPlaceholder: 'Комментарий (например, Временные файлы)',

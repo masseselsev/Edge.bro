@@ -793,9 +793,23 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
 
             {/* Right Column: Global File Exclusion Paths */}
             <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
-              <h3 className="text-sm font-bold text-zinc-50 border-b border-zinc-850 pb-2">
-                {t('globalExclusionsLabel')}
-              </h3>
+              <div className="flex items-center justify-between border-b border-zinc-850 pb-2">
+                <h3 className="text-sm font-bold text-zinc-50">{t('globalExclusionsLabel')}</h3>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const data = await api.get<{ global_exclusions: { pattern: string; comment: string }[] }>('/api/settings/global-exclusions/defaults');
+                      setGlobalExclusions([...(data.global_exclusions || [])].sort((a, b) => a.pattern.localeCompare(b.pattern)));
+                    } catch (err) {
+                      console.error(err);
+                    }
+                  }}
+                  className="px-2.5 py-1 text-[11px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md transition-colors cursor-pointer"
+                >
+                  {t('resetExclusionsToDefaults')}
+                </button>
+              </div>
               <p className="text-xs text-zinc-400 leading-relaxed">
                 {t('globalExclusionsDesc')}
               </p>

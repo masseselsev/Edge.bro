@@ -200,6 +200,7 @@ const en: Record<string, string> = {
   keepWeekly: 'Keep Weekly',
   keepMonthly: 'Keep Monthly',
   globalExclusionsLabel: 'Global File Exclusion Paths',
+  resetExclusionsToDefaults: 'Reset to Defaults',
   globalExclusionsDesc: 'Configure patterns for files and directories that should be excluded from all backup snapshots.',
   exclusionPatternPlaceholder: 'Pattern (e.g. /var/tmp/*)',
   exclusionCommentPlaceholder: 'Comment (e.g. Temporary files)',

@@ -7,6 +7,7 @@ import models
 import schemas
 from version import VERSION
 from auth import require_admin
+from core.default_exclusions import DEFAULT_GLOBAL_EXCLUSIONS
 
 router = APIRouter(prefix="/api")
 
@@ -104,6 +105,16 @@ def get_local_ips():
             pass
 
     return sorted(list(set(ips)))
+
+
+@router.get("/settings/global-exclusions/defaults")
+def get_default_global_exclusions(current_user: models.User = Depends(require_admin)):
+    """The curated exclusion list a fresh install seeds — for the Settings
+    page's Reset to Defaults button, so an install whose list was emptied by
+    a past migration (or by accident) can recover without support
+    intervention.
+    """
+    return {"global_exclusions": DEFAULT_GLOBAL_EXCLUSIONS}
 
 
 @router.get("/settings", response_model=schemas.SettingsResponse)
