@@ -234,10 +234,14 @@ export default function AdminsTab({ currentUser }: AdminsTabProps) {
                   </td>
                   <td className="p-4 font-mono text-zinc-400">
                     {user.telegram_id ? (
-                      <span className="flex items-center gap-1">
+                      <a
+                        href={`tg://user?id=${user.telegram_id}`}
+                        className="flex items-center gap-1 w-fit hover:text-indigo-400 transition-colors cursor-pointer"
+                        title={t('adminTelegramOpenChatHint')}
+                      >
                         <MessageSquare size={12} className="text-zinc-500" />
-                        @{user.telegram_id}
-                      </span>
+                        {user.telegram_id}
+                      </a>
                     ) : (
                       <span className="text-zinc-650">—</span>
                     )}
