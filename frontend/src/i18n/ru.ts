@@ -381,7 +381,7 @@ const ru: Record<string, string> = {
   addOptionalBackupComment: 'Добавьте описание/комментарий для бэкапа узла "{name}" (необязательно).',
   backupCommentTag: 'Комментарий бэкапа',
   backupCommentPlaceholderNode: 'например, Перед обновлением ядра, Версия v1.2',
-  readyOk: 'Готов [OK]',
+  readyOk: 'Развёрнут',
   pressToProvision: 'Нажмите для настройки (provision)',
   needsLicenseUpdate: 'Требуется обновление лицензии',
   nodeOnline: 'В сети',

@@ -381,7 +381,7 @@ const en: Record<string, string> = {
   addOptionalBackupComment: 'Add an optional description/comment for this backup snapshot of "{name}".',
   backupCommentTag: 'Backup Comment / Tag',
   backupCommentPlaceholderNode: 'e.g. Before kernel upgrade, Stable release v1.2',
-  readyOk: 'Ready [OK]',
+  readyOk: 'Provisioned',
   pressToProvision: 'Press to provision',
   needsLicenseUpdate: 'Needs License Update',
   nodeOnline: 'Online',

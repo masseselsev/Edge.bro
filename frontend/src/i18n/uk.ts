@@ -381,7 +381,7 @@ const uk: Record<string, string> = {
   addOptionalBackupComment: 'Додайте опис/коментар для бекапу вузла "{name}" (необов\'язково).',
   backupCommentTag: 'Коментар бекапу',
   backupCommentPlaceholderNode: 'наприклад, Перед оновленням ядра, Версія v1.2',
-  readyOk: 'Готовий [OK]',
+  readyOk: 'Розгорнуто',
   pressToProvision: 'Натисніть для налаштування (provision)',
   needsLicenseUpdate: 'Необхідно оновити ліцензію',
   nodeOnline: 'У мережі',

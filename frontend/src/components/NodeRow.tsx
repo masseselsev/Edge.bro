@@ -127,6 +127,12 @@ function NodeRowComponent({
     return t('rateLimitUnlimited') || 'unlimited';
   })();
   
+  const backupBadgeColors: Record<string, { bg: string; border: string }> = {
+    'text-emerald-400': { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
+    'text-amber-400': { bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
+    'text-zinc-500': { bg: 'bg-zinc-500/10', border: 'border-zinc-500/20' },
+  };
+
   const renderStatusButton = () => {
     const statusMap: Record<string, { bg: string, text: string, border: string, label: string, icon: React.ReactNode, title: string, onClick: () => void }> = {
       READY: {
@@ -233,7 +239,18 @@ function NodeRowComponent({
           <span className="text-zinc-500 text-[11px] mt-0.5">{t('netLabel')}: {node.network_iface || t('unknown').toUpperCase()}</span>
         </div>
       </td>
-      <td className="px-3.5 py-2.5 whitespace-nowrap">{renderStatusButton()}</td>
+      <td className="px-3.5 py-2.5 whitespace-nowrap">
+        <div className="flex flex-col gap-1 items-start">
+          {renderStatusButton()}
+          <span
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${backupBadgeColors[backupState.tone].bg} ${backupState.tone} ${backupBadgeColors[backupState.tone].border}`}
+            title={backupState.label}
+          >
+            {node.last_backup && <CheckCircle size={12} />}
+            {backupState.label}
+          </span>
+        </div>
+      </td>
       <td className={`px-3.5 py-2.5 text-xs whitespace-nowrap ${backupState.tone}`} title={backupState.label}>
         {node.last_backup ? formatDate(node.last_backup, timezone) : t('never')}
       </td>
