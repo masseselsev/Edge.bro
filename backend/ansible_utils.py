@@ -302,6 +302,8 @@ def run_ansible_playbook(
                     parsed_data["hostname"] = line.split("HOSTNAME:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
                 if "OS_VERSION:" in line:
                     parsed_data["os_version"] = line.split("OS_VERSION:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
+                if "OS_ARCH:" in line:
+                    parsed_data["os_arch"] = line.split("OS_ARCH:")[1].strip()
                 if "CPU_INFO:" in line:
                     cpu_raw = line.split("CPU_INFO:")[1].strip().replace('"', '').replace(',', '').replace(')', '').replace('(', '')
                     parsed_data["cpu_info"] = clean_cpu_info(cpu_raw)

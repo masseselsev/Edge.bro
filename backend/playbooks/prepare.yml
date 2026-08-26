@@ -155,6 +155,7 @@
             echo "MEM_INFO:$mem_info"
             echo "EDGE_VERSION:$edge_ver"
             echo "OS_VERSION:$os_ver"
+            echo "OS_ARCH:$(uname -m)"
             echo "HOSTNAME:$(hostname)"
             echo "PART_ROOT:$part_root"
             echo "PART_BOOT:$part_boot"

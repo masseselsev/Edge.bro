@@ -469,6 +469,7 @@
         echo "PREPARED:$prepared"
         echo "HOSTNAME:$(hostname)"
         echo "OS_VERSION:$os_name"
+        echo "OS_ARCH:$(uname -m)"
         echo "CPU_INFO:$cpu_info"
         echo "MEM_INFO:$mem_info"
         echo "EDGE_VERSION:$edge_ver"

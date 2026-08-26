@@ -136,6 +136,7 @@ class Node(Base):
     efi_uuid = Column(String, nullable=True) # Used to maintain exact ESP filesystem UUID during flasher restore
     partition_layout = Column(JSON, nullable=True)
     os_version = Column(String, nullable=True)
+    os_arch = Column(String, nullable=True)
     
     # Scheduler & Automated Backup fields
     # Indexed: the scheduler filters nodes by group on every tick.

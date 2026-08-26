@@ -421,6 +421,8 @@ def _run_prepare(node_id, task_id, log_to_task) -> Dict[str, Any]:
                 node.partition_layout = parsed["partition_layout"]
             if "os_version" in parsed:
                 node.os_version = parsed["os_version"]
+            if "os_arch" in parsed:
+                node.os_arch = parsed["os_arch"]
             if "hostname" in parsed:
                 node.hostname = parsed["hostname"]
             node.cpu_info = parsed.get("cpu_info")

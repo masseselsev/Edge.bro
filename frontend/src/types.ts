@@ -33,6 +33,7 @@ export interface Node {
   efi_uuid: string | null;
   partition_layout: any[] | null;
   os_version: string | null;
+  os_arch?: string | null;
   next_retry_at: string | null;
   /** Bytes this node occupies in the shared repository. Cached server-side. */
   repo_size_bytes: number | null;

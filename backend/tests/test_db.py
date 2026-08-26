@@ -641,3 +641,46 @@ def test_upgrade_settings_cpu_quota():
         db.close()
 
 
+def test_node_os_arch_column_roundtrips(db_session):
+    node = models.Node(
+        hostname="arch-node",
+        ip_address="10.99.0.2",
+        os_arch="x86_64",
+    )
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+    assert node.os_arch == "x86_64"
+
+    node.os_arch = None
+    db_session.commit()
+    db_session.refresh(node)
+    assert node.os_arch is None
+
+
+def test_run_prepare_assigns_os_arch_from_parsed_facts(monkeypatch, db_session):
+    node = models.Node(hostname="prep-node", ip_address="10.99.0.3")
+    db_session.add(node)
+    db_session.commit()
+
+    import backup_tasks
+    from contextlib import contextmanager
+
+    monkeypatch.setattr(
+        backup_tasks, "run_ansible_playbook",
+        lambda **kwargs: {"status": "SUCCESS", "parsed_data": {"os_arch": "aarch64"}},
+    )
+
+    @contextmanager
+    def fake_session_scope():
+        yield db_session
+        db_session.commit()
+
+    monkeypatch.setattr(backup_tasks, "session_scope", fake_session_scope)
+
+    backup_tasks._run_prepare(node.id, "task-1", lambda task_id, msg, **kwargs: None)
+
+    db_session.refresh(node)
+    assert node.os_arch == "aarch64"
+
+
