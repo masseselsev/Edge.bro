@@ -1,7 +1,7 @@
 import React from 'react';
 import { Cpu, CheckCircle, AlertTriangle, Settings as Gear, ShieldAlert, Trash2 } from 'lucide-react';
 import { formatDate } from './dateUtils';
-import { kibToMbit, formatMbit, formatLiveSpeed } from './rateLimit';
+import { kibToMbit, formatMbit, formatLiveSpeed, formatOsVersion } from './rateLimit';
 import { useTranslation } from '../context/TranslationContext';
 import type { Node } from '../types';
 
@@ -221,7 +221,12 @@ function NodeRowComponent({
         </span>
         :{node.ssh_port}
       </td>
-      <td className="px-3.5 py-2.5 text-zinc-300 font-medium text-xs whitespace-nowrap">{node.os_version || t('unknown')}</td>
+      <td className="px-3.5 py-2.5 whitespace-nowrap">
+        <div className="flex flex-col leading-tight">
+          <span className="text-zinc-300 font-medium text-xs">{formatOsVersion(node.os_version) || t('unknown')}</span>
+          <span className="text-zinc-500 text-[11px] mt-0.5">{node.os_arch || t('unknown').toUpperCase()}</span>
+        </div>
+      </td>
       <td className="px-3.5 py-2.5 whitespace-nowrap">
         <div className="flex flex-col leading-tight">
           <span className="text-zinc-300 font-medium text-xs">{t('diskLabel')}: {node.disk_type ? node.disk_type.split(' ')[0] : 'UNKNOWN'}</span>

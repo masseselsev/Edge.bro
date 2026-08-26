@@ -628,7 +628,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
               </th>
               <th className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('ip_address')}>
                 <div className="flex items-center gap-1">
-                  {t('ipAddressLabel')}
+                  {t('fleetIpPortLabel')}
                   {renderSortIcon('ip_address')}
                 </div>
               </th>

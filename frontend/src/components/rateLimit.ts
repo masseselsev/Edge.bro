@@ -42,3 +42,12 @@ export function formatLiveSpeed(node: {
   if (node.current_speed_limit_mbps == null) return `${current} Mbit/s`;
   return `${current} / ${formatMbit(node.current_speed_limit_mbps)} Mbit/s`;
 }
+
+// os_version is stored verbatim from /etc/os-release (NAME + VERSION_ID),
+// e.g. "Debian GNU/Linux 10" or "Ubuntu 22.04". The "GNU/Linux" is
+// redundant in a table cell that already has its own OS/ARCH column header
+// — strip it. Ubuntu has no such redundancy and passes through unchanged.
+export function formatOsVersion(osVersion: string | null | undefined): string {
+  if (!osVersion) return '';
+  return osVersion.replace('GNU/Linux ', '');
+}
