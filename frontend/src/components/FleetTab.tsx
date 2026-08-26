@@ -56,17 +56,41 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
   // Per-operator column widths, persisted server-side in the same
   // preferences blob the monitoring graphs already use.
-  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
+  //
+  // null means "not decided yet" — rather than falling back to guessed
+  // pixel defaults (which drift out of sync with real content the moment
+  // anything in a cell changes, as happened here once the SMART percentage
+  // and the group/rate-limit badge made the old guesses too narrow), a
+  // brand-new user gets one natural, auto-layout render first. Once that
+  // has painted with real row content, its measured widths become the
+  // starting point — locked in and saved, so every load after that (and
+  // every manual drag) is stable. The backend's GET only omits
+  // fleet_column_widths for a user who has never had it saved, which is
+  // what tells us to do this at all instead of just loading a saved value.
+  const [columnWidths, setColumnWidths] = useState<Record<string, number> | null>(null);
   const saveWidthsTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasMeasuredRef = React.useRef(false);
+  // The preferences GET and the nodes list GET are two independent
+  // requests that can resolve in either order. The measurement effect must
+  // not fire until this one has settled — otherwise, on the (common) case
+  // where the nodes list happens to resolve first, it could measure and
+  // overwrite a saved preference that just hadn't arrived yet. A state
+  // (not a ref) on purpose: the measurement effect needs to re-run once
+  // this flips, and only a state change triggers that.
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const tableRef = React.useRef<HTMLTableElement | null>(null);
 
   useEffect(() => {
     api.get<{ preferences: { fleet_column_widths?: Record<string, number> } }>('/api/monitoring/preferences')
       .then(data => {
-        if (data?.preferences?.fleet_column_widths) {
-          setColumnWidths({ ...DEFAULT_COLUMN_WIDTHS, ...data.preferences.fleet_column_widths });
+        const saved = data?.preferences?.fleet_column_widths;
+        if (saved && Object.keys(saved).length > 0) {
+          hasMeasuredRef.current = true; // a real saved value exists — never auto-measure over it
+          setColumnWidths({ ...DEFAULT_COLUMN_WIDTHS, ...saved });
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setPrefsLoaded(true));
   }, []);
 
   const scheduleColumnWidthsSave = (widths: Record<string, number>) => {
@@ -76,16 +100,36 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
     }, 500);
   };
 
+  // Runs once: after the first page of real rows has painted with no saved
+  // preference to load, measure the natural (table-layout: auto) width
+  // each header settled on and lock those in as the starting columnWidths —
+  // then save them, so this is a one-time event per operator, not a
+  // recurring layout shift.
+  useEffect(() => {
+    if (hasMeasuredRef.current || loading || !prefsLoaded) return;
+    hasMeasuredRef.current = true;
+    requestAnimationFrame(() => {
+      const measured: Record<string, number> = {};
+      tableRef.current?.querySelectorAll('thead th[data-col-key]').forEach((el) => {
+        const key = el.getAttribute('data-col-key');
+        if (key) measured[key] = Math.max(MIN_COLUMN_WIDTH, Math.round(el.getBoundingClientRect().width));
+      });
+      const resolved = { ...DEFAULT_COLUMN_WIDTHS, ...measured };
+      setColumnWidths(resolved);
+      scheduleColumnWidthsSave(resolved);
+    });
+  }, [loading, nodes, prefsLoaded]);
+
   const startColumnResize = (key: string, startX: number, startWidth: number) => {
     const onMove = (e: PointerEvent) => {
       const next = Math.max(MIN_COLUMN_WIDTH, startWidth + (e.clientX - startX));
-      setColumnWidths(prev => ({ ...prev, [key]: next }));
+      setColumnWidths(prev => (prev ? { ...prev, [key]: next } : prev));
     };
     const onUp = () => {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
       setColumnWidths(current => {
-        scheduleColumnWidthsSave(current);
+        if (current) scheduleColumnWidthsSave(current);
         return current;
       });
     };
@@ -95,7 +139,10 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
   const ColumnResizeHandle = ({ columnKey }: { columnKey: string }) => (
     <div
-      onPointerDown={(e) => { e.stopPropagation(); startColumnResize(columnKey, e.clientX, columnWidths[columnKey]); }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        if (columnWidths) startColumnResize(columnKey, e.clientX, columnWidths[columnKey]);
+      }}
       className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-indigo-500/40"
     />
   );
@@ -643,21 +690,26 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/50 backdrop-blur-md">
-        <table className="table-fixed w-full divide-y divide-zinc-800 text-left text-sm text-zinc-300">
-          <colgroup>
-            {bulkDeleteMode && <col style={{ width: 40 }} />}
-            <col style={{ width: columnWidths.hostname }} />
-            <col style={{ width: columnWidths.ip_address }} />
-            <col style={{ width: columnWidths.os_version }} />
-            <col style={{ width: columnWidths.disk_type }} />
-            <col style={{ width: columnWidths.status }} />
-            <col style={{ width: columnWidths.last_backup }} />
-            {/* No explicit width: with table-fixed, this is the one column
-                without a specified width, so it alone absorbs whatever
-                space the other (fixed-width) columns don't use — the last
-                column fills the row rather than leaving a gap. */}
-            <col />
-          </colgroup>
+        <table
+          ref={tableRef}
+          className={`${columnWidths ? 'table-fixed' : ''} w-full divide-y divide-zinc-800 text-left text-sm text-zinc-300`}
+        >
+          {columnWidths && (
+            <colgroup>
+              {bulkDeleteMode && <col style={{ width: 40 }} />}
+              <col style={{ width: columnWidths.hostname }} />
+              <col style={{ width: columnWidths.ip_address }} />
+              <col style={{ width: columnWidths.os_version }} />
+              <col style={{ width: columnWidths.disk_type }} />
+              <col style={{ width: columnWidths.status }} />
+              <col style={{ width: columnWidths.last_backup }} />
+              {/* No explicit width: with table-fixed, this is the one column
+                  without a specified width, so it alone absorbs whatever
+                  space the other (fixed-width) columns don't use — the last
+                  column fills the row rather than leaving a gap. */}
+              <col />
+            </colgroup>
+          )}
           <thead className="bg-zinc-950/60 text-[11px] font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800">
             <tr>
               {bulkDeleteMode && (
@@ -677,7 +729,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                   />
                 </th>
               )}
-              <th className="relative px-3.5 py-3 select-none whitespace-nowrap">
+              <th data-col-key="hostname" className="relative px-3.5 py-3 select-none whitespace-nowrap">
                 <div className="flex items-center gap-2 text-zinc-400">
                   <span
                     className={`cursor-pointer transition-colors hover:text-white ${sortKey === 'hostname' ? 'text-white font-bold' : ''}`}
@@ -697,35 +749,35 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                 </div>
                 <ColumnResizeHandle columnKey="hostname" />
               </th>
-              <th className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('ip_address')}>
+              <th data-col-key="ip_address" className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('ip_address')}>
                 <div className="flex items-center gap-1">
                   {t('fleetIpPortLabel')}
                   {renderSortIcon('ip_address')}
                 </div>
                 <ColumnResizeHandle columnKey="ip_address" />
               </th>
-              <th className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('os_version')}>
+              <th data-col-key="os_version" className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('os_version')}>
                 <div className="flex items-center gap-1">
                   {t('osVersion') || 'OS Version'}
                   {renderSortIcon('os_version')}
                 </div>
                 <ColumnResizeHandle columnKey="os_version" />
               </th>
-              <th className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('disk_type')}>
+              <th data-col-key="disk_type" className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('disk_type')}>
                 <div className="flex items-center gap-1">
                   {t('diskInterface') || 'Disk & Interface'}
                   {renderSortIcon('disk_type')}
                 </div>
                 <ColumnResizeHandle columnKey="disk_type" />
               </th>
-              <th className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('status')}>
+              <th data-col-key="status" className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('status')}>
                 <div className="flex items-center gap-1">
                   {t('statusAction') || 'Status / Action'}
                   {renderSortIcon('status')}
                 </div>
                 <ColumnResizeHandle columnKey="status" />
               </th>
-              <th className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('last_backup')}>
+              <th data-col-key="last_backup" className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('last_backup')}>
                 <div className="flex items-center gap-1">
                   {t('lastBackup') || 'Last Backup'}
                   {renderSortIcon('last_backup')}

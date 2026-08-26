@@ -29,13 +29,12 @@ DEFAULT_UI_PREFERENCES = {
     "thermal_graph_series": ["theta_c_per_w", "t_ambient_c"],
     "telemetry_graph_series": ["cpu_temp_c_mean", "power_w_mean"],
     "graph_days": 90,
-    # No "actions" entry: the frontend leaves that column's <col> without a
-    # specified width on purpose, so it fills whatever space the other,
-    # fixed-width columns don't use rather than leaving a gap.
-    "fleet_column_widths": {
-        "hostname": 260, "ip_address": 150, "os_version": 170,
-        "disk_type": 150, "status": 170, "last_backup": 150,
-    },
+    # fleet_column_widths deliberately has no default here: its absence from
+    # a GET response is the frontend's signal that this user has never
+    # customized (or had auto-measured) column widths yet, distinct from a
+    # user who genuinely saved values — see FleetTab.tsx's first-load
+    # measurement effect. Giving it a hardcoded fallback here would make
+    # every brand-new user look "already customized" and skip that.
 }
 
 

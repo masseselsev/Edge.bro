@@ -381,16 +381,21 @@ def test_preferences_persist_for_the_user(client, db_session, admin):
     assert client.get("/api/monitoring/preferences").json()["preferences"]["graph_days"] == 30
 
 
-def test_default_preferences_include_fleet_column_widths(client):
+def test_fresh_user_has_no_fleet_column_widths(client):
+    """Absence (not a hardcoded default) is the frontend's signal to
+    auto-measure and lock in widths on first load — see FleetTab.tsx."""
     resp = client.get("/api/monitoring/preferences")
     assert resp.status_code == 200
-    widths = resp.json()["preferences"]["fleet_column_widths"]
-    for key in ["hostname", "ip_address", "os_version", "disk_type", "status", "last_backup"]:
-        assert key in widths
-        assert isinstance(widths[key], int)
-    # Actions is deliberately absent — it's the one column left without a
-    # specified width so it auto-fills the row's remaining space.
-    assert "actions" not in widths
+    assert "fleet_column_widths" not in resp.json()["preferences"]
+
+
+def test_fleet_column_widths_persist_once_saved(client, db_session, admin):
+    widths = {"hostname": 300, "ip_address": 140}
+    client.post("/api/monitoring/preferences", json={"preferences": {"fleet_column_widths": widths}})
+
+    db_session.refresh(admin)
+    assert admin.ui_preferences["fleet_column_widths"] == widths
+    assert client.get("/api/monitoring/preferences").json()["preferences"]["fleet_column_widths"] == widths
 
 
 def test_saving_one_graphs_choice_does_not_wipe_another(client):
