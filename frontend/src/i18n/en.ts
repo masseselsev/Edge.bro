@@ -192,6 +192,9 @@ const en: Record<string, string> = {
   serverNameError: 'Server name must contain only letters, numbers, hyphens, and underscores, without spaces.',
   serverNetCapacityLabel: 'Server Network Capacity (Mbps)',
   serverNetCapacityHelp: 'Used as the 100% capacity limit when rendering network load percentages in the header.',
+  thermalFitRetentionLabel: 'Thermal History Retention (days)',
+  thermalFitRetentionHelp: 'Leave empty to keep thermal degradation history forever — recommended. The data is small and is the multi-year trend the thermal monitoring feature exists to produce; set a value only to enforce a hard ceiling.',
+  unlimitedPlaceholder: 'Unlimited',
 
   borgSshPort: 'Borg SSH Daemon Port',
   repoLocation: 'Repository Location',
