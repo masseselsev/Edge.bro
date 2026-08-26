@@ -468,6 +468,7 @@ const en: Record<string, string> = {
   terminalConnecting: 'Connecting…',
   terminalConnected: 'Connected',
   terminalClosed: 'Session closed',
+  terminalConnectFailed: 'Could not open a terminal session to this node',
   terminalCloseIdle: 'Closed after 15 minutes of inactivity',
   terminalCloseRemoteClosed: 'Session ended on the node',
   terminalCloseClientClosed: 'Session closed',

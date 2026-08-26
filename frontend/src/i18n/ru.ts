@@ -467,6 +467,7 @@ const ru: Record<string, string> = {
   terminalConnecting: 'Подключение…',
   terminalConnected: 'Подключено',
   terminalClosed: 'Сессия закрыта',
+  terminalConnectFailed: 'Не удалось открыть терминальную сессию к этой ноде',
   terminalCloseIdle: 'Закрыто из-за 15 минут бездействия',
   terminalCloseRemoteClosed: 'Сессия завершена на ноде',
   terminalCloseClientClosed: 'Сессия закрыта',

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -23,7 +24,7 @@ const CLOSE_REASON_KEYS: Record<string, string> = {
 export default function TerminalModal({ node, onClose }: TerminalModalProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [status, setStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
+  const [status, setStatus] = useState<'connecting' | 'open' | 'closed' | 'failed'>('connecting');
   const [closeReason, setCloseReason] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,21 +47,28 @@ export default function TerminalModal({ node, onClose }: TerminalModalProps) {
       }
     };
 
-    socket.onopen = () => {
-      setStatus('open');
-      sendResize();
-    };
     socket.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {
         term.write(new Uint8Array(event.data));
       }
     };
+    // A socket that closes without ever opening never reached the backend at
+    // all — a rejected handshake, or a proxy in front that did not forward the
+    // upgrade. Reported separately from a session that ran and ended, since
+    // "closed" for both is what makes a failure look like a normal exit.
+    let everOpened = false;
+
+    socket.onopen = () => {
+      everOpened = true;
+      setStatus('open');
+      sendResize();
+    };
     socket.onclose = (event) => {
-      setStatus('closed');
+      setStatus(everOpened ? 'closed' : 'failed');
       setCloseReason(event.reason || null);
     };
     socket.onerror = () => {
-      setStatus('closed');
+      setStatus((prev) => (prev === 'open' ? 'closed' : 'failed'));
     };
 
     const dataDisposable = term.onData((data) => {
@@ -80,15 +88,20 @@ export default function TerminalModal({ node, onClose }: TerminalModalProps) {
     };
   }, [node.id]);
 
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl w-full max-w-4xl flex flex-col">
+  // Portalled to document.body like every other modal here: `.animate-fade-in`
+  // sets `transform: translateZ(0)`, which makes any ancestor carrying it the
+  // containing block for `position: fixed` — rendered in place, the overlay
+  // gets trapped inside the tab's content area instead of covering the page.
+  return createPortal(
+    <div className="fixed inset-0 bg-zinc-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden animate-modal-in">
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
           <div className="flex flex-col">
             <span className="text-sm font-bold text-zinc-200">{node.hostname}</span>
-            <span className="text-[11px] text-zinc-500">
+            <span className={`text-[11px] ${status === 'failed' ? 'text-red-400' : 'text-zinc-500'}`}>
               {status === 'connecting' && t('terminalConnecting')}
               {status === 'open' && t('terminalConnected')}
+              {status === 'failed' && t('terminalConnectFailed')}
               {status === 'closed' &&
                 t(closeReason && CLOSE_REASON_KEYS[closeReason] ? CLOSE_REASON_KEYS[closeReason] : 'terminalClosed')}
             </span>
@@ -103,6 +116,7 @@ export default function TerminalModal({ node, onClose }: TerminalModalProps) {
         </div>
         <div ref={containerRef} className="p-2 bg-black" style={{ height: '60vh' }} />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -467,6 +467,7 @@ const uk: Record<string, string> = {
   terminalConnecting: 'Підключення…',
   terminalConnected: 'Підключено',
   terminalClosed: 'Сесію закрито',
+  terminalConnectFailed: 'Не вдалося відкрити термінальну сесію до цієї ноди',
   terminalCloseIdle: 'Закрито через 15 хвилин бездіяльності',
   terminalCloseRemoteClosed: 'Сесію завершено на ноді',
   terminalCloseClientClosed: 'Сесію закрито',
