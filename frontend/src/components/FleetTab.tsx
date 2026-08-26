@@ -7,9 +7,12 @@ import { useTranslation } from '../context/TranslationContext';
 import { api } from '../api';
 import type { Node } from '../types';
 
+// Actions has no entry: it's the one column left without a specified width
+// in the <colgroup> (see the JSX below), so it auto-fills whatever space
+// the other, fixed-width columns don't use instead of leaving a gap.
 const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   hostname: 260, ip_address: 150, os_version: 170,
-  disk_type: 150, status: 170, last_backup: 150, actions: 150,
+  disk_type: 150, status: 170, last_backup: 150,
 };
 const MIN_COLUMN_WIDTH = 80;
 
@@ -640,7 +643,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/50 backdrop-blur-md">
-        <table className="table-fixed divide-y divide-zinc-800 text-left text-sm text-zinc-300">
+        <table className="table-fixed w-full divide-y divide-zinc-800 text-left text-sm text-zinc-300">
           <colgroup>
             {bulkDeleteMode && <col style={{ width: 40 }} />}
             <col style={{ width: columnWidths.hostname }} />
@@ -649,7 +652,11 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
             <col style={{ width: columnWidths.disk_type }} />
             <col style={{ width: columnWidths.status }} />
             <col style={{ width: columnWidths.last_backup }} />
-            <col style={{ width: columnWidths.actions }} />
+            {/* No explicit width: with table-fixed, this is the one column
+                without a specified width, so it alone absorbs whatever
+                space the other (fixed-width) columns don't use — the last
+                column fills the row rather than leaving a gap. */}
+            <col />
           </colgroup>
           <thead className="bg-zinc-950/60 text-[11px] font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800">
             <tr>
@@ -725,9 +732,8 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                 </div>
                 <ColumnResizeHandle columnKey="last_backup" />
               </th>
-              <th className="relative px-3.5 py-3 text-right select-none whitespace-nowrap">
+              <th className="px-3.5 py-3 text-right select-none whitespace-nowrap">
                 {t('actions')}
-                <ColumnResizeHandle columnKey="actions" />
               </th>
             </tr>
           </thead>

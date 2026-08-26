@@ -385,9 +385,12 @@ def test_default_preferences_include_fleet_column_widths(client):
     resp = client.get("/api/monitoring/preferences")
     assert resp.status_code == 200
     widths = resp.json()["preferences"]["fleet_column_widths"]
-    for key in ["hostname", "ip_address", "os_version", "disk_type", "status", "last_backup", "actions"]:
+    for key in ["hostname", "ip_address", "os_version", "disk_type", "status", "last_backup"]:
         assert key in widths
         assert isinstance(widths[key], int)
+    # Actions is deliberately absent — it's the one column left without a
+    # specified width so it auto-fills the row's remaining space.
+    assert "actions" not in widths
 
 
 def test_saving_one_graphs_choice_does_not_wipe_another(client):
