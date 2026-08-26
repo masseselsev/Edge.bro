@@ -407,6 +407,7 @@ const uk: Record<string, string> = {
   provisionOfflineNode: 'Налаштувати офлайн-вузол',
   unknown: 'Невідомо',
   diskLabel: 'Диск',
+  diskLifeRemainingSuffix: 'залишилось',
   netLabel: 'Мережа',
   never: 'Ніколи',
   backupAction: 'Бекап',

@@ -407,6 +407,7 @@ const ru: Record<string, string> = {
   provisionOfflineNode: 'Настроить офлайн-узел',
   unknown: 'Неизвестно',
   diskLabel: 'Диск',
+  diskLifeRemainingSuffix: 'осталось',
   netLabel: 'Сеть',
   never: 'Никогда',
   backupAction: 'Бэкап',

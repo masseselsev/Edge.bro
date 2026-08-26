@@ -237,7 +237,12 @@ function NodeRowComponent({
         <div className="flex flex-col leading-tight">
           <span className="text-zinc-300 font-medium text-xs">
             {t('diskLabel')}: {node.disk_type ? node.disk_type.split(' ')[0] : 'UNKNOWN'}
-            {node.smart_percent_used != null && ` (${node.smart_percent_used}%)`}
+            {/* smart_percent_used is wear consumed (0 = new, 100 = end of
+                rated life — see core/smart.py's own conversion of SATA's
+                native "remaining" attribute into this same "used" convention).
+                Flipped here to remaining life, which is what an operator
+                scanning the fleet actually wants at a glance. */}
+            {node.smart_percent_used != null && ` (${Math.max(0, 100 - node.smart_percent_used)}% ${t('diskLifeRemainingSuffix')})`}
           </span>
           <span className="text-zinc-500 text-[11px] mt-0.5">{t('netLabel')}: {node.network_iface || t('unknown').toUpperCase()}</span>
         </div>

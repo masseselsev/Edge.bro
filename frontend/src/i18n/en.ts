@@ -407,6 +407,7 @@ const en: Record<string, string> = {
   provisionOfflineNode: 'Provision Offline Node',
   unknown: 'Unknown',
   diskLabel: 'Disk',
+  diskLifeRemainingSuffix: 'left',
   netLabel: 'Net',
   never: 'Never',
   backupAction: 'Backup',
