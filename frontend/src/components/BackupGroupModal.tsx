@@ -585,9 +585,11 @@ export default function BackupGroupModal({ isOpen, onClose, onSaved, editingGrou
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-                        {t('compressionMode')}
-                      </label>
+                      <InfoLabel
+                        label={t('compressionMode')}
+                        hint={t('compressionModeHint')}
+                        className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1"
+                      />
                       <SearchableSelect
                         options={compressionOptions}
                         value={compression}
