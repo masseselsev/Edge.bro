@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Database, Info } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Database, Info } from 'lucide-react';
 import { useTranslation } from '../context/TranslationContext';
 import { api } from '../api';
 import { formatBytes } from './formatBytes';
@@ -48,6 +48,11 @@ export default function RepositoryCapacityPanel() {
   const { t } = useTranslation();
   const [data, setData] = useState<RepositoryCapacity | null>(null);
   const [failed, setFailed] = useState(false);
+  // Collapsed by default: this is a diagnostic deep-dive, not something an
+  // operator needs open on every visit to Settings. The peak-utilization
+  // figure stays visible either way, in the header, so collapsing never
+  // hides the one number that matters at a glance.
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,21 +95,32 @@ export default function RepositoryCapacityPanel() {
 
   return (
     <div className="mb-4 space-y-3 border border-zinc-800/80 p-4 rounded-xl bg-zinc-950/40">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Database size={14} className="text-indigo-400 shrink-0" />
-            <InfoLabel
-              label={t('repoCapacityTitle')}
-              hint={t('repoCapacityHint')}
-              className="block text-xs font-bold text-zinc-300 uppercase tracking-wider"
-            />
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className="w-full flex items-start justify-between gap-3 text-left cursor-pointer"
+      >
+        <div className="flex items-start gap-1.5">
+          {expanded ? (
+            <ChevronDown size={14} className="text-zinc-500 shrink-0 mt-0.5" />
+          ) : (
+            <ChevronRight size={14} className="text-zinc-500 shrink-0 mt-0.5" />
+          )}
+          <div>
+            <div className="flex items-center gap-2">
+              <Database size={14} className="text-indigo-400 shrink-0" />
+              <InfoLabel
+                label={t('repoCapacityTitle')}
+                hint={t('repoCapacityHint')}
+                className="block text-xs font-bold text-zinc-300 uppercase tracking-wider"
+              />
+            </div>
+            <span className="text-[10px] text-zinc-500 block mt-0.5">
+              {t('repoCapacitySub')
+                .replace('{count}', String(data.shard_count))
+                .replace('{nights}', String(data.projection_nights))}
+            </span>
           </div>
-          <span className="text-[10px] text-zinc-500 block mt-0.5">
-            {t('repoCapacitySub')
-              .replace('{count}', String(data.shard_count))
-              .replace('{nights}', String(data.projection_nights))}
-          </span>
         </div>
 
         <div className="text-right shrink-0">
@@ -125,8 +141,10 @@ export default function RepositoryCapacityPanel() {
             {t('repoCapacityPeakLabel')}
           </span>
         </div>
-      </div>
+      </button>
 
+      {!expanded ? null : (
+      <>
       {data.count_floored && (
         <p className="text-[11px] text-amber-400/90 flex items-start gap-1.5">
           <Info size={12} className="mt-0.5 shrink-0" />
@@ -251,6 +269,8 @@ export default function RepositoryCapacityPanel() {
           <AlertTriangle size={12} className="mt-0.5 shrink-0" />
           {t('repoCapacityCrowded')}
         </p>
+      )}
+      </>
       )}
     </div>
   );
