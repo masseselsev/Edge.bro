@@ -738,39 +738,53 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                   </div>
 
                   {policyType === 'interval' && (
-                    <div className="grid grid-cols-3 gap-3 animate-fade-in">
-                      <div>
-                        <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepDaily')}</label>
-                        <input
-                          type="number"
-                          required
-                          min={0}
-                          value={policyKeepDaily}
-                          onChange={(e) => setPolicyKeepDaily(parseInt(e.target.value) || 0)}
-                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepWeekly')}</label>
-                        <input
-                          type="number"
-                          required
-                          min={0}
-                          value={policyKeepWeekly}
-                          onChange={(e) => setPolicyKeepWeekly(parseInt(e.target.value) || 0)}
-                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-semibold text-zinc-400 mb-1">{t('keepMonthly')}</label>
-                        <input
-                          type="number"
-                          required
-                          min={0}
-                          value={policyKeepMonthly}
-                          onChange={(e) => setPolicyKeepMonthly(parseInt(e.target.value) || 0)}
-                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
-                        />
+                    <div className="space-y-3 animate-fade-in">
+                      <p className="text-[11px] text-zinc-500 leading-relaxed">
+                        {t('retentionIntervalOrderHint')}
+                      </p>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="flex items-center justify-center w-4 h-4 rounded-full bg-indigo-500/20 text-indigo-300 text-[9px] font-bold shrink-0">1</span>
+                            <InfoLabel label={t('keepDaily')} hint={t('keepDailyHint')} className="text-[10px] font-semibold text-zinc-400" />
+                          </div>
+                          <input
+                            type="number"
+                            required
+                            min={0}
+                            value={policyKeepDaily}
+                            onChange={(e) => setPolicyKeepDaily(parseInt(e.target.value) || 0)}
+                            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="flex items-center justify-center w-4 h-4 rounded-full bg-indigo-500/20 text-indigo-300 text-[9px] font-bold shrink-0">2</span>
+                            <InfoLabel label={t('keepWeekly')} hint={t('keepWeeklyHint')} className="text-[10px] font-semibold text-zinc-400" />
+                          </div>
+                          <input
+                            type="number"
+                            required
+                            min={0}
+                            value={policyKeepWeekly}
+                            onChange={(e) => setPolicyKeepWeekly(parseInt(e.target.value) || 0)}
+                            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="flex items-center justify-center w-4 h-4 rounded-full bg-indigo-500/20 text-indigo-300 text-[9px] font-bold shrink-0">3</span>
+                            <InfoLabel label={t('keepMonthly')} hint={t('keepMonthlyHint')} className="text-[10px] font-semibold text-zinc-400" />
+                          </div>
+                          <input
+                            type="number"
+                            required
+                            min={0}
+                            value={policyKeepMonthly}
+                            onChange={(e) => setPolicyKeepMonthly(parseInt(e.target.value) || 0)}
+                            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
