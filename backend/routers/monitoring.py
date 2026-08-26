@@ -29,6 +29,10 @@ DEFAULT_UI_PREFERENCES = {
     "thermal_graph_series": ["theta_c_per_w", "t_ambient_c"],
     "telemetry_graph_series": ["cpu_temp_c_mean", "power_w_mean"],
     "graph_days": 90,
+    "fleet_column_widths": {
+        "hostname": 260, "ip_address": 150, "os_version": 170,
+        "disk_type": 150, "status": 170, "last_backup": 150, "actions": 150,
+    },
 }
 
 

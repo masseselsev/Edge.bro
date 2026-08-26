@@ -255,7 +255,7 @@ function NodeRowComponent({
         {node.last_backup ? formatDate(node.last_backup, timezone) : t('never')}
       </td>
       <td className="px-3.5 py-2 text-right whitespace-nowrap">
-        <div className="inline-flex flex-col items-end gap-1.5 w-[140px]">
+        <div className="inline-flex flex-col items-end gap-1.5 w-full">
           {/* Top row: Node Details */}
           <button
             onClick={() => onShowDetails(node.id)}

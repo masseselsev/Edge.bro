@@ -381,6 +381,15 @@ def test_preferences_persist_for_the_user(client, db_session, admin):
     assert client.get("/api/monitoring/preferences").json()["preferences"]["graph_days"] == 30
 
 
+def test_default_preferences_include_fleet_column_widths(client):
+    resp = client.get("/api/monitoring/preferences")
+    assert resp.status_code == 200
+    widths = resp.json()["preferences"]["fleet_column_widths"]
+    for key in ["hostname", "ip_address", "os_version", "disk_type", "status", "last_backup", "actions"]:
+        assert key in widths
+        assert isinstance(widths[key], int)
+
+
 def test_saving_one_graphs_choice_does_not_wipe_another(client):
     """A client that knows about one graph must not clobber settings for a
     graph it has never heard of."""

@@ -4,7 +4,14 @@ import { AddNodeModal, ProvisionNodeModal, BackupCommentModal } from './NodeModa
 import { NodeRow } from './NodeRow';
 import NodeDetailsModal from './NodeDetailsModal';
 import { useTranslation } from '../context/TranslationContext';
+import { api } from '../api';
 import type { Node } from '../types';
+
+const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
+  hostname: 260, ip_address: 150, os_version: 170,
+  disk_type: 150, status: 170, last_backup: 150, actions: 150,
+};
+const MIN_COLUMN_WIDTH = 80;
 
 interface BackupGroup {
   id: number;
@@ -43,6 +50,52 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
   // Sorting State
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // Per-operator column widths, persisted server-side in the same
+  // preferences blob the monitoring graphs already use.
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(DEFAULT_COLUMN_WIDTHS);
+  const saveWidthsTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    api.get<{ preferences: { fleet_column_widths?: Record<string, number> } }>('/api/monitoring/preferences')
+      .then(data => {
+        if (data?.preferences?.fleet_column_widths) {
+          setColumnWidths({ ...DEFAULT_COLUMN_WIDTHS, ...data.preferences.fleet_column_widths });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const scheduleColumnWidthsSave = (widths: Record<string, number>) => {
+    if (saveWidthsTimer.current) clearTimeout(saveWidthsTimer.current);
+    saveWidthsTimer.current = setTimeout(() => {
+      api.post('/api/monitoring/preferences', { preferences: { fleet_column_widths: widths } }).catch(() => {});
+    }, 500);
+  };
+
+  const startColumnResize = (key: string, startX: number, startWidth: number) => {
+    const onMove = (e: PointerEvent) => {
+      const next = Math.max(MIN_COLUMN_WIDTH, startWidth + (e.clientX - startX));
+      setColumnWidths(prev => ({ ...prev, [key]: next }));
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      setColumnWidths(current => {
+        scheduleColumnWidthsSave(current);
+        return current;
+      });
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  };
+
+  const ColumnResizeHandle = ({ columnKey }: { columnKey: string }) => (
+    <div
+      onPointerDown={(e) => { e.stopPropagation(); startColumnResize(columnKey, e.clientX, columnWidths[columnKey]); }}
+      className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-indigo-500/40"
+    />
+  );
 
   const handleSort = (key: string) => {
     setPage(1);
@@ -588,6 +641,16 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
 
       <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/50 backdrop-blur-md">
         <table className="min-w-full divide-y divide-zinc-800 text-left text-sm text-zinc-300">
+          <colgroup>
+            {bulkDeleteMode && <col style={{ width: 40 }} />}
+            <col style={{ width: columnWidths.hostname }} />
+            <col style={{ width: columnWidths.ip_address }} />
+            <col style={{ width: columnWidths.os_version }} />
+            <col style={{ width: columnWidths.disk_type }} />
+            <col style={{ width: columnWidths.status }} />
+            <col style={{ width: columnWidths.last_backup }} />
+            <col style={{ width: columnWidths.actions }} />
+          </colgroup>
           <thead className="bg-zinc-950/60 text-[11px] font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800">
             <tr>
               {bulkDeleteMode && (
@@ -607,9 +670,9 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                   />
                 </th>
               )}
-              <th className="px-3.5 py-3 select-none whitespace-nowrap">
+              <th className="relative px-3.5 py-3 select-none whitespace-nowrap">
                 <div className="flex items-center gap-2 text-zinc-400">
-                  <span 
+                  <span
                     className={`cursor-pointer transition-colors hover:text-white ${sortKey === 'hostname' ? 'text-white font-bold' : ''}`}
                     onClick={() => handleSort('hostname')}
                   >
@@ -617,7 +680,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                     {renderSortIcon('hostname')}
                   </span>
                   <span>/</span>
-                  <span 
+                  <span
                     className={`cursor-pointer transition-colors hover:text-white ${sortKey === 'group' ? 'text-white font-bold' : ''}`}
                     onClick={() => handleSort('group')}
                   >
@@ -625,38 +688,47 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                     {renderSortIcon('group')}
                   </span>
                 </div>
+                <ColumnResizeHandle columnKey="hostname" />
               </th>
-              <th className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('ip_address')}>
+              <th className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('ip_address')}>
                 <div className="flex items-center gap-1">
                   {t('fleetIpPortLabel')}
                   {renderSortIcon('ip_address')}
                 </div>
+                <ColumnResizeHandle columnKey="ip_address" />
               </th>
-              <th className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('os_version')}>
+              <th className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('os_version')}>
                 <div className="flex items-center gap-1">
                   {t('osVersion') || 'OS Version'}
                   {renderSortIcon('os_version')}
                 </div>
+                <ColumnResizeHandle columnKey="os_version" />
               </th>
-              <th className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('disk_type')}>
+              <th className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('disk_type')}>
                 <div className="flex items-center gap-1">
                   {t('diskInterface') || 'Disk & Interface'}
                   {renderSortIcon('disk_type')}
                 </div>
+                <ColumnResizeHandle columnKey="disk_type" />
               </th>
-              <th className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('status')}>
+              <th className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('status')}>
                 <div className="flex items-center gap-1">
                   {t('statusAction') || 'Status / Action'}
                   {renderSortIcon('status')}
                 </div>
+                <ColumnResizeHandle columnKey="status" />
               </th>
-              <th className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('last_backup')}>
+              <th className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('last_backup')}>
                 <div className="flex items-center gap-1">
                   {t('lastBackup') || 'Last Backup'}
                   {renderSortIcon('last_backup')}
                 </div>
+                <ColumnResizeHandle columnKey="last_backup" />
               </th>
-              <th className="px-3.5 py-3 text-right select-none whitespace-nowrap w-[150px]">{t('actions')}</th>
+              <th className="relative px-3.5 py-3 text-right select-none whitespace-nowrap">
+                {t('actions')}
+                <ColumnResizeHandle columnKey="actions" />
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
