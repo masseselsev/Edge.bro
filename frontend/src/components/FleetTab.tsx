@@ -711,7 +711,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
             </colgroup>
           )}
           <thead className="bg-zinc-950/60 text-[11px] font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800">
-            <tr>
+            <tr className="divide-x divide-zinc-800/70">
               {bulkDeleteMode && (
                 <th className="px-3.5 py-3 w-10 text-center">
                   <input
@@ -729,8 +729,8 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                   />
                 </th>
               )}
-              <th data-col-key="hostname" className="relative px-3.5 py-3 select-none whitespace-nowrap">
-                <div className="flex items-center gap-2 text-zinc-400">
+              <th data-col-key="hostname" className="relative px-3.5 py-3 text-center select-none whitespace-nowrap">
+                <div className="flex items-center justify-center gap-2 text-zinc-400">
                   <span
                     className={`cursor-pointer transition-colors hover:text-white ${sortKey === 'hostname' ? 'text-white font-bold' : ''}`}
                     onClick={() => handleSort('hostname')}
@@ -749,42 +749,42 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
                 </div>
                 <ColumnResizeHandle columnKey="hostname" />
               </th>
-              <th data-col-key="ip_address" className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('ip_address')}>
-                <div className="flex items-center gap-1">
+              <th data-col-key="ip_address" className="relative px-3.5 py-3 text-center cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('ip_address')}>
+                <div className="flex items-center justify-center gap-1">
                   {t('fleetIpPortLabel')}
                   {renderSortIcon('ip_address')}
                 </div>
                 <ColumnResizeHandle columnKey="ip_address" />
               </th>
-              <th data-col-key="os_version" className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('os_version')}>
-                <div className="flex items-center gap-1">
+              <th data-col-key="os_version" className="relative px-3.5 py-3 text-center cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('os_version')}>
+                <div className="flex items-center justify-center gap-1">
                   {t('osVersion') || 'OS Version'}
                   {renderSortIcon('os_version')}
                 </div>
                 <ColumnResizeHandle columnKey="os_version" />
               </th>
-              <th data-col-key="disk_type" className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('disk_type')}>
-                <div className="flex items-center gap-1">
+              <th data-col-key="disk_type" className="relative px-3.5 py-3 text-center cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('disk_type')}>
+                <div className="flex items-center justify-center gap-1">
                   {t('diskInterface') || 'Disk & Interface'}
                   {renderSortIcon('disk_type')}
                 </div>
                 <ColumnResizeHandle columnKey="disk_type" />
               </th>
-              <th data-col-key="status" className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('status')}>
-                <div className="flex items-center gap-1">
+              <th data-col-key="status" className="relative px-3.5 py-3 text-center cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('status')}>
+                <div className="flex items-center justify-center gap-1">
                   {t('statusAction') || 'Status / Action'}
                   {renderSortIcon('status')}
                 </div>
                 <ColumnResizeHandle columnKey="status" />
               </th>
-              <th data-col-key="last_backup" className="relative px-3.5 py-3 cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('last_backup')}>
-                <div className="flex items-center gap-1">
+              <th data-col-key="last_backup" className="relative px-3.5 py-3 text-center cursor-pointer hover:bg-zinc-800/60 hover:text-white transition-colors select-none whitespace-nowrap" onClick={() => handleSort('last_backup')}>
+                <div className="flex items-center justify-center gap-1">
                   {t('lastBackup') || 'Last Backup'}
                   {renderSortIcon('last_backup')}
                 </div>
                 <ColumnResizeHandle columnKey="last_backup" />
               </th>
-              <th className="px-3.5 py-3 text-right select-none whitespace-nowrap">
+              <th className="px-3.5 py-3 text-center select-none whitespace-nowrap">
                 {t('actions')}
               </th>
             </tr>

@@ -2,6 +2,7 @@ import React from 'react';
 import { Cpu, CheckCircle, AlertTriangle, Settings as Gear, ShieldAlert, Trash2 } from 'lucide-react';
 import { formatDate } from './dateUtils';
 import { kibToMbit, formatMbit, formatLiveSpeed, formatOsVersion } from './rateLimit';
+import { scoreTextColour } from './NodeHealthBadges';
 import { useTranslation } from '../context/TranslationContext';
 import type { Node } from '../types';
 
@@ -176,7 +177,7 @@ function NodeRowComponent({
   };
 
   return (
-    <tr className="hover:bg-zinc-800/30 transition-colors">
+    <tr className="divide-x divide-zinc-800/70 hover:bg-zinc-800/30 transition-colors">
       {bulkDeleteMode && (
         <td className="px-3.5 py-2.5 w-10 text-center">
           <input
@@ -189,7 +190,14 @@ function NodeRowComponent({
       )}
       <td className="px-3.5 py-2.5 font-semibold text-zinc-50 flex items-center gap-2" style={{ paddingLeft: `${depth * 20 + 20}px` }}>
         <Cpu size={14} className="text-zinc-500 shrink-0" />
-        <div className="flex flex-col min-w-0">
+        {/* overflow-hidden: the column's own width never changes (it's a
+            fixed pixel value, measured once and persisted), but grouped
+            views add paddingLeft per nesting depth above, which eats into
+            the space available here. Without a clip boundary, the "Group:
+            X • rate limit" line (whitespace-nowrap, no truncate of its own)
+            would render past this box and visually spill into the next
+            column instead of the column itself ever moving. */}
+        <div className="flex flex-col min-w-0 overflow-hidden">
           {/* The note rides on the hostname's existing tooltip, which is
               already there so a truncated name can be read in full. The
               dotted underline is the only hint a note exists at all —
@@ -237,12 +245,18 @@ function NodeRowComponent({
         <div className="flex flex-col leading-tight">
           <span className="text-zinc-300 font-medium text-xs">
             {t('diskLabel')}: {node.disk_type ? node.disk_type.split(' ')[0] : 'UNKNOWN'}
+            {' '}
             {/* smart_percent_used is wear consumed (0 = new, 100 = end of
                 rated life — see core/smart.py's own conversion of SATA's
                 native "remaining" attribute into this same "used" convention).
-                Flipped here to remaining life, which is what an operator
-                scanning the fleet actually wants at a glance. */}
-            {node.smart_percent_used != null && ` (${Math.max(0, 100 - node.smart_percent_used)}% ${t('diskLifeRemainingSuffix')})`}
+                Flipped here to remaining life, coloured on the same
+                green-to-red scale the SMART badge's own score already uses
+                (NodeHealthBadges.scoreTextColour), so a glance at the fleet
+                and a glance at one node's health card read consistently. */}
+            {node.smart_percent_used != null && (() => {
+              const remaining = Math.max(0, 100 - node.smart_percent_used);
+              return <span style={{ color: scoreTextColour(remaining) }}>{remaining}%</span>;
+            })()}
           </span>
           <span className="text-zinc-500 text-[11px] mt-0.5">{t('netLabel')}: {node.network_iface || t('unknown').toUpperCase()}</span>
         </div>
