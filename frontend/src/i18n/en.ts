@@ -201,6 +201,7 @@ const en: Record<string, string> = {
   keepMonthly: 'Keep Monthly',
   globalExclusionsLabel: 'Global File Exclusion Paths',
   resetExclusionsToDefaults: 'Reset to Defaults',
+  globalExclusionsHint: '* matches any number of characters, including "/" — so /var/opt/edge/* already covers everything below that directory, at any depth (no need to write **, which has no special meaning here). ? matches exactly one character. [abc] matches one character from the set, [!abc] one character not in the set. A pattern doesn\'t need a leading / to reach subdirectories — *.iso alone matches an ISO file anywhere in the tree.',
   globalExclusionsDesc: 'Configure patterns for files and directories that should be excluded from all backup snapshots.',
   exclusionPatternPlaceholder: 'Pattern (e.g. /var/tmp/*)',
   exclusionCommentPlaceholder: 'Comment (e.g. Temporary files)',

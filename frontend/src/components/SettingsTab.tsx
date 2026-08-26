@@ -794,7 +794,11 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
             {/* Right Column: Global File Exclusion Paths */}
             <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
               <div className="flex items-center justify-between border-b border-zinc-850 pb-2">
-                <h3 className="text-sm font-bold text-zinc-50">{t('globalExclusionsLabel')}</h3>
+                <InfoLabel
+                  label={t('globalExclusionsLabel')}
+                  hint={t('globalExclusionsHint')}
+                  className="text-sm font-bold text-zinc-50"
+                />
                 <button
                   type="button"
                   onClick={async () => {
