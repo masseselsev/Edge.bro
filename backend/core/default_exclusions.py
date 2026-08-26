@@ -13,6 +13,7 @@ DEFAULT_GLOBAL_EXCLUSIONS = [
     {"pattern": "/sys/*", "comment": "Sysfs system info"},
     {"pattern": "/run/*", "comment": "Transient runtime files"},
     {"pattern": "/tmp/*", "comment": "Temporary files"},
+    {"pattern": "/home/*", "comment": "User home directories"},
     {"pattern": "/mnt/*", "comment": "Mounted filesystems"},
     {"pattern": "/media/*", "comment": "Removable media mounts"},
     {"pattern": "/lost+found", "comment": "Recovered filesystem fragments"},
