@@ -640,7 +640,7 @@ export default function FleetTab({ onViewLogs, timezone }: FleetTabProps) {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/50 backdrop-blur-md">
-        <table className="min-w-full divide-y divide-zinc-800 text-left text-sm text-zinc-300">
+        <table className="table-fixed divide-y divide-zinc-800 text-left text-sm text-zinc-300">
           <colgroup>
             {bulkDeleteMode && <col style={{ width: 40 }} />}
             <col style={{ width: columnWidths.hostname }} />
