@@ -106,4 +106,5 @@ def test_new_settings_row_gets_the_curated_default_exclusions(db_session):
     patterns = [e["pattern"] for e in settings.global_exclusions]
     assert "/var/opt/edge/trainer/*" in patterns
     assert "/var/opt/edge/*.iso" in patterns
-    assert len(settings.global_exclusions) == 17
+    assert "/tmp/*" in patterns
+    assert len(settings.global_exclusions) == 18
