@@ -96,3 +96,14 @@ def test_server_name_rejects_unsafe_names(name):
     """The name is used as an ISO filename prefix, so it must stay path-safe."""
     with pytest.raises(ValueError):
         schemas.SettingsBase(server_name=name)
+
+
+def test_new_settings_row_gets_the_curated_default_exclusions(db_session):
+    settings = models.Settings()
+    db_session.add(settings)
+    db_session.commit()
+
+    patterns = [e["pattern"] for e in settings.global_exclusions]
+    assert "/var/opt/edge/trainer/*" in patterns
+    assert "/var/opt/edge/*.iso" in patterns
+    assert len(settings.global_exclusions) == 17

@@ -4,6 +4,7 @@ import uuid
 from sqlalchemy import Column, Integer, String, DateTime, Text, BigInteger, ForeignKey, JSON, Boolean, Float, UniqueConstraint, Index, text
 from sqlalchemy.sql import func
 from database import Base
+from core.default_exclusions import DEFAULT_GLOBAL_EXCLUSIONS
 
 class Settings(Base):
     """
@@ -17,23 +18,7 @@ class Settings(Base):
     keep_daily = Column(Integer, default=7, nullable=False)
     keep_weekly = Column(Integer, default=4, nullable=False)
     keep_monthly = Column(Integer, default=6, nullable=False)
-    global_exclusions = Column(JSON, nullable=True, default=lambda: [
-        {"pattern": "/dev/*", "comment": "System devices"},
-        {"pattern": "/proc/*", "comment": "Virtual process filesystem"},
-        {"pattern": "/sys/*", "comment": "Sysfs system info"},
-        {"pattern": "/run/*", "comment": "Transient runtime files"},
-        {"pattern": "/mnt/*", "comment": "Mounted filesystems"},
-        {"pattern": "/media/*", "comment": "Removable media mounts"},
-        {"pattern": "/lost+found", "comment": "Recovered filesystem fragments"},
-        {"pattern": "/var/log/edge/*", "comment": "Edge app logs"},
-        {"pattern": "/var/opt/edge/blobstore/*", "comment": "Local media files storage"},
-        {"pattern": "/var/spool/edge/*", "comment": "Edge spool directory"},
-        {"pattern": "/var/log/journal/*", "comment": "Systemd journal logs"},
-        {"pattern": "/var/log/**/*.gz", "comment": "Compressed rotated logs"},
-        {"pattern": "/var/log/**/*.1", "comment": "Rotated log backups"},
-        {"pattern": "/var/hasplm/*", "comment": "Sentinel HASP licensing data"},
-        {"pattern": "/etc/hasplm/*", "comment": "Sentinel HASP licensing config"}
-    ])
+    global_exclusions = Column(JSON, nullable=True, default=lambda: list(DEFAULT_GLOBAL_EXCLUSIONS))
     # Seeded from .env so a fresh install shows the configured IP in the UI.
     # Once set through the UI the DB value wins; .env is only the initial value.
     orchestrator_ip = Column(String, default=lambda: os.getenv("ORCHESTRATOR_IP", ""), nullable=False)
