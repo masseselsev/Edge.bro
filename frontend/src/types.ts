@@ -34,6 +34,7 @@ export interface Node {
   partition_layout: any[] | null;
   os_version: string | null;
   os_arch?: string | null;
+  smart_percent_used?: number | null;
   next_retry_at: string | null;
   /** Bytes this node occupies in the shared repository. Cached server-side. */
   repo_size_bytes: number | null;

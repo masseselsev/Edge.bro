@@ -235,7 +235,10 @@ function NodeRowComponent({
       </td>
       <td className="px-3.5 py-2.5 whitespace-nowrap">
         <div className="flex flex-col leading-tight">
-          <span className="text-zinc-300 font-medium text-xs">{t('diskLabel')}: {node.disk_type ? node.disk_type.split(' ')[0] : 'UNKNOWN'}</span>
+          <span className="text-zinc-300 font-medium text-xs">
+            {t('diskLabel')}: {node.disk_type ? node.disk_type.split(' ')[0] : 'UNKNOWN'}
+            {node.smart_percent_used != null && ` (${node.smart_percent_used}%)`}
+          </span>
           <span className="text-zinc-500 text-[11px] mt-0.5">{t('netLabel')}: {node.network_iface || t('unknown').toUpperCase()}</span>
         </div>
       </td>

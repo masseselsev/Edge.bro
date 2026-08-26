@@ -641,6 +641,40 @@ def test_upgrade_settings_cpu_quota():
         db.close()
 
 
+def test_serialize_node_includes_os_arch(db_session):
+    """_serialize_node builds the actual API response dict by hand — a field
+    can exist on the model and the schema and still never reach a client if
+    it isn't copied in here too. Caught after os_arch shipped without it."""
+    from routers.nodes_crud import _serialize_node
+
+    node = models.Node(
+        hostname="serialize-arch-node",
+        ip_address="10.99.0.4",
+        os_arch="x86_64",
+    )
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+
+    result = _serialize_node(node, 0)
+    assert result["os_arch"] == "x86_64"
+
+
+def test_serialize_node_includes_smart_percent_used(db_session):
+    from routers.nodes_crud import _serialize_node
+
+    node = models.Node(hostname="smart-node", ip_address="10.99.0.5")
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+
+    result = _serialize_node(node, 0, smart_percent_used=42.0)
+    assert result["smart_percent_used"] == 42.0
+
+    result_absent = _serialize_node(node, 0)
+    assert result_absent["smart_percent_used"] is None
+
+
 def test_node_os_arch_column_roundtrips(db_session):
     node = models.Node(
         hostname="arch-node",

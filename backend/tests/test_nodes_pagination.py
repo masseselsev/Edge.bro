@@ -85,6 +85,34 @@ def test_nodes_pagination_filtering_and_sorting(client, db_session):
     assert data["nodes"][0]["hostname"] == "node-beta"
 
 
+def test_nodes_list_includes_latest_smart_percent_used(client, db_session):
+    from datetime import timedelta
+    from core.clock import utcnow
+
+    node = models.Node(hostname="node-smart", ip_address="192.168.1.20", status="READY")
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+
+    older = models.SmartSnapshot(
+        node_id=node.id, device="sda",
+        captured_at=utcnow() - timedelta(days=1),
+        percent_used=10.0,
+    )
+    newest = models.SmartSnapshot(
+        node_id=node.id, device="sda",
+        captured_at=utcnow(),
+        percent_used=42.0,
+    )
+    db_session.add_all([older, newest])
+    db_session.commit()
+
+    response = client.get("/api/nodes?q=node-smart")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["nodes"][0]["smart_percent_used"] == 42.0
+
+
 def test_a_cidr_block_too_large_to_expand_is_refused():
     """A /16 in the bulk-add box is 65,534 Node rows built inside one request.
 

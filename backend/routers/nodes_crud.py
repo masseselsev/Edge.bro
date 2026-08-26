@@ -11,6 +11,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, defer
+from sqlalchemy import func
 from database import get_db
 import models
 import schemas
@@ -103,6 +104,38 @@ def _backup_run_state(node_id: int, raw=None, speed_raw=None, _prefetched: bool 
     return True, speed, limit, running_task_id
 
 
+def _latest_smart_percent_used_by_node(db: Session, node_ids: list) -> dict:
+    """The wear percentage from each node's single most-recent SMART
+    snapshot, regardless of which device it came from — the same value the
+    node's own health card shows (health.smart[0].percent_used, which is
+    picked the same way: most recent capture across all of a node's
+    devices). Scoped to the given node_ids (one page) so this stays cheap
+    on a large fleet.
+    """
+    if not node_ids:
+        return {}
+
+    latest_ts = (
+        db.query(
+            models.SmartSnapshot.node_id,
+            func.max(models.SmartSnapshot.captured_at).label("max_ts"),
+        )
+        .filter(models.SmartSnapshot.node_id.in_(node_ids))
+        .group_by(models.SmartSnapshot.node_id)
+        .subquery()
+    )
+    rows = (
+        db.query(models.SmartSnapshot.node_id, models.SmartSnapshot.percent_used)
+        .join(
+            latest_ts,
+            (models.SmartSnapshot.node_id == latest_ts.c.node_id)
+            & (models.SmartSnapshot.captured_at == latest_ts.c.max_ts),
+        )
+        .all()
+    )
+    return {row.node_id: row.percent_used for row in rows}
+
+
 def _serialize_node(
     node: models.Node,
     repo_size: int,
@@ -110,6 +143,7 @@ def _serialize_node(
     retry_raw=None,
     speed_raw=None,
     prefetched: bool = False,
+    smart_percent_used=None,
 ) -> dict:
     """Shape a Node row the way the API returns it.
 
@@ -135,6 +169,8 @@ def _serialize_node(
         "efi_uuid": node.efi_uuid,
         "partition_layout": node.partition_layout,
         "os_version": node.os_version,
+        "os_arch": node.os_arch,
+        "smart_percent_used": smart_percent_used,
         "next_retry_at": None,
         "repo_size_bytes": repo_size,
         "group_id": node.group_id,
@@ -305,6 +341,7 @@ def get_nodes(
     retry_raw = _mget([
         f"node_next_retry:{n.id}" for n in nodes if n.status == "OFFLINE"
     ])
+    smart_percent_by_node = _latest_smart_percent_used_by_node(db, [n.id for n in nodes])
 
     results = [
         _serialize_node(
@@ -314,6 +351,7 @@ def get_nodes(
             retry_raw=retry_raw.get(f"node_next_retry:{node.id}"),
             speed_raw=speed_raw.get(f"backup_speed:{node.id}"),
             prefetched=True,
+            smart_percent_used=smart_percent_by_node.get(node.id),
         )
         for node in nodes
     ]
@@ -605,4 +643,5 @@ def get_node(
     single-node view has ever displayed it.
     """
     node = node_or_404(db, node_id)
-    return _serialize_node(node, 0)
+    smart_percent_used = _latest_smart_percent_used_by_node(db, [node.id]).get(node.id)
+    return _serialize_node(node, 0, smart_percent_used=smart_percent_used)
