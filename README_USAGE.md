@@ -255,7 +255,7 @@ A backup group defines:
 |---------|-------------|
 | **Upload Rate Limit** (KiB/s) | Caps network throughput per backup stream |
 | **CPU Quota** (%) | Limits CPU on the target node (0–400% of one core). Enforced via `systemd-run --scope -p CPUQuota=...` |
-| **Compression** | Algorithm selection: `lz4` (fast), `zstd:1`–`zstd:9` (better ratio) |
+| **Compression** | Algorithm selection: `lz4` (fast), `zstd:1`–`zstd:9` (better ratio). `zstd:3` is the shipped default — the best ratio-for-CPU tradeoff for mixed backup data. Deduplication is keyed on plaintext chunk content before compression, so mixing compression settings within one repository is safe: it only affects the new chunks a run adds. |
 | **Checkpoint Interval** | Auto-calculated from upload speed by default, and capped so a dropped link can never lose more than a few minutes of transfer. Manual override available (seconds). |
 
 #### Per-node overrides
@@ -433,17 +433,21 @@ Configured in **Settings** → **Global Exclusions**. Each entry has a pattern a
 | `/proc/*` | Virtual process filesystem |
 | `/sys/*` | Sysfs system info |
 | `/run/*` | Transient runtime files |
+| `/tmp/*` | Temporary files |
+| `/home/*` | User home directories |
 | `/mnt/*` | Mounted filesystems |
 | `/media/*` | Removable media mounts |
 | `/lost+found` | Recovered filesystem fragments |
 | `/var/log/edge/*` | Edge app logs |
 | `/var/opt/edge/blobstore/*` | Local media file storage |
+| `/var/opt/edge/trainer/*` | Edge trainer application data |
 | `/var/spool/edge/*` | Edge spool directory |
 | `/var/log/journal/*` | Systemd journal logs |
 | `/var/log/**/*.gz` | Compressed rotated logs |
 | `/var/log/**/*.1` | Rotated log backups |
 | `/var/hasplm/*` | Sentinel HASP licensing data |
 | `/etc/hasplm/*` | Sentinel HASP licensing config |
+| `/var/opt/edge/*.iso` | ISO disk images |
 
 You can add, remove, or comment any exclusion directly from the UI.
 
@@ -492,6 +496,8 @@ The **Backup** button carries a mark when the node has an archive to restore fro
 A node that has never backed up *and* missed its window shows an amber **Never** — the case worth catching first.
 
 While a backup runs, the button shows the speed borg is actually achieving, against the upload limit in force for that run (`42.3 / 50 Mbit/s`, or just the measured figure when uncapped). Hovering a hostname shows that node's notes; hostnames with a note are underlined.
+
+**Web terminal.** Ctrl/⌘-click a node's `IP:PORT` cell to open an in-browser SSH terminal — no local ssh client or protocol handler needed. The first connection asks for the login to use and saves it to the node; every connection after that reuses it without asking again. By default every admin gets ssh's own interactive password prompt inside the terminal, which the orchestrator never sees or stores; the superadmin always connects with the orchestrator's own key instead, with no prompt. **Settings** → *Allow admins to use the orchestrator's key for the web terminal* extends that same key-based, no-prompt access to other admins (off by default, superadmin-only to change). A session idle for 15 minutes closes automatically; only its open/close is written to the audit log, never anything typed inside it.
 
 ## 5. Bare-Metal Restore (Flasher)
 
