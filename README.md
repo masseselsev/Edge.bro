@@ -39,7 +39,7 @@ Centralized backup management and bare-metal restore system for fleets of Debian
                                │ backup    │ │ retention │ │ repo store │
                                └─────┬─────┘ └───────────┘ └────────────┘
                                      │
-                          SSH + Ansible Playbooks
+                          SSH + Ansible Playbooks.
                                      │
                                      ▼
                             ┌──────────────────┐
