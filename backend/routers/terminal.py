@@ -106,7 +106,22 @@ async def node_terminal(
         close_reason = "client closed"
     finally:
         loop.remove_reader(session.master_fd)
-        output_task.cancel()
+        # A fast-failing ssh (bad host, refused connection) can exit before
+        # this coroutine ever awaits anything after registering the reader
+        # above, so on_pty_readable never gets a turn on the event loop
+        # before session.poll() catches the exit and breaks the read loop.
+        # Whatever it already printed is still sitting in the pty buffer —
+        # drain it now rather than losing it when the reader is torn down.
+        while True:
+            data = session.read()
+            if not data:
+                break
+            output_queue.put_nowait(data)
+        output_queue.put_nowait(None)
+        try:
+            await asyncio.wait_for(output_task, timeout=5)
+        except Exception:
+            output_task.cancel()
         session.close()
         duration = int(time.monotonic() - started_at)
         with session_scope() as log_db:

@@ -208,3 +208,28 @@ def test_close_reason_reaches_the_client(client, db_session, monkeypatch):
             ws.receive_bytes()
 
     assert exc_info.value.reason == "remote closed"
+
+
+def test_immediate_ssh_failure_output_reaches_the_client(client, db_session, monkeypatch):
+    """A fast-failing ssh (bad host, refused connection) can exit before the
+    route's read loop ever awaits anything, so on_pty_readable never gets a
+    turn on the event loop before session.poll() is checked and the reader
+    is torn down. The error text ssh already printed must still reach the
+    browser rather than being silently discarded."""
+    node = _make_node(db_session)
+    app.dependency_overrides[require_admin_ws] = lambda: _as_user(is_superadmin=True)
+
+    class ImmediatelyDeadSession(FakeSession):
+        def __init__(self):
+            super().__init__(to_send=(b"ssh: connect to host 10.0.0.1 port 22: Connection refused\r\n",))
+
+        def poll(self):
+            return 255  # already exited before the route's first poll() check
+
+    import routers.terminal as terminal_route
+    monkeypatch.setattr(terminal_route.terminal_bridge, "open_bridge", lambda **kw: ImmediatelyDeadSession())
+
+    with client.websocket_connect(f"/api/nodes/{node.id}/terminal") as ws:
+        received = ws.receive_bytes()
+
+    assert b"Connection refused" in received
