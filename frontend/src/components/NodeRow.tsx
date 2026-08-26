@@ -258,24 +258,15 @@ function NodeRowComponent({
                   : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border-indigo-500/20 disabled:opacity-30 cursor-pointer'
               }`}
             >
-              {/* last_backup is set only alongside a SUCCESS archive and
-                  cleared when the node's archives are purged, so it answers
-                  "is there something to restore from" without another query.
-                  Retention never prunes a node's newest archive, so it does
-                  not go stale behind our back. */}
-              {node.last_backup && (
-                <CheckCircle
-                  size={12}
-                  className={`shrink-0 ${backupState.tone}`}
-                  aria-label={backupState.label}
-                />
-              )}
-              {/* A measured rate, not a share of the whole: borg does not
-                  report how much is left, so there is no honest percentage
-                  to draw. The pulse carries "still going" instead. */}
+              {/* The checkmark now lives on the Status/Action badge instead —
+                  two indicators of the same fact were competing for
+                  attention here. A measured rate, not a share of the whole:
+                  borg does not report how much is left, so there is no
+                  honest percentage to draw. The pulse carries "still going"
+                  instead. */}
               <span className="truncate">
-                {node.is_backup_running && liveSpeed
-                  ? `${t('backupAction')} (${liveSpeed})`
+                {node.is_backup_running
+                  ? (liveSpeed || '…')
                   : t('backupAction')}
               </span>
             </button>
