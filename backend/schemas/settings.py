@@ -47,6 +47,7 @@ class SettingsBase(BaseModel):
     retention_policy: Optional[RetentionPolicySchema] = None
     default_compression: str = Field(default='zstd:3')
     default_cpu_quota: Optional[int] = Field(default=30, ge=0, le=400)
+    default_rate_limit: Optional[int] = Field(default=None, ge=0)
     server_ips: Optional[List[str]] = Field(default=[])
     max_kiosk_isos: int = Field(default=5, ge=1)
     server_name: str = Field(default='edge-bro')

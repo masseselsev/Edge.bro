@@ -509,6 +509,8 @@ const en: Record<string, string> = {
   checkpointAuto: 'Auto-calculate based on speed',
   cpuQuota: 'CPU Quota per Core (%)',
   cpuQuotaHint: 'Limits backup CPU usage. 0 or empty means unlimited.',
+  defaultRateLimitLabel: 'Global Upload Rate Limit (Mbit/s)',
+  defaultRateLimitHint: 'Applies to any node whose group and node-level overrides are both unset. Empty means unlimited. A node or group setting always takes precedence over this.',
   tabSystemInfoSettings: 'System Info & Settings',
   tabConsoleLogs: 'Console Logs',
   selectSession: 'Select Session:',

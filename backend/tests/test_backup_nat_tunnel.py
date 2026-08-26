@@ -422,3 +422,30 @@ def test_resolve_cpu_quota_node_zero_means_explicit_unlimited():
     group = _CpuObj(cpu_quota=60)
     settings = _CpuObj(default_cpu_quota=30)
     assert resolve_cpu_quota(node, group, settings) == (None, "node")
+
+
+def test_resolve_rate_limit_falls_through_to_settings_when_node_and_group_unset():
+    from core.transfer_speed import resolve_rate_limit
+    assert resolve_rate_limit(None, None, 500) == (500, "default")
+
+
+def test_resolve_rate_limit_settings_zero_falls_through_to_unlimited():
+    """Matches upload_rate_limit's existing 0-falls-through convention —
+    unlike resolve_cpu_quota's terminal 0, this is deliberately NOT terminal."""
+    from core.transfer_speed import resolve_rate_limit
+    assert resolve_rate_limit(None, None, 0) == (0, None)
+
+
+def test_resolve_rate_limit_group_still_wins_over_settings():
+    from core.transfer_speed import resolve_rate_limit
+    assert resolve_rate_limit(None, 300, 500) == (300, "group")
+
+
+def test_resolve_rate_limit_node_still_wins_over_everything():
+    from core.transfer_speed import resolve_rate_limit
+    assert resolve_rate_limit(700, 300, 500) == (700, "node")
+
+
+def test_resolve_rate_limit_all_unset_is_unlimited():
+    from core.transfer_speed import resolve_rate_limit
+    assert resolve_rate_limit(None, None, None) == (0, None)

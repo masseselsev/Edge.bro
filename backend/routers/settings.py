@@ -190,6 +190,7 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
         ("language", "Language"),
         ("default_compression", "Compression"),
         ("default_cpu_quota", "CPU Quota"),
+        ("default_rate_limit", "Default Rate Limit"),
         ("server_ips", "Server IPs"),
         ("server_name", "Server Name"),
         ("default_credentials_id", "Default Credentials ID"),
@@ -243,6 +244,7 @@ def update_settings(payload: schemas.SettingsBase, request: Request, db: Session
     settings.retention_policy = payload.retention_policy.model_dump() if payload.retention_policy else None
     settings.default_compression = payload.default_compression
     settings.default_cpu_quota = payload.default_cpu_quota
+    settings.default_rate_limit = payload.default_rate_limit
     settings.server_ips = payload.server_ips
     settings.server_name = payload.server_name
     settings.bootstrap_credentials = new_creds

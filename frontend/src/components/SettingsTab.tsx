@@ -11,6 +11,7 @@ import { CredentialsModal } from './CredentialsModal';
 import { InfoLabel } from './InfoLabel';
 import RepositoryCapacityPanel from './RepositoryCapacityPanel';
 import { api } from '../api';
+import { kibToMbit, mbitToKib, parseMbitInput, formatMbit } from './rateLimit';
 
 interface SettingsTabProps {
   onSettingsUpdated?: (settings: any) => void;
@@ -39,6 +40,7 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
   const [language, setLanguageState] = useState<Language>('en');
   const [defaultCompression, setDefaultCompression] = useState('zstd:3');
   const [defaultCpuQuota, setDefaultCpuQuota] = useState<number | ''>('');
+  const [defaultRateLimit, setDefaultRateLimit] = useState<string>('');
   const [hostDataPath, setHostDataPath] = useState<string | null>(null);
   const [maxKioskIsos, setMaxKioskIsos] = useState(5);
   const [serverNetCapacityMbps, setServerNetCapacityMbps] = useState<number | ''>(1000);
@@ -144,6 +146,9 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
         setLanguageState(data.language || 'en');
         setDefaultCompression(data.default_compression || 'zstd:3');
         setDefaultCpuQuota(data.default_cpu_quota ?? '');
+        setDefaultRateLimit(
+          data.default_rate_limit != null ? formatMbit(kibToMbit(data.default_rate_limit)) : ''
+        );
         if (data.borg_host_data_path) {
           setHostDataPath(data.borg_host_data_path);
         }
@@ -219,6 +224,10 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
     language: language,
     default_compression: defaultCompression,
     default_cpu_quota: defaultCpuQuota === '' ? null : Number(defaultCpuQuota),
+    default_rate_limit: (() => {
+      const parsed = parseMbitInput(defaultRateLimit);
+      return parsed === null ? null : mbitToKib(parsed);
+    })(),
     server_ips: manualIps,
     max_kiosk_isos: maxKioskIsos,
     server_name: serverName,
@@ -533,22 +542,15 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
 
                   <div>
                     <div className="flex items-center justify-between min-h-[20px] mb-1.5">
-                      <InfoLabel
-                        label={t('thermalFitRetentionLabel') || 'Thermal History Retention (days)'}
-                        hint={t('thermalFitRetentionHelp') || 'Leave empty to keep thermal degradation history forever — recommended. The data is small and is the multi-year trend the thermal monitoring feature exists to produce; set a value only to enforce a hard ceiling.'}
-                        className="block text-xs font-semibold text-zinc-400"
-                      />
+                      <InfoLabel label={t('defaultRateLimitLabel')} hint={t('defaultRateLimitHint')} className="block text-xs font-semibold text-zinc-400" />
                     </div>
                     <input
-                      type="number"
-                      min={1}
-                      placeholder={t('unlimitedPlaceholder') || 'Unlimited'}
-                      value={thermalFitRetentionDays}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setThermalFitRetentionDays(val === '' ? '' : parseInt(val, 10) || 1);
-                      }}
-                      className="w-full h-10 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                      type="text"
+                      inputMode="decimal"
+                      value={defaultRateLimit}
+                      onChange={(e) => setDefaultRateLimit(e.target.value)}
+                      placeholder={t('unlimitedPlaceholder')}
+                      className="w-full h-10 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none font-mono"
                     />
                   </div>
                 </div>

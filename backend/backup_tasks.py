@@ -700,7 +700,8 @@ def _plan_backup(node_id: int) -> Optional[BackupPlan]:
         )
 
         rate_limit_kib, rate_limit_source = transfer_speed.resolve_rate_limit(
-            node.upload_rate_limit, group.upload_rate_limit if group else None
+            node.upload_rate_limit, group.upload_rate_limit if group else None,
+            settings.default_rate_limit,
         )
         cpu_quota, cpu_quota_source = resolve_cpu_quota(node, group, settings)
 

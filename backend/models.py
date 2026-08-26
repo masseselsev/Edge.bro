@@ -40,6 +40,7 @@ class Settings(Base):
     retention_policy = Column(JSON, nullable=True)
     default_compression = Column(String, default='zstd:3', nullable=False)
     default_cpu_quota = Column(Integer, default=30, nullable=True)   # % of one core, NULL = no limit
+    default_rate_limit = Column(Integer, nullable=True)   # KiB/s, NULL/0 = unlimited
     server_ips = Column(JSON, nullable=True)
     max_kiosk_isos = Column(Integer, default=5, nullable=False)
     server_name = Column(String, default="edge-bro", nullable=False)

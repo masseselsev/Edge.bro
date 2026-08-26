@@ -258,15 +258,21 @@ class SpeedTracker:
 
 
 def resolve_rate_limit(
-    node_limit: Optional[int], group_limit: Optional[int]
+    node_limit: Optional[int], group_limit: Optional[int],
+    settings_limit: Optional[int] = None,
 ) -> tuple[int, Optional[str]]:
     """Effective upload cap in KiB/s, and where it came from.
 
-    Node overrides group, group overrides unlimited — the same precedence the
-    rest of the node settings use. 0 means no cap.
+    Node overrides group, group overrides the global default, default
+    overrides unlimited. 0 at any tier means "no cap set here" and falls
+    through — matching this function's existing convention throughout,
+    unlike resolve_cpu_quota's deliberately terminal 0 (see that function's
+    docstring for why the two differ).
     """
     if node_limit is not None and node_limit > 0:
         return node_limit, "node"
     if group_limit is not None and group_limit > 0:
         return group_limit, "group"
+    if settings_limit is not None and settings_limit > 0:
+        return settings_limit, "default"
     return 0, None
