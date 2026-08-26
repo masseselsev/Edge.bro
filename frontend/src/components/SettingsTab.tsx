@@ -691,6 +691,30 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
                     </button>
                   </div>
                 </div>
+
+                {/* Advanced / rarely touched — its own hint already says
+                    "recommended: leave empty", the same category as the two
+                    sub-cards above it, not a routinely-tuned knob. */}
+                <div className="mb-4 space-y-3 border border-zinc-800/80 p-4 rounded-xl bg-zinc-950/40">
+                  <div>
+                    <InfoLabel
+                      label={t('thermalFitRetentionLabel')}
+                      hint={t('thermalFitRetentionHelp')}
+                      className="block text-xs font-bold text-zinc-300 uppercase tracking-wider"
+                    />
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder={t('unlimitedPlaceholder')}
+                    value={thermalFitRetentionDays}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setThermalFitRetentionDays(val === '' ? '' : parseInt(val, 10) || 1);
+                    }}
+                    className="w-full max-w-xs h-10 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 text-sm focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
               </div>
 
               {/* Global Pruning (Retention Policies) */}
