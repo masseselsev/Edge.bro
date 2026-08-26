@@ -719,9 +719,13 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
 
               {/* Global Pruning (Retention Policies) */}
               <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-2xl space-y-4 shadow-xl">
-                <h3 className="text-sm font-bold text-zinc-50 border-b border-zinc-850 pb-2">
-                  {t('globalPruning')}
-                </h3>
+                <div className="border-b border-zinc-850 pb-2">
+                  <InfoLabel
+                    label={t('globalPruning')}
+                    hint={t('globalPruningHint')}
+                    className="text-sm font-bold text-zinc-50"
+                  />
+                </div>
                 <p className="text-xs text-zinc-400 leading-relaxed">
                   {t('globalPruningDesc') || 'Configure rules for automatic deletion of older snapshots in the archive.'}
                 </p>
@@ -739,9 +743,6 @@ export default function SettingsTab({ onSettingsUpdated, currentUser }: Settings
 
                   {policyType === 'interval' && (
                     <div className="space-y-3 animate-fade-in">
-                      <p className="text-[11px] text-zinc-500 leading-relaxed">
-                        {t('retentionIntervalOrderHint')}
-                      </p>
                       <div className="grid grid-cols-3 gap-3">
                         <div>
                           <div className="flex items-center gap-1.5 mb-1">
