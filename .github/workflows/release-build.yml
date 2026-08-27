@@ -13,9 +13,9 @@ permissions:
   packages: write
 
 jobs:
-  build:
-    name: Build ${{ matrix.component.name }} (${{ matrix.platform }})
-    runs-on: ${{ matrix.platform == 'linux/amd64' && 'ubuntu-latest' || 'ubuntu-24.04-arm' }}
+  build-and-push:
+    name: Build & Push ${{ matrix.component.name }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -36,83 +36,10 @@ jobs:
             context: .
             dockerfile: docker/apt-proxy/Dockerfile
             image: edge-bro-apt-proxy
-        platform: [linux/amd64, linux/arm64]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set platform pair
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.component.image }}
-
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v5
-        with:
-          context: ${{ matrix.component.context }}
-          file: ${{ matrix.component.dockerfile }}
-          platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/${{ matrix.component.image }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.component.name }}-${{ matrix.platform }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.component.name }}-${{ matrix.platform }}
-
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests/${{ matrix.component.name }}
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${{ matrix.component.name }}/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-${{ matrix.component.name }}-${{ env.PLATFORM_PAIR }}
-          path: /tmp/digests/${{ matrix.component.name }}/*
-          if-no-files-found: error
-          retention-days: 1
-
-  merge:
-    name: Merge manifest ${{ matrix.component.name }}
-    runs-on: ubuntu-latest
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        component:
-          - name: backend
-            image: edge-bro-backend
-          - name: frontend
-            image: edge-bro-frontend
-          - name: borg-server
-            image: edge-bro-borg-server
-          - name: apt-proxy
-            image: edge-bro-apt-proxy
-
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v4
-        with:
-          path: /tmp/digests/${{ matrix.component.name }}
-          pattern: digests-${{ matrix.component.name }}-*
-          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -135,12 +62,13 @@ jobs:
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.event_name == 'release' }}
 
-      - name: Create manifest list and push
-        working-directory: /tmp/digests/${{ matrix.component.name }}
-        run: |
-          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf 'ghcr.io/${{ github.repository_owner }}/${{ matrix.component.image }}@sha256:%s ' *)
-
-      - name: Inspect image
-        run: |
-          docker buildx imagetools inspect ghcr.io/${{ github.repository_owner }}/${{ matrix.component.image }}:${{ steps.meta.outputs.version }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.component.context }}
+          file: ${{ matrix.component.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
