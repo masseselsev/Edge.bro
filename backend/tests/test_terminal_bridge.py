@@ -38,6 +38,23 @@ def test_open_bridge_wires_pty_to_stdio(monkeypatch):
     assert kwargs["stderr"] == 12
 
 
+def test_open_bridge_sets_term_for_full_screen_apps(monkeypatch):
+    """Full-screen ncurses programs (htop, vim, less -X) need a real TERM to
+    know how to draw at all -- ordinary line-based shell I/O doesn't, which
+    is why basic commands worked while htop silently refused to. Nothing
+    upstream of this ever sets TERM: the orchestrator container itself has
+    none (it's a headless service, not an interactive shell), and a bare
+    subprocess.Popen() with no env= inherits that emptiness verbatim."""
+    fake_popen = _patched(monkeypatch)
+    terminal_bridge.open_bridge(host="10.0.0.5", port=22, user="root", use_key=True)
+    env = fake_popen.call_args.kwargs["env"]
+    assert env["TERM"] == "xterm-256color"
+    # The rest of the real environment must still be there -- PATH, most
+    # importantly, or the ssh binary itself can't be found.
+    import os as os_module
+    assert env["PATH"] == os_module.environ["PATH"]
+
+
 def test_session_resize_calls_ioctl(monkeypatch):
     calls = []
     monkeypatch.setattr(terminal_bridge.fcntl, "ioctl", lambda *a: calls.append(a))

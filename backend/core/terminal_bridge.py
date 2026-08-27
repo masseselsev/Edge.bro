@@ -87,11 +87,19 @@ def open_bridge(*, host: str, port: int, user: str, use_key: bool) -> TerminalSe
         interactive=True,
     )
     master_fd, slave_fd = pty.openpty()
+    # This container is a headless service with no TERM of its own, and a
+    # bare Popen() inherits that emptiness -- ssh then requests a pty on the
+    # node with no term-type at all. Plain line-based shell I/O doesn't
+    # notice, but full-screen ncurses programs (htop, vim, less -X) refuse to
+    # draw without one. xterm-256color matches what xterm.js itself emulates.
+    env = os.environ.copy()
+    env["TERM"] = "xterm-256color"
     process = subprocess.Popen(
         argv,
         stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
         preexec_fn=os.setsid,
         close_fds=True,
+        env=env,
     )
     os.close(slave_fd)
     return TerminalSession(master_fd=master_fd, process=process)
