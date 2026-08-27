@@ -122,7 +122,16 @@ export default function TerminalModal({ node, onClose }: TerminalModalProps) {
             <X size={18} />
           </button>
         </div>
-        <div ref={containerRef} className="p-2 bg-black" style={{ height: '60vh' }} />
+        {/* fitAddon measures containerRef's clientHeight/clientWidth, which
+            includes padding -- but xterm's own child elements only get the
+            padding-excluded content box. Padding directly on the measured
+            element makes fit() think there's room for one more row/column
+            than actually renders, so the last row (where the cursor usually
+            sits) overflows below the visible box. Padding lives on this
+            outer, unmeasured wrapper instead. */}
+        <div className="p-2 bg-black overflow-hidden" style={{ height: '60vh' }}>
+          <div ref={containerRef} className="w-full h-full" />
+        </div>
       </div>
     </div>,
     document.body,
