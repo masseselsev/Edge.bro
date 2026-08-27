@@ -35,6 +35,7 @@ export default function TerminalModal({ node, onClose }: TerminalModalProps) {
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
     fitAddon.fit();
+    term.focus();
 
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const socket = new WebSocket(`${proto}//${window.location.host}/api/nodes/${node.id}/terminal`);
@@ -62,6 +63,7 @@ export default function TerminalModal({ node, onClose }: TerminalModalProps) {
       everOpened = true;
       setStatus('open');
       sendResize();
+      term.focus();
     };
     socket.onclose = (event) => {
       setStatus(everOpened ? 'closed' : 'failed');
@@ -77,11 +79,17 @@ export default function TerminalModal({ node, onClose }: TerminalModalProps) {
       }
     });
 
-    const onWindowResize = () => sendResize();
-    window.addEventListener('resize', onWindowResize);
+    // Refits on any real size change of the terminal's own box -- window
+    // resizes, but also this modal's entrance animation settling into its
+    // final size after the fit() above ran against a mid-transition
+    // snapshot. Left stale, xterm keeps the narrower column count from that
+    // snapshot even once the box is visibly wider, so long lines (and the
+    // cursor on them) render past the edge of the terminal.
+    const resizeObserver = new ResizeObserver(() => sendResize());
+    resizeObserver.observe(containerRef.current);
 
     return () => {
-      window.removeEventListener('resize', onWindowResize);
+      resizeObserver.disconnect();
       dataDisposable.dispose();
       socket.close();
       term.dispose();
