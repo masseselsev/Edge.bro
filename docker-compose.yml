@@ -49,6 +49,7 @@ services:
       retries: 5
 
   backend:
+    image: ghcr.io/masseselsev/edge-bro-backend:${EDGE_BRO_IMAGE_TAG:-latest}
     build:
       context: ./backend
       dockerfile: ../docker/backend/Dockerfile
@@ -106,6 +107,7 @@ services:
       - ${SITE_DNS:-${UPSTREAM_DNS:-8.8.8.8}}
 
   worker:
+    image: ghcr.io/masseselsev/edge-bro-backend:${EDGE_BRO_IMAGE_TAG:-latest}
     build:
       context: ./backend
       dockerfile: ../docker/backend/Dockerfile
@@ -162,6 +164,7 @@ services:
       - ${SITE_DNS:-${UPSTREAM_DNS:-8.8.8.8}}
 
   worker-periodic:
+    image: ghcr.io/masseselsev/edge-bro-backend:${EDGE_BRO_IMAGE_TAG:-latest}
     build:
       context: ./backend
       dockerfile: ../docker/backend/Dockerfile
@@ -222,6 +225,7 @@ services:
       - ${SITE_DNS:-${UPSTREAM_DNS:-8.8.8.8}}
 
   beat:
+    image: ghcr.io/masseselsev/edge-bro-backend:${EDGE_BRO_IMAGE_TAG:-latest}
     build:
       context: ./backend
       dockerfile: ../docker/backend/Dockerfile
@@ -259,6 +263,7 @@ services:
         condition: service_healthy
 
   borg-server:
+    image: ghcr.io/masseselsev/edge-bro-borg-server:${EDGE_BRO_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: docker/borg/Dockerfile
@@ -276,6 +281,7 @@ services:
         condition: service_healthy
 
   frontend:
+    image: ghcr.io/masseselsev/edge-bro-frontend:${EDGE_BRO_IMAGE_TAG:-latest}
     build:
       context: ./frontend
       dockerfile: ../docker/frontend/Dockerfile
@@ -289,6 +295,7 @@ services:
         condition: service_healthy
 
   apt-proxy:
+    image: ghcr.io/masseselsev/edge-bro-apt-proxy:${EDGE_BRO_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: docker/apt-proxy/Dockerfile
