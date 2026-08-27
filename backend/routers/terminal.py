@@ -40,7 +40,12 @@ async def node_terminal(
     use_key = current_user.is_superadmin or bool(
         settings and settings.allow_admin_key_terminal_access
     )
-    login = node.ssh_login or "root"
+    # Bootstrap only ever authorizes the orchestrator's key for root
+    # (backend/playbooks/bootstrap.yml writes to /root/.ssh/authorized_keys
+    # and nowhere else), so the key path must connect as root regardless of
+    # a node's saved ssh_login -- that field only means something once a
+    # human is typing their own password.
+    login = "root" if use_key else (node.ssh_login or "root")
 
     await websocket.accept()
 

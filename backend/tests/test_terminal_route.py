@@ -210,6 +210,50 @@ def test_close_reason_reaches_the_client(client, db_session, monkeypatch):
     assert exc_info.value.reason == "remote closed"
 
 
+def test_key_path_always_connects_as_root_regardless_of_ssh_login(client, db_session, monkeypatch):
+    """Bootstrap only ever authorizes the orchestrator's key for root
+    (backend/playbooks/bootstrap.yml writes to /root/.ssh/authorized_keys and
+    nowhere else), so a node's saved ssh_login must not steer the key path --
+    connecting key-first as anyone else always fails, no matter who the key
+    itself is trusted for. The password path is unaffected: an admin typing
+    their own credentials can be whatever account ssh_login says."""
+    node = _make_node(db_session, ssh_login="user")
+    app.dependency_overrides[require_admin_ws] = lambda: _as_user(is_superadmin=True)
+
+    captured = {}
+    def fake_open_bridge(*, host, port, user, use_key):
+        captured["user"] = user
+        captured["use_key"] = use_key
+        return FakeSession()
+    import routers.terminal as terminal_route
+    monkeypatch.setattr(terminal_route.terminal_bridge, "open_bridge", fake_open_bridge)
+
+    with client.websocket_connect(f"/api/nodes/{node.id}/terminal") as ws:
+        ws.close()
+
+    assert captured["use_key"] is True
+    assert captured["user"] == "root"
+
+
+def test_password_path_still_uses_the_saved_ssh_login(client, db_session, monkeypatch):
+    node = _make_node(db_session, ssh_login="user")
+    app.dependency_overrides[require_admin_ws] = lambda: _as_user()
+
+    captured = {}
+    def fake_open_bridge(*, host, port, user, use_key):
+        captured["user"] = user
+        captured["use_key"] = use_key
+        return FakeSession()
+    import routers.terminal as terminal_route
+    monkeypatch.setattr(terminal_route.terminal_bridge, "open_bridge", fake_open_bridge)
+
+    with client.websocket_connect(f"/api/nodes/{node.id}/terminal") as ws:
+        ws.close()
+
+    assert captured["use_key"] is False
+    assert captured["user"] == "user"
+
+
 def test_immediate_ssh_failure_output_reaches_the_client(client, db_session, monkeypatch):
     """A fast-failing ssh (bad host, refused connection) can exit before the
     route's read loop ever awaits anything, so on_pty_readable never gets a
